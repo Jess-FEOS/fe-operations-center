@@ -58,8 +58,9 @@ export default function ProjectsPage() {
     Promise.all([
       fetch('/api/projects').then(r => r.json()),
       fetch('/api/team').then(r => r.json()),
-      fetch('/api/tasks/overdue').then(r => r.json()),
+      fetch('/api/tasks/overdue').then(r => r.json()).catch(() => []),
     ]).then(([proj, tm, overdue]) => {
+      console.log('[Dashboard] Overdue tasks response:', overdue)
       setProjects(proj)
       setTeam(tm)
       setOverdueTasks(Array.isArray(overdue) ? overdue : [])
