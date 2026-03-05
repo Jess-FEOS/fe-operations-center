@@ -715,6 +715,15 @@ export default function ProjectDetailPage() {
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                     </svg>
                                   </button>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setAddingDepToTask(addingDepToTask === task.id ? null : task.id) }}
+                                    className={`opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-blue transition-opacity shrink-0 ${addingDepToTask === task.id ? '!opacity-100 text-fe-blue' : ''}`}
+                                    title="Add dependency"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                    </svg>
+                                  </button>
                                 </div>
                               )}
                               {editingTaskId !== task.id && (
@@ -808,17 +817,19 @@ export default function ProjectDetailPage() {
                                       Add Link
                                     </button>
                                   )}
-                                  {/* Dependencies */}
+                                  {/* Dependency chips */}
                                   {(depsMap.get(task.id) || []).length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                      <span className="text-xs font-fira text-gray-400">Blocked by:</span>
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
                                       {(depsMap.get(task.id) || []).map(depId => {
                                         const depTask = taskMap.get(depId)
                                         if (!depTask) return null
                                         const done = depTask.status === 'done'
                                         return (
                                           <span key={depId} className="inline-flex items-center gap-1 group/dep">
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-fira ${done ? 'bg-green-50 text-green-600 line-through' : 'bg-amber-50 text-amber-700'}`}>
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-fira ${done ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-700'}`}>
+                                              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                              </svg>
                                               {depTask.task_name}
                                             </span>
                                             <button
@@ -835,42 +846,33 @@ export default function ProjectDetailPage() {
                                       })}
                                     </div>
                                   )}
-                                  <div className="mt-1">
-                                    {addingDepToTask === task.id ? (
-                                      <div className="flex items-center gap-2">
-                                        <select
-                                          className="px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-                                          defaultValue=""
-                                          onChange={e => {
-                                            if (e.target.value) addDependency(task.id, e.target.value)
-                                          }}
-                                        >
-                                          <option value="" disabled>Select a task...</option>
-                                          {tasks
-                                            .filter(t => t.id !== task.id && !(depsMap.get(task.id) || []).includes(t.id))
-                                            .map(t => (
-                                              <option key={t.id} value={t.id}>{t.phase} — {t.task_name}</option>
-                                            ))}
-                                        </select>
-                                        <button
-                                          onClick={() => setAddingDepToTask(null)}
-                                          className="text-gray-400 hover:text-gray-600 text-xs font-fira"
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={e => { e.stopPropagation(); setAddingDepToTask(task.id) }}
-                                        className="opacity-0 group-hover/task:opacity-100 inline-flex items-center gap-1 text-xs font-fira text-gray-400 hover:text-fe-blue transition-all"
+                                  {/* Dependency selector dropdown */}
+                                  {addingDepToTask === task.id && (
+                                    <div className="flex items-center gap-2 mt-1.5">
+                                      <select
+                                        className="px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                        value=""
+                                        onChange={e => {
+                                          if (e.target.value) addDependency(task.id, e.target.value)
+                                        }}
                                       >
-                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        <option value="" disabled>Select a task...</option>
+                                        {tasks
+                                          .filter(t => t.id !== task.id && !(depsMap.get(task.id) || []).includes(t.id))
+                                          .map(t => (
+                                            <option key={t.id} value={t.id}>{t.phase} — {t.task_name}</option>
+                                          ))}
+                                      </select>
+                                      <button
+                                        onClick={() => setAddingDepToTask(null)}
+                                        className="text-gray-400 hover:text-gray-600"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                         </svg>
-                                        Add Dependency
                                       </button>
-                                    )}
-                                  </div>
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>
