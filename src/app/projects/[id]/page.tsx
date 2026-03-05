@@ -7,6 +7,7 @@ import StatusBadge from '@/components/StatusBadge'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
 import { TaskStatus, nextStatus } from '@/lib/types'
+import DuplicateProjectModal from '@/components/DuplicateProjectModal'
 
 interface ProjectTask {
   id: string
@@ -25,6 +26,7 @@ interface Project {
   id: string
   name: string
   workflow_type: string
+  workflow_template_id: string
   start_date: string
   current_week: number
   status: string
@@ -48,6 +50,7 @@ export default function ProjectDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [showDuplicate, setShowDuplicate] = useState(false)
   const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
 
@@ -215,12 +218,20 @@ export default function ProjectDetailPage() {
             )}
           </div>
           {!editing && (
-            <button
-              onClick={() => setEditing(true)}
-              className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 rounded-lg font-fira hover:bg-gray-50 transition-colors"
-            >
-              Edit
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDuplicate(true)}
+                className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 rounded-lg font-fira hover:bg-gray-50 transition-colors"
+              >
+                Duplicate
+              </button>
+              <button
+                onClick={() => setEditing(true)}
+                className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 rounded-lg font-fira hover:bg-gray-50 transition-colors"
+              >
+                Edit
+              </button>
+            </div>
           )}
         </div>
 
@@ -335,6 +346,19 @@ export default function ProjectDetailPage() {
           )
         })}
       </div>
+
+      {showDuplicate && project && (
+        <DuplicateProjectModal
+          sourceName={project.name}
+          workflowType={project.workflow_type}
+          workflowTemplateId={project.workflow_template_id}
+          onClose={() => setShowDuplicate(false)}
+          onCreated={(newProject) => {
+            setShowDuplicate(false)
+            router.push(`/projects/${newProject.id}`)
+          }}
+        />
+      )}
     </div>
   )
 }

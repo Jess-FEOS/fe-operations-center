@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import Avatar from '@/components/Avatar'
+import { useRouter } from 'next/navigation'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
+import DuplicateProjectModal from '@/components/DuplicateProjectModal'
 
 interface Project {
   id: string
@@ -17,6 +18,7 @@ interface Project {
   done_tasks: number
   progress: number
   owner_ids?: string[]
+  workflow_template_id: string
 }
 
 interface TeamMember {
@@ -34,10 +36,12 @@ const TOTAL_WEEKS: Record<string, number> = {
 }
 
 export default function ProjectsPage() {
+  const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
+  const [duplicating, setDuplicating] = useState<Project | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -100,25 +104,48 @@ export default function ProjectsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {filtered.map(project => (
-          <Link
+          <div
             key={project.id}
-            href={`/projects/${project.id}`}
-            className="bg-white rounded-xl border border-gray-100 p-5 hover:shadow-md transition-shadow"
+            className="bg-white rounded-xl border border-gray-100 p-5 hover:shadow-md transition-shadow group relative"
           >
-            <div className="flex items-start justify-between mb-3">
-              <h3 className="font-barlow font-bold text-lg text-fe-navy leading-tight pr-2">{project.name}</h3>
-              <WorkflowBadge type={project.workflow_type} />
-            </div>
-            <p className="text-sm text-fe-blue-gray font-fira mb-4">
-              Week {project.current_week} of {TOTAL_WEEKS[project.workflow_type] || '?'}
-            </p>
-            <ProgressBar percent={project.progress} />
-            <p className="text-xs text-fe-blue-gray font-fira mt-2">
-              {project.done_tasks} of {project.total_tasks} tasks complete
-            </p>
-          </Link>
+            <Link href={`/projects/${project.id}`} className="block">
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="font-barlow font-bold text-lg text-fe-navy leading-tight pr-2">{project.name}</h3>
+                <WorkflowBadge type={project.workflow_type} />
+              </div>
+              <p className="text-sm text-fe-blue-gray font-fira mb-4">
+                Week {project.current_week} of {TOTAL_WEEKS[project.workflow_type] || '?'}
+              </p>
+              <ProgressBar percent={project.progress} />
+              <p className="text-xs text-fe-blue-gray font-fira mt-2">
+                {project.done_tasks} of {project.total_tasks} tasks complete
+              </p>
+            </Link>
+            <button
+              onClick={() => setDuplicating(project)}
+              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-1.5 text-fe-blue-gray hover:text-fe-navy bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-all"
+              title="Duplicate project"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
         ))}
       </div>
+
+      {duplicating && (
+        <DuplicateProjectModal
+          sourceName={duplicating.name}
+          workflowType={duplicating.workflow_type}
+          workflowTemplateId={duplicating.workflow_template_id}
+          onClose={() => setDuplicating(null)}
+          onCreated={(newProject) => {
+            setDuplicating(null)
+            router.push(`/projects/${newProject.id}`)
+          }}
+        />
+      )}
 
       {filtered.length === 0 && (
         <div className="text-center py-12 text-fe-blue-gray font-fira">
