@@ -37,6 +37,14 @@ interface ProjectTask {
   owner_ids: string[]
 }
 
+interface TaskComment {
+  id: string
+  task_id: string
+  team_member_id: string
+  comment: string
+  created_at: string
+}
+
 interface Project {
   id: string
   name: string
@@ -83,6 +91,13 @@ export default function ProjectDetailPage() {
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
   const [notes, setNotes] = useState('')
   const notesRef = useRef<string>('')
+  const [expandedComments, setExpandedComments] = useState<string | null>(null)
+  const [taskComments, setTaskComments] = useState<Record<string, TaskComment[]>>({})
+  const [newComment, setNewComment] = useState('')
+  const [commentAuthor, setCommentAuthor] = useState('')
+  const [showCommentAuthorDropdown, setShowCommentAuthorDropdown] = useState(false)
+  const [loadingComments, setLoadingComments] = useState(false)
+  const commentAuthorRef = useRef<HTMLDivElement>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
   const ownerDropdownRef = useRef<HTMLDivElement>(null)
@@ -98,12 +113,15 @@ export default function ProjectDetailPage() {
       if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(e.target as Node)) {
         setShowOwnerDropdown(false)
       }
+      if (commentAuthorRef.current && !commentAuthorRef.current.contains(e.target as Node)) {
+        setShowCommentAuthorDropdown(false)
+      }
     }
-    if (bulkMenuPhase || showWorkflowDropdown || showOwnerDropdown) {
+    if (bulkMenuPhase || showWorkflowDropdown || showOwnerDropdown || showCommentAuthorDropdown) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [bulkMenuPhase, showWorkflowDropdown, showOwnerDropdown])
+  }, [bulkMenuPhase, showWorkflowDropdown, showOwnerDropdown, showCommentAuthorDropdown])
 
   useEffect(() => {
     Promise.all([
@@ -235,6 +253,36 @@ export default function ProjectDetailPage() {
       body: JSON.stringify({ notes: value }),
     })
     setProject(prev => prev ? { ...prev, notes: value } : prev)
+  }
+
+  const toggleComments = async (taskId: string) => {
+    if (expandedComments === taskId) {
+      setExpandedComments(null)
+      return
+    }
+    setExpandedComments(taskId)
+    if (!taskComments[taskId]) {
+      setLoadingComments(true)
+      const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}/comments`)
+      const data = await res.json()
+      setTaskComments(prev => ({ ...prev, [taskId]: data }))
+      setLoadingComments(false)
+    }
+    setNewComment('')
+  }
+
+  const submitComment = async (taskId: string) => {
+    if (!newComment.trim() || !commentAuthor) return
+    const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ team_member_id: commentAuthor, comment: newComment.trim() }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setTaskComments(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), data] }))
+      setNewComment('')
+    }
   }
 
   const saveEdits = async () => {
@@ -483,83 +531,201 @@ export default function ProjectDetailPage() {
 
               {isExpanded && (
                 <div className="border-t border-gray-50">
-                  {phase.tasks.map(task => (
-                    <div
-                      key={task.id}
-                      className="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50/50 group/task"
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="flex -space-x-1">
-                          {task.owner_ids.map(oid => {
-                            const member = teamMap.get(oid)
-                            return member ? (
-                              <Avatar key={oid} initials={member.initials} color={member.color} size="sm" />
-                            ) : null
-                          })}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          {editingTaskId === task.id ? (
-                            <form
-                              onSubmit={e => { e.preventDefault(); renameTask(task.id) }}
-                              className="flex items-center gap-2"
-                            >
-                              <input
-                                type="text"
-                                value={editingTaskName}
-                                onChange={e => setEditingTaskName(e.target.value)}
-                                className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-                                autoFocus
-                                onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }}
-                              />
-                              <button type="submit" className="text-fe-blue hover:text-fe-blue/80">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </button>
-                              <button type="button" onClick={() => setEditingTaskId(null)} className="text-gray-400 hover:text-gray-600">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </form>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-sm font-fira text-fe-anthracite truncate">{task.task_name}</p>
-                              <button
-                                onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.task_name) }}
-                                className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-navy transition-opacity shrink-0"
-                                title="Rename task"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => setDeletingTaskId(task.id)}
-                                className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-red-500 transition-opacity shrink-0"
-                                title="Delete task"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
+                  {phase.tasks.map(task => {
+                    const commentsForTask = taskComments[task.id] || []
+                    const isCommentsOpen = expandedComments === task.id
+
+                    return (
+                      <div key={task.id} className="border-b border-gray-50 last:border-b-0">
+                        <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 group/task">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="flex -space-x-1">
+                              {task.owner_ids.map(oid => {
+                                const member = teamMap.get(oid)
+                                return member ? (
+                                  <Avatar key={oid} initials={member.initials} color={member.color} size="sm" />
+                                ) : null
+                              })}
                             </div>
-                          )}
+                            <div className="min-w-0 flex-1">
+                              {editingTaskId === task.id ? (
+                                <form
+                                  onSubmit={e => { e.preventDefault(); renameTask(task.id) }}
+                                  className="flex items-center gap-2"
+                                >
+                                  <input
+                                    type="text"
+                                    value={editingTaskName}
+                                    onChange={e => setEditingTaskName(e.target.value)}
+                                    className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                    autoFocus
+                                    onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }}
+                                  />
+                                  <button type="submit" className="text-fe-blue hover:text-fe-blue/80">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </button>
+                                  <button type="button" onClick={() => setEditingTaskId(null)} className="text-gray-400 hover:text-gray-600">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </form>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => toggleComments(task.id)}
+                                    className="text-sm font-fira text-fe-anthracite truncate hover:text-fe-blue transition-colors text-left"
+                                  >
+                                    {task.task_name}
+                                  </button>
+                                  <button
+                                    onClick={() => toggleComments(task.id)}
+                                    className={`shrink-0 transition-colors ${isCommentsOpen ? 'text-fe-blue' : 'text-gray-300 opacity-0 group-hover/task:opacity-100 hover:text-fe-blue'}`}
+                                    title="Comments"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.task_name) }}
+                                    className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-navy transition-opacity shrink-0"
+                                    title="Rename task"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingTaskId(task.id)}
+                                    className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-red-500 transition-opacity shrink-0"
+                                    title="Delete task"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              )}
+                              {editingTaskId !== task.id && (
+                                <p className="text-xs text-gray-400 font-fira">
+                                  Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                           {editingTaskId !== task.id && (
-                            <p className="text-xs text-gray-400 font-fira">
-                              Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </p>
+                            <StatusBadge
+                              status={task.status}
+                              onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
+                            />
                           )}
                         </div>
+
+                        {isCommentsOpen && (
+                          <div className="bg-gray-50/80 px-4 py-3 ml-10 mr-4 mb-3 rounded-lg border border-gray-100">
+                            {loadingComments && commentsForTask.length === 0 ? (
+                              <div className="flex items-center justify-center py-4">
+                                <div className="w-5 h-5 border-2 border-fe-blue border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            ) : (
+                              <>
+                                {commentsForTask.length === 0 && (
+                                  <p className="text-xs text-gray-400 font-fira py-2 text-center">No comments yet</p>
+                                )}
+                                <div className="space-y-3">
+                                  {commentsForTask.map(c => {
+                                    const author = teamMap.get(c.team_member_id)
+                                    return (
+                                      <div key={c.id} className="flex gap-2.5">
+                                        <Avatar
+                                          initials={author?.initials || '?'}
+                                          color={author?.color || '#999'}
+                                          size="sm"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-baseline gap-2">
+                                            <span className="text-xs font-fira font-bold text-fe-navy">{author?.name || 'Unknown'}</span>
+                                            <span className="text-xs text-gray-400 font-fira">
+                                              {new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                              {' '}
+                                              {new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                            </span>
+                                          </div>
+                                          <p className="text-sm font-fira text-fe-anthracite mt-0.5">{c.comment}</p>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                <div className="mt-3 flex items-center gap-2">
+                                  <div className="relative" ref={showCommentAuthorDropdown ? commentAuthorRef : undefined}>
+                                    <button
+                                      onClick={() => setShowCommentAuthorDropdown(!showCommentAuthorDropdown)}
+                                      className="shrink-0"
+                                      title="Select commenter"
+                                    >
+                                      {commentAuthor ? (
+                                        <Avatar
+                                          initials={teamMap.get(commentAuthor)?.initials || '?'}
+                                          color={teamMap.get(commentAuthor)?.color || '#999'}
+                                          size="sm"
+                                        />
+                                      ) : (
+                                        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
+                                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                          </svg>
+                                        </div>
+                                      )}
+                                    </button>
+                                    {showCommentAuthorDropdown && (
+                                      <div className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
+                                        {team.map(m => (
+                                          <button
+                                            key={m.id}
+                                            onClick={() => { setCommentAuthor(m.id); setShowCommentAuthorDropdown(false) }}
+                                            className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
+                                          >
+                                            <Avatar initials={m.initials} color={m.color} size="sm" />
+                                            {m.name}
+                                            {commentAuthor === m.id && (
+                                              <svg className="w-3 h-3 ml-auto text-fe-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                              </svg>
+                                            )}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={newComment}
+                                    onChange={e => setNewComment(e.target.value)}
+                                    placeholder={commentAuthor ? 'Add a comment...' : 'Select who you are, then comment...'}
+                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter' && newComment.trim() && commentAuthor) submitComment(task.id)
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => submitComment(task.id)}
+                                    disabled={!newComment.trim() || !commentAuthor}
+                                    className="shrink-0 px-3 py-1.5 bg-fe-blue text-white rounded-lg text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Send
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {editingTaskId !== task.id && (
-                        <StatusBadge
-                          status={task.status}
-                          onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
-                        />
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
 
                   {addingToPhase === phase.phase ? (
                     <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50">

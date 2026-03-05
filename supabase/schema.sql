@@ -62,6 +62,15 @@ CREATE TABLE project_tasks (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Task Comments
+CREATE TABLE task_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID REFERENCES project_tasks(id) ON DELETE CASCADE,
+  team_member_id UUID REFERENCES team_members(id) ON DELETE SET NULL,
+  comment TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Enable Row Level Security (open for now - add auth policies as needed)
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workflow_templates ENABLE ROW LEVEL SECURITY;
@@ -75,9 +84,12 @@ CREATE POLICY "Allow all on workflow_templates" ON workflow_templates FOR ALL US
 CREATE POLICY "Allow all on template_tasks" ON template_tasks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on projects" ON projects FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on project_tasks" ON project_tasks FOR ALL USING (true) WITH CHECK (true);
+ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all on task_comments" ON task_comments FOR ALL USING (true) WITH CHECK (true);
 
 -- Indexes for performance
 CREATE INDEX idx_project_tasks_project ON project_tasks(project_id);
 CREATE INDEX idx_project_tasks_status ON project_tasks(status);
 CREATE INDEX idx_project_tasks_due_date ON project_tasks(due_date);
 CREATE INDEX idx_template_tasks_workflow ON template_tasks(workflow_template_id);
+CREATE INDEX idx_task_comments_task ON task_comments(task_id);
