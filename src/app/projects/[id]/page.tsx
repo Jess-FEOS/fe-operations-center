@@ -6,8 +6,23 @@ import Avatar from '@/components/Avatar'
 import StatusBadge from '@/components/StatusBadge'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
-import { TaskStatus, nextStatus } from '@/lib/types'
+import { TaskStatus, nextStatus, WORKFLOW_COLORS } from '@/lib/types'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
+
+interface WorkflowTemplate {
+  id: string
+  name: string
+  slug: string
+  color: string
+  total_weeks: number
+}
+
+const WORKFLOW_LABELS: Record<string, string> = {
+  'course-launch': 'Course Launch',
+  'podcast': 'Podcast',
+  'newsletter': 'Newsletter',
+  'subscription': 'Subscription Buildout',
+}
 
 interface ProjectTask {
   id: string
@@ -53,31 +68,41 @@ export default function ProjectDetailPage() {
   const [showDuplicate, setShowDuplicate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>([])
+  const [showWorkflowDropdown, setShowWorkflowDropdown] = useState(false)
+  const [pendingWorkflow, setPendingWorkflow] = useState<WorkflowTemplate | null>(null)
+  const [switchingWorkflow, setSwitchingWorkflow] = useState(false)
   const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
+  const workflowDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) {
         setBulkMenuPhase(null)
       }
+      if (workflowDropdownRef.current && !workflowDropdownRef.current.contains(e.target as Node)) {
+        setShowWorkflowDropdown(false)
+      }
     }
-    if (bulkMenuPhase) {
+    if (bulkMenuPhase || showWorkflowDropdown) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [bulkMenuPhase])
+  }, [bulkMenuPhase, showWorkflowDropdown])
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/projects/${params.id}`).then(r => r.json()),
       fetch('/api/team').then(r => r.json()),
-    ]).then(([projectData, teamData]) => {
+      fetch('/api/workflow-templates').then(r => r.json()),
+    ]).then(([projectData, teamData, templates]) => {
       setProject(projectData.project)
       setTasks(projectData.tasks || [])
       setTeam(teamData)
       setEditName(projectData.project?.name || '')
       setEditDate(projectData.project?.start_date || '')
+      setWorkflowTemplates(templates)
       // Expand all phases by default
       const phases = new Set<string>((projectData.tasks || []).map((t: ProjectTask) => t.phase))
       setExpandedPhases(phases)
@@ -118,6 +143,26 @@ export default function ProjectDetailPage() {
     )
     setTasks(prev => prev.map(t => t.phase === phase ? { ...t, status: newStatus } : t))
     setBulkMenuPhase(null)
+  }
+
+  const confirmWorkflowSwitch = async () => {
+    if (!pendingWorkflow) return
+    setSwitchingWorkflow(true)
+    const res = await fetch(`/api/projects/${params.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_type: pendingWorkflow.slug,
+        workflow_template_id: pendingWorkflow.id,
+      }),
+    })
+    const data = await res.json()
+    setProject(data.project)
+    setTasks(data.tasks || [])
+    const phases = new Set<string>((data.tasks || []).map((t: ProjectTask) => t.phase))
+    setExpandedPhases(phases)
+    setSwitchingWorkflow(false)
+    setPendingWorkflow(null)
   }
 
   const deleteProject = async () => {
@@ -217,7 +262,44 @@ export default function ProjectDetailPage() {
               <>
                 <div className="flex items-center gap-3 mb-1">
                   <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">{project.name}</h1>
-                  <WorkflowBadge type={project.workflow_type} />
+                  <div className="relative" ref={workflowDropdownRef}>
+                    <button
+                      onClick={() => setShowWorkflowDropdown(!showWorkflowDropdown)}
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-fira font-bold text-white cursor-pointer hover:opacity-90 transition-opacity"
+                      style={{ backgroundColor: WORKFLOW_COLORS[project.workflow_type] || '#647692' }}
+                    >
+                      {WORKFLOW_LABELS[project.workflow_type] || project.workflow_type}
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {showWorkflowDropdown && (
+                      <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[180px]">
+                        {workflowTemplates.map(tmpl => (
+                          <button
+                            key={tmpl.id}
+                            disabled={tmpl.slug === project.workflow_type}
+                            onClick={() => {
+                              setShowWorkflowDropdown(false)
+                              setPendingWorkflow(tmpl)
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2 disabled:opacity-40 disabled:cursor-default"
+                          >
+                            <span
+                              className="w-2.5 h-2.5 rounded-full"
+                              style={{ backgroundColor: tmpl.color }}
+                            />
+                            {WORKFLOW_LABELS[tmpl.slug] || tmpl.name}
+                            {tmpl.slug === project.workflow_type && (
+                              <svg className="w-3 h-3 ml-auto text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm text-fe-blue-gray font-fira">
                   Started {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -397,6 +479,38 @@ export default function ProjectDetailPage() {
                 className="flex-1 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-fira font-bold hover:bg-red-700 transition-colors disabled:opacity-60"
               >
                 {deleting ? 'Deleting...' : 'Delete Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingWorkflow && project && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setPendingWorkflow(null)}>
+          <div
+            className="bg-white rounded-xl border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Change Workflow Type</h2>
+            <p className="text-sm text-fe-anthracite font-fira mb-2">
+              Switch from <span className="font-bold">{WORKFLOW_LABELS[project.workflow_type] || project.workflow_type}</span> to <span className="font-bold">{WORKFLOW_LABELS[pendingWorkflow.slug] || pendingWorkflow.name}</span>?
+            </p>
+            <p className="text-sm text-red-600 font-fira mb-6">
+              All current tasks will be deleted and replaced with the new workflow&apos;s tasks. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPendingWorkflow(null)}
+                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmWorkflowSwitch}
+                disabled={switchingWorkflow}
+                className="flex-1 px-6 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-60"
+              >
+                {switchingWorkflow ? 'Switching...' : 'Switch Workflow'}
               </button>
             </div>
           </div>

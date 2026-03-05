@@ -49,12 +49,78 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.start_date !== undefined) updates.start_date = body.start_date;
+    if (body.workflow_type !== undefined) updates.workflow_type = body.workflow_type;
+    if (body.workflow_template_id !== undefined) updates.workflow_template_id = body.workflow_template_id;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { error: 'No valid fields to update. Accepted fields: name, start_date' },
+        { error: 'No valid fields to update' },
         { status: 400 }
       );
+    }
+
+    // If workflow template is changing, regenerate tasks
+    let newTasks = null;
+    if (body.workflow_template_id) {
+      // Get the project's start_date (use provided or fetch existing)
+      let startDate = body.start_date;
+      if (!startDate) {
+        const { data: existing } = await supabase
+          .from('projects')
+          .select('start_date')
+          .eq('id', id)
+          .single();
+        startDate = existing?.start_date;
+      }
+
+      // Delete existing tasks
+      const { error: deleteError } = await supabase
+        .from('project_tasks')
+        .delete()
+        .eq('project_id', id);
+
+      if (deleteError) {
+        return NextResponse.json({ error: deleteError.message }, { status: 500 });
+      }
+
+      // Fetch new template tasks
+      const { data: templateTasks, error: templateError } = await supabase
+        .from('template_tasks')
+        .select('*')
+        .eq('workflow_template_id', body.workflow_template_id);
+
+      if (templateError) {
+        return NextResponse.json({ error: templateError.message }, { status: 500 });
+      }
+
+      // Generate new project tasks
+      if (templateTasks && templateTasks.length > 0) {
+        const startDateObj = new Date(startDate);
+        const projectTasks = templateTasks.map((task: Record<string, unknown>) => {
+          const dueDate = new Date(startDateObj.getTime() + (task.week_offset as number) * 7 * 24 * 60 * 60 * 1000);
+          return {
+            project_id: id,
+            phase: task.phase,
+            phase_order: task.phase_order,
+            task_name: task.task_name,
+            task_order: task.task_order,
+            due_date: dueDate.toISOString().split('T')[0],
+            week_number: (task.week_offset as number) + 1,
+            status: 'not_started',
+            owner_ids: task.owner_ids,
+          };
+        });
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('project_tasks')
+          .insert(projectTasks)
+          .select();
+
+        if (insertError) {
+          return NextResponse.json({ error: insertError.message }, { status: 500 });
+        }
+        newTasks = inserted;
+      }
     }
 
     const { data, error } = await supabase
@@ -66,6 +132,11 @@ export async function PATCH(
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Return tasks alongside project when workflow changed
+    if (newTasks !== null) {
+      return NextResponse.json({ project: data, tasks: newTasks });
     }
 
     return NextResponse.json(data);
