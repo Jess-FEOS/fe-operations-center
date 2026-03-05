@@ -51,6 +51,8 @@ export default function ProjectDetailPage() {
   const [editName, setEditName] = useState('')
   const [editDate, setEditDate] = useState('')
   const [showDuplicate, setShowDuplicate] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
 
@@ -116,6 +118,12 @@ export default function ProjectDetailPage() {
     )
     setTasks(prev => prev.map(t => t.phase === phase ? { ...t, status: newStatus } : t))
     setBulkMenuPhase(null)
+  }
+
+  const deleteProject = async () => {
+    setDeleting(true)
+    await fetch(`/api/projects/${params.id}`, { method: 'DELETE' })
+    router.push('/projects')
   }
 
   const saveEdits = async () => {
@@ -219,6 +227,12 @@ export default function ProjectDetailPage() {
           </div>
           {!editing && (
             <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-3 py-1.5 text-sm text-red-400 hover:text-red-600 border border-gray-200 rounded-lg font-fira hover:bg-red-50 hover:border-red-200 transition-colors"
+              >
+                Delete
+              </button>
               <button
                 onClick={() => setShowDuplicate(true)}
                 className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 rounded-lg font-fira hover:bg-gray-50 transition-colors"
@@ -358,6 +372,35 @@ export default function ProjectDetailPage() {
             router.push(`/projects/${newProject.id}`)
           }}
         />
+      )}
+
+      {showDeleteConfirm && project && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowDeleteConfirm(false)}>
+          <div
+            className="bg-white rounded-xl border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Delete Project</h2>
+            <p className="text-sm text-fe-anthracite font-fira mb-6">
+              Are you sure you want to delete <span className="font-bold">{project.name}</span>? This will permanently delete all tasks associated with this project.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteProject}
+                disabled={deleting}
+                className="flex-1 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-fira font-bold hover:bg-red-700 transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Deleting...' : 'Delete Project'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

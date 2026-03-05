@@ -73,3 +73,36 @@ export async function PATCH(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = params;
+
+    // Delete associated tasks first
+    const { error: tasksError } = await supabase
+      .from('project_tasks')
+      .delete()
+      .eq('project_id', id);
+
+    if (tasksError) {
+      return NextResponse.json({ error: tasksError.message }, { status: 500 });
+    }
+
+    // Delete the project
+    const { error: projectError } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id);
+
+    if (projectError) {
+      return NextResponse.json({ error: projectError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
