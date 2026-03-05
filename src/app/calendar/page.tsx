@@ -22,6 +22,13 @@ interface CalendarTask {
   owner_ids: string[]
 }
 
+interface ProjectGroup {
+  projectId: string
+  projectName: string
+  workflowType: string
+  tasks: CalendarTask[]
+}
+
 const WORKFLOW_COLORS: Record<string, string> = {
   'course-launch': '#0762C8',
   'podcast': '#437F94',
@@ -30,6 +37,14 @@ const WORKFLOW_COLORS: Record<string, string> = {
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+// Format date as YYYY-MM-DD without UTC conversion
+function toDateStr(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 function getMonthRange(year: number, month: number) {
   const first = new Date(year, month, 1)
@@ -48,10 +63,6 @@ function getMonthRange(year: number, month: number) {
   calEnd.setDate(last.getDate() + (7 - endDay))
 
   return { calStart, calEnd, first, last }
-}
-
-function toDateStr(d: Date) {
-  return d.toISOString().split('T')[0]
 }
 
 export default function CalendarPage() {
@@ -92,12 +103,18 @@ export default function CalendarPage() {
     ? tasks
     : tasks.filter(t => t.owner_ids?.some(oid => selectedMembers.has(oid)))
 
-  // Group tasks by date
-  const tasksByDate = new Map<string, CalendarTask[]>()
+  // Group tasks by date, then by project within each date
+  const groupsByDate = new Map<string, ProjectGroup[]>()
   for (const task of filteredTasks) {
     const key = task.due_date
-    if (!tasksByDate.has(key)) tasksByDate.set(key, [])
-    tasksByDate.get(key)!.push(task)
+    if (!groupsByDate.has(key)) groupsByDate.set(key, [])
+    const dateGroups = groupsByDate.get(key)!
+    let group = dateGroups.find(g => g.projectId === task.project_id)
+    if (!group) {
+      group = { projectId: task.project_id, projectName: task.project_name, workflowType: task.workflow_type, tasks: [] }
+      dateGroups.push(group)
+    }
+    group.tasks.push(task)
   }
 
   // Build calendar grid (weeks of days)
@@ -201,7 +218,7 @@ export default function CalendarPage() {
           {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-gray-100">
             {DAYS.map(day => (
-              <div key={day} className="px-2 py-2 text-center text-xs font-fira font-bold text-fe-blue-gray bg-gray-50">
+              <div key={day} className="px-2 py-2.5 text-center text-xs font-fira font-bold text-fe-blue-gray bg-gray-50">
                 {day}
               </div>
             ))}
@@ -214,44 +231,51 @@ export default function CalendarPage() {
                 const dateStr = toDateStr(day)
                 const isCurrentMonth = day.getMonth() === month
                 const isToday = dateStr === todayStr
-                const dayTasks = tasksByDate.get(dateStr) || []
+                const dayGroups = groupsByDate.get(dateStr) || []
 
                 return (
                   <div
                     key={di}
-                    className={`min-h-[100px] border-r border-gray-50 last:border-r-0 p-1.5 ${
+                    className={`min-h-[130px] border-r border-gray-50 last:border-r-0 p-2 ${
                       isCurrentMonth ? 'bg-white' : 'bg-gray-50/50'
                     }`}
                   >
-                    <div className={`text-xs font-fira mb-1 ${
+                    <div className={`text-xs font-fira mb-2 ${
                       isToday
                         ? 'w-6 h-6 rounded-full bg-fe-blue text-white flex items-center justify-center font-bold'
-                        : isCurrentMonth ? 'text-fe-anthracite' : 'text-gray-300'
+                        : isCurrentMonth ? 'text-fe-anthracite font-medium' : 'text-gray-300'
                     }`}>
                       {day.getDate()}
                     </div>
-                    <div className="space-y-0.5">
-                      {dayTasks.slice(0, 4).map(task => {
-                        const color = WORKFLOW_COLORS[task.workflow_type] || '#647692'
+                    <div className="space-y-1">
+                      {dayGroups.slice(0, 3).map(group => {
+                        const color = WORKFLOW_COLORS[group.workflowType] || '#647692'
+                        const tooltipText = group.tasks.map(t => `• ${t.task_name}`).join('\n')
                         return (
                           <Link
-                            key={task.id}
-                            href={`/projects/${task.project_id}`}
-                            className="block px-1.5 py-0.5 rounded text-xs font-fira truncate hover:opacity-80 transition-opacity"
+                            key={group.projectId}
+                            href={`/projects/${group.projectId}`}
+                            className="group/chip relative block px-2 py-1 rounded text-xs font-fira truncate hover:opacity-80 transition-opacity"
                             style={{
-                              backgroundColor: `${color}15`,
+                              backgroundColor: `${color}12`,
                               color: color,
-                              borderLeft: `2px solid ${color}`,
+                              borderLeft: `3px solid ${color}`,
                             }}
-                            title={`${task.task_name} — ${task.project_name}`}
+                            title={tooltipText}
                           >
-                            {task.task_name}
+                            <span className="truncate">{group.projectName}</span>
+                            <span
+                              className="ml-1 inline-flex items-center justify-center px-1 min-w-[16px] h-4 rounded-full text-white text-xs font-bold leading-none"
+                              style={{ backgroundColor: color, fontSize: '10px' }}
+                            >
+                              {group.tasks.length}
+                            </span>
                           </Link>
                         )
                       })}
-                      {dayTasks.length > 4 && (
+                      {dayGroups.length > 3 && (
                         <div className="text-xs text-fe-blue-gray font-fira px-1">
-                          +{dayTasks.length - 4} more
+                          +{dayGroups.length - 3} more
                         </div>
                       )}
                     </div>
