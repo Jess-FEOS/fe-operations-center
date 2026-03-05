@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const navItems = [
   { href: '/', label: 'Dashboard', icon: DashboardIcon },
   { href: '/this-week', label: 'This Week', icon: CalendarIcon },
+  { href: '/calendar', label: 'Calendar', icon: MonthCalendarIcon },
   { href: '/projects', label: 'Projects', icon: FolderIcon },
   { href: '/team', label: 'Team', icon: TeamIcon },
 ]
@@ -79,6 +80,14 @@ function CalendarIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
+function MonthCalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4h18v18H3V4zm0 6h18M9 4v2m6-2v2m-9 6h2m4 0h2m4 0h2m-14 4h2m4 0h2m4 0h2" />
     </svg>
   )
 }
