@@ -33,6 +33,7 @@ export interface Project {
   start_date: string
   current_week: number
   status: string
+  notes: string | null
   created_at: string
 }
 

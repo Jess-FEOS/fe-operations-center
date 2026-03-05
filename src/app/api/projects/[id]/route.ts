@@ -49,6 +49,7 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.start_date !== undefined) updates.start_date = body.start_date;
+    if (body.notes !== undefined) updates.notes = body.notes;
     if (body.workflow_type !== undefined) updates.workflow_type = body.workflow_type;
     if (body.workflow_template_id !== undefined) updates.workflow_template_id = body.workflow_template_id;
 

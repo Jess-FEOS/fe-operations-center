@@ -43,6 +43,7 @@ CREATE TABLE projects (
   start_date DATE NOT NULL,
   current_week INT DEFAULT 1,
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'paused')),
+  notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

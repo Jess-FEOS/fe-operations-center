@@ -45,6 +45,7 @@ interface Project {
   start_date: string
   current_week: number
   status: string
+  notes: string | null
 }
 
 interface TeamMember {
@@ -80,6 +81,8 @@ export default function ProjectDetailPage() {
   const [newTaskName, setNewTaskName] = useState('')
   const [newTaskOwner, setNewTaskOwner] = useState('')
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
+  const [notes, setNotes] = useState('')
+  const notesRef = useRef<string>('')
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
   const ownerDropdownRef = useRef<HTMLDivElement>(null)
@@ -113,6 +116,9 @@ export default function ProjectDetailPage() {
       setTeam(teamData)
       setEditName(projectData.project?.name || '')
       setEditDate(projectData.project?.start_date || '')
+      const initialNotes = projectData.project?.notes || ''
+      setNotes(initialNotes)
+      notesRef.current = initialNotes
       setWorkflowTemplates(templates)
       // Expand all phases by default
       const phases = new Set<string>((projectData.tasks || []).map((t: ProjectTask) => t.phase))
@@ -218,6 +224,17 @@ export default function ProjectDetailPage() {
       setNewTaskOwner('')
       setAddingToPhase(null)
     }
+  }
+
+  const saveNotes = async (value: string) => {
+    if (value === notesRef.current) return
+    notesRef.current = value
+    await fetch(`/api/projects/${params.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: value }),
+    })
+    setProject(prev => prev ? { ...prev, notes: value } : prev)
   }
 
   const saveEdits = async () => {
@@ -353,6 +370,14 @@ export default function ProjectDetailPage() {
                 <p className="text-sm text-fe-blue-gray font-fira">
                   Started {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </p>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  onBlur={e => saveNotes(e.target.value)}
+                  placeholder="Add project brief, goals, or links..."
+                  rows={2}
+                  className="mt-3 w-full px-3 py-2 text-sm font-fira text-fe-anthracite bg-transparent border border-transparent rounded-lg hover:border-gray-200 focus:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fe-blue resize-y placeholder:text-gray-300 transition-colors"
+                />
               </>
             )}
           </div>
