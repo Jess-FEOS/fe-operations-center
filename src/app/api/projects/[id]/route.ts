@@ -44,7 +44,17 @@ export async function GET(
       links = linksData || [];
     }
 
-    return NextResponse.json({ project, tasks: tasks || [], links });
+    // Fetch all dependencies for this project's tasks
+    let dependencies: Record<string, unknown>[] = [];
+    if (taskIds.length > 0) {
+      const { data: depsData } = await supabase
+        .from('task_dependencies')
+        .select('*')
+        .in('task_id', taskIds);
+      dependencies = depsData || [];
+    }
+
+    return NextResponse.json({ project, tasks: tasks || [], links, dependencies });
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

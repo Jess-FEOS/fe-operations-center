@@ -80,6 +80,15 @@ CREATE TABLE task_links (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Task Dependencies
+CREATE TABLE task_dependencies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID REFERENCES project_tasks(id) ON DELETE CASCADE,
+  depends_on_task_id UUID REFERENCES project_tasks(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(task_id, depends_on_task_id)
+);
+
 -- Enable Row Level Security (open for now - add auth policies as needed)
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workflow_templates ENABLE ROW LEVEL SECURITY;
@@ -97,6 +106,8 @@ ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all on task_comments" ON task_comments FOR ALL USING (true) WITH CHECK (true);
 ALTER TABLE task_links ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all on task_links" ON task_links FOR ALL USING (true) WITH CHECK (true);
+ALTER TABLE task_dependencies ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all on task_dependencies" ON task_dependencies FOR ALL USING (true) WITH CHECK (true);
 
 -- Indexes for performance
 CREATE INDEX idx_project_tasks_project ON project_tasks(project_id);
@@ -105,3 +116,5 @@ CREATE INDEX idx_project_tasks_due_date ON project_tasks(due_date);
 CREATE INDEX idx_template_tasks_workflow ON template_tasks(workflow_template_id);
 CREATE INDEX idx_task_comments_task ON task_comments(task_id);
 CREATE INDEX idx_task_links_task ON task_links(task_id);
+CREATE INDEX idx_task_dependencies_task ON task_dependencies(task_id);
+CREATE INDEX idx_task_dependencies_depends ON task_dependencies(depends_on_task_id);

@@ -53,6 +53,12 @@ interface TaskLink {
   created_at: string
 }
 
+interface TaskDependency {
+  id: string
+  task_id: string
+  depends_on_task_id: string
+}
+
 interface Project {
   id: string
   name: string
@@ -109,6 +115,8 @@ export default function ProjectDetailPage() {
   const [addingLinkToTask, setAddingLinkToTask] = useState<string | null>(null)
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
+  const [dependencies, setDependencies] = useState<TaskDependency[]>([])
+  const [addingDepToTask, setAddingDepToTask] = useState<string | null>(null)
   const commentAuthorRef = useRef<HTMLDivElement>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
@@ -151,6 +159,7 @@ export default function ProjectDetailPage() {
         linksMap[link.task_id].push(link)
       }
       setTaskLinks(linksMap)
+      setDependencies(projectData.dependencies || [])
       setEditName(projectData.project?.name || '')
       setEditDate(projectData.project?.start_date || '')
       const initialNotes = projectData.project?.notes || ''
@@ -345,6 +354,26 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const addDependency = async (taskId: string, dependsOnId: string) => {
+    const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}/dependencies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ depends_on_task_id: dependsOnId }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setDependencies(prev => [...prev, data])
+    }
+    setAddingDepToTask(null)
+  }
+
+  const removeDependency = async (taskId: string, dependsOnId: string) => {
+    await fetch(`/api/projects/${params.id}/tasks/${taskId}/dependencies?depends_on_task_id=${dependsOnId}`, {
+      method: 'DELETE',
+    })
+    setDependencies(prev => prev.filter(d => !(d.task_id === taskId && d.depends_on_task_id === dependsOnId)))
+  }
+
   const saveEdits = async () => {
     await fetch(`/api/projects/${params.id}`, {
       method: 'PATCH',
@@ -381,6 +410,24 @@ export default function ProjectDetailPage() {
 
   // Sort tasks within each phase
   phases.forEach(p => p.tasks.sort((a, b) => a.task_order - b.task_order))
+
+  // Build dependency map: task_id → depends_on_task_ids[]
+  const depsMap = new Map<string, string[]>()
+  for (const dep of dependencies) {
+    if (!depsMap.has(dep.task_id)) depsMap.set(dep.task_id, [])
+    depsMap.get(dep.task_id)!.push(dep.depends_on_task_id)
+  }
+
+  const taskMap = new Map(tasks.map(t => [t.id, t]))
+
+  const isBlocked = (taskId: string) => {
+    const deps = depsMap.get(taskId)
+    if (!deps || deps.length === 0) return false
+    return deps.some(depId => {
+      const depTask = taskMap.get(depId)
+      return depTask && depTask.status !== 'done'
+    })
+  }
 
   return (
     <div>
@@ -761,15 +808,88 @@ export default function ProjectDetailPage() {
                                       Add Link
                                     </button>
                                   )}
+                                  {/* Dependencies */}
+                                  {(depsMap.get(task.id) || []).length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                      <span className="text-xs font-fira text-gray-400">Blocked by:</span>
+                                      {(depsMap.get(task.id) || []).map(depId => {
+                                        const depTask = taskMap.get(depId)
+                                        if (!depTask) return null
+                                        const done = depTask.status === 'done'
+                                        return (
+                                          <span key={depId} className="inline-flex items-center gap-1 group/dep">
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-fira ${done ? 'bg-green-50 text-green-600 line-through' : 'bg-amber-50 text-amber-700'}`}>
+                                              {depTask.task_name}
+                                            </span>
+                                            <button
+                                              onClick={e => { e.stopPropagation(); removeDependency(task.id, depId) }}
+                                              className="opacity-0 group-hover/dep:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
+                                              title="Remove dependency"
+                                            >
+                                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                              </svg>
+                                            </button>
+                                          </span>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                  {addingDepToTask === task.id ? (
+                                    <div className="mt-1.5">
+                                      <select
+                                        className="px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                        defaultValue=""
+                                        autoFocus
+                                        onChange={e => {
+                                          if (e.target.value) addDependency(task.id, e.target.value)
+                                        }}
+                                        onBlur={() => setAddingDepToTask(null)}
+                                      >
+                                        <option value="" disabled>Select a task...</option>
+                                        {tasks
+                                          .filter(t => t.id !== task.id && !(depsMap.get(task.id) || []).includes(t.id))
+                                          .map(t => (
+                                            <option key={t.id} value={t.id}>{t.phase} — {t.task_name}</option>
+                                          ))}
+                                      </select>
+                                      <button
+                                        onClick={() => setAddingDepToTask(null)}
+                                        className="ml-2 text-gray-400 hover:text-gray-600 text-xs"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setAddingDepToTask(task.id) }}
+                                      className="opacity-0 group-hover/task:opacity-100 mt-1 inline-flex items-center gap-1 text-xs font-fira text-gray-400 hover:text-fe-blue transition-all"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                      </svg>
+                                      Add Dependency
+                                    </button>
+                                  )}
                                 </>
                               )}
                             </div>
                           </div>
                           {editingTaskId !== task.id && (
-                            <StatusBadge
-                              status={task.status}
-                              onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
-                            />
+                            <div className="flex items-center gap-2">
+                              {isBlocked(task.id) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-red-50 text-red-600 border border-red-100">
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-2.99L13.73 4.01c-.77-1.33-2.69-1.33-3.46 0L3.34 16.01C2.57 17.33 3.53 19 5.07 19z" />
+                                  </svg>
+                                  Blocked
+                                </span>
+                              )}
+                              <StatusBadge
+                                status={task.status}
+                                onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
+                              />
+                            </div>
                           )}
                         </div>
 
