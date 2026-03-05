@@ -13,3 +13,18 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Barlow', sans-serif;
 }
+
+@media print {
+  aside {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+}
