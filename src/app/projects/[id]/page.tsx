@@ -835,42 +835,42 @@ export default function ProjectDetailPage() {
                                       })}
                                     </div>
                                   )}
-                                  {addingDepToTask === task.id ? (
-                                    <div className="mt-1.5">
-                                      <select
-                                        className="px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-                                        defaultValue=""
-                                        autoFocus
-                                        onChange={e => {
-                                          if (e.target.value) addDependency(task.id, e.target.value)
-                                        }}
-                                        onBlur={() => setAddingDepToTask(null)}
-                                      >
-                                        <option value="" disabled>Select a task...</option>
-                                        {tasks
-                                          .filter(t => t.id !== task.id && !(depsMap.get(task.id) || []).includes(t.id))
-                                          .map(t => (
-                                            <option key={t.id} value={t.id}>{t.phase} — {t.task_name}</option>
-                                          ))}
-                                      </select>
+                                  <div className="mt-1">
+                                    {addingDepToTask === task.id ? (
+                                      <div className="flex items-center gap-2">
+                                        <select
+                                          className="px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                          defaultValue=""
+                                          onChange={e => {
+                                            if (e.target.value) addDependency(task.id, e.target.value)
+                                          }}
+                                        >
+                                          <option value="" disabled>Select a task...</option>
+                                          {tasks
+                                            .filter(t => t.id !== task.id && !(depsMap.get(task.id) || []).includes(t.id))
+                                            .map(t => (
+                                              <option key={t.id} value={t.id}>{t.phase} — {t.task_name}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                          onClick={() => setAddingDepToTask(null)}
+                                          className="text-gray-400 hover:text-gray-600 text-xs font-fira"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    ) : (
                                       <button
-                                        onClick={() => setAddingDepToTask(null)}
-                                        className="ml-2 text-gray-400 hover:text-gray-600 text-xs"
+                                        onClick={e => { e.stopPropagation(); setAddingDepToTask(task.id) }}
+                                        className="opacity-0 group-hover/task:opacity-100 inline-flex items-center gap-1 text-xs font-fira text-gray-400 hover:text-fe-blue transition-all"
                                       >
-                                        Cancel
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Dependency
                                       </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={e => { e.stopPropagation(); setAddingDepToTask(task.id) }}
-                                      className="opacity-0 group-hover/task:opacity-100 mt-1 inline-flex items-center gap-1 text-xs font-fira text-gray-400 hover:text-fe-blue transition-all"
-                                    >
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                      </svg>
-                                      Add Dependency
-                                    </button>
-                                  )}
+                                    )}
+                                  </div>
                                 </>
                               )}
                             </div>
