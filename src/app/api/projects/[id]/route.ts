@@ -32,7 +32,19 @@ export async function GET(
       return NextResponse.json({ error: tasksError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ project, tasks: tasks || [] });
+    // Fetch all links for this project's tasks
+    const taskIds = (tasks || []).map((t: { id: string }) => t.id);
+    let links: Record<string, unknown>[] = [];
+    if (taskIds.length > 0) {
+      const { data: linksData } = await supabase
+        .from('task_links')
+        .select('*')
+        .in('task_id', taskIds)
+        .order('created_at', { ascending: true });
+      links = linksData || [];
+    }
+
+    return NextResponse.json({ project, tasks: tasks || [], links });
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

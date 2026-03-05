@@ -45,6 +45,14 @@ interface TaskComment {
   created_at: string
 }
 
+interface TaskLink {
+  id: string
+  task_id: string
+  label: string
+  url: string
+  created_at: string
+}
+
 interface Project {
   id: string
   name: string
@@ -97,6 +105,10 @@ export default function ProjectDetailPage() {
   const [commentAuthor, setCommentAuthor] = useState('')
   const [showCommentAuthorDropdown, setShowCommentAuthorDropdown] = useState(false)
   const [loadingComments, setLoadingComments] = useState(false)
+  const [taskLinks, setTaskLinks] = useState<Record<string, TaskLink[]>>({})
+  const [addingLinkToTask, setAddingLinkToTask] = useState<string | null>(null)
+  const [linkLabel, setLinkLabel] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
   const commentAuthorRef = useRef<HTMLDivElement>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
@@ -132,6 +144,13 @@ export default function ProjectDetailPage() {
       setProject(projectData.project)
       setTasks(projectData.tasks || [])
       setTeam(teamData)
+      // Group links by task_id
+      const linksMap: Record<string, TaskLink[]> = {}
+      for (const link of (projectData.links || [])) {
+        if (!linksMap[link.task_id]) linksMap[link.task_id] = []
+        linksMap[link.task_id].push(link)
+      }
+      setTaskLinks(linksMap)
       setEditName(projectData.project?.name || '')
       setEditDate(projectData.project?.start_date || '')
       const initialNotes = projectData.project?.notes || ''
@@ -261,14 +280,55 @@ export default function ProjectDetailPage() {
       return
     }
     setExpandedComments(taskId)
+    setLoadingComments(true)
+    const fetches: Promise<void>[] = []
     if (!taskComments[taskId]) {
-      setLoadingComments(true)
-      const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}/comments`)
-      const data = await res.json()
-      setTaskComments(prev => ({ ...prev, [taskId]: data }))
-      setLoadingComments(false)
+      fetches.push(
+        fetch(`/api/projects/${params.id}/tasks/${taskId}/comments`)
+          .then(r => r.json())
+          .then(data => setTaskComments(prev => ({ ...prev, [taskId]: data })))
+      )
     }
+    if (!taskLinks[taskId]) {
+      fetches.push(
+        fetch(`/api/projects/${params.id}/tasks/${taskId}/links`)
+          .then(r => r.json())
+          .then(data => setTaskLinks(prev => ({ ...prev, [taskId]: data })))
+      )
+    }
+    await Promise.all(fetches)
+    setLoadingComments(false)
     setNewComment('')
+  }
+
+  const fetchLinks = async (taskId: string) => {
+    const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}/links`)
+    const data = await res.json()
+    setTaskLinks(prev => ({ ...prev, [taskId]: data }))
+  }
+
+  const addLink = async (taskId: string) => {
+    if (!linkLabel.trim() || !linkUrl.trim()) return
+    const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}/links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: linkLabel.trim(), url: linkUrl.trim() }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setTaskLinks(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), data] }))
+      setLinkLabel('')
+      setLinkUrl('')
+      setAddingLinkToTask(null)
+    }
+  }
+
+  const removeLink = async (taskId: string, linkId: string) => {
+    await fetch(`/api/projects/${params.id}/tasks/${taskId}/links/${linkId}`, { method: 'DELETE' })
+    setTaskLinks(prev => ({
+      ...prev,
+      [taskId]: (prev[taskId] || []).filter(l => l.id !== linkId),
+    }))
   }
 
   const submitComment = async (taskId: string) => {
@@ -533,6 +593,7 @@ export default function ProjectDetailPage() {
                 <div className="border-t border-gray-50">
                   {phase.tasks.map(task => {
                     const commentsForTask = taskComments[task.id] || []
+                    const linksForTask = taskLinks[task.id] || []
                     const isCommentsOpen = expandedComments === task.id
 
                     return (
@@ -610,9 +671,97 @@ export default function ProjectDetailPage() {
                                 </div>
                               )}
                               {editingTaskId !== task.id && (
-                                <p className="text-xs text-gray-400 font-fira">
-                                  Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                </p>
+                                <>
+                                  <p className="text-xs text-gray-400 font-fira">
+                                    Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </p>
+                                  {linksForTask.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                      {linksForTask.map(link => (
+                                        <span key={link.id} className="inline-flex items-center gap-1 group/link">
+                                          <a
+                                            href={link.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-fe-blue/10 text-fe-blue rounded text-xs font-fira hover:bg-fe-blue/20 transition-colors"
+                                            onClick={e => e.stopPropagation()}
+                                          >
+                                            <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                            </svg>
+                                            {link.label}
+                                          </a>
+                                          <button
+                                            onClick={e => { e.stopPropagation(); removeLink(task.id, link.id) }}
+                                            className="opacity-0 group-hover/link:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
+                                            title="Remove link"
+                                          >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {addingLinkToTask === task.id ? (
+                                    <div className="flex items-center gap-2 mt-1.5">
+                                      <input
+                                        type="text"
+                                        value={linkLabel}
+                                        onChange={e => setLinkLabel(e.target.value)}
+                                        placeholder="Label"
+                                        className="w-32 px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                        autoFocus
+                                        onKeyDown={e => {
+                                          if (e.key === 'Escape') { setAddingLinkToTask(null); setLinkLabel(''); setLinkUrl('') }
+                                        }}
+                                      />
+                                      <input
+                                        type="url"
+                                        value={linkUrl}
+                                        onChange={e => setLinkUrl(e.target.value)}
+                                        placeholder="https://..."
+                                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter' && linkLabel.trim() && linkUrl.trim()) addLink(task.id)
+                                          if (e.key === 'Escape') { setAddingLinkToTask(null); setLinkLabel(''); setLinkUrl('') }
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => addLink(task.id)}
+                                        disabled={!linkLabel.trim() || !linkUrl.trim()}
+                                        className="px-2 py-1 bg-fe-blue text-white rounded text-xs font-fira font-bold hover:bg-fe-blue/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                                      >
+                                        Add
+                                      </button>
+                                      <button
+                                        onClick={() => { setAddingLinkToTask(null); setLinkLabel(''); setLinkUrl('') }}
+                                        className="text-gray-400 hover:text-gray-600"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={e => {
+                                        e.stopPropagation()
+                                        setAddingLinkToTask(task.id)
+                                        setLinkLabel('')
+                                        setLinkUrl('')
+                                        if (!taskLinks[task.id]) fetchLinks(task.id)
+                                      }}
+                                      className="opacity-0 group-hover/task:opacity-100 mt-1 inline-flex items-center gap-1 text-xs font-fira text-gray-400 hover:text-fe-blue transition-all"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                      </svg>
+                                      Add Link
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
