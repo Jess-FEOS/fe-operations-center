@@ -89,6 +89,18 @@ CREATE TABLE task_dependencies (
   UNIQUE(task_id, depends_on_task_id)
 );
 
+-- Course Metrics (performance tracking for course launches)
+CREATE TABLE course_metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  enrollment_count INT NOT NULL DEFAULT 0,
+  revenue NUMERIC(12,2) NOT NULL DEFAULT 0,
+  email_open_rate NUMERIC(5,2),
+  email_click_rate NUMERIC(5,2),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Enable Row Level Security (open for now - add auth policies as needed)
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workflow_templates ENABLE ROW LEVEL SECURITY;
@@ -108,6 +120,8 @@ ALTER TABLE task_links ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all on task_links" ON task_links FOR ALL USING (true) WITH CHECK (true);
 ALTER TABLE task_dependencies ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all on task_dependencies" ON task_dependencies FOR ALL USING (true) WITH CHECK (true);
+ALTER TABLE course_metrics ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all on course_metrics" ON course_metrics FOR ALL USING (true) WITH CHECK (true);
 
 -- Indexes for performance
 CREATE INDEX idx_project_tasks_project ON project_tasks(project_id);
@@ -118,3 +132,4 @@ CREATE INDEX idx_task_comments_task ON task_comments(task_id);
 CREATE INDEX idx_task_links_task ON task_links(task_id);
 CREATE INDEX idx_task_dependencies_task ON task_dependencies(task_id);
 CREATE INDEX idx_task_dependencies_depends ON task_dependencies(depends_on_task_id);
+CREATE INDEX idx_course_metrics_project ON course_metrics(project_id);
