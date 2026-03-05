@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
-import Avatar from '@/components/Avatar'
 
 interface Project {
   id: string
@@ -29,15 +28,6 @@ interface TeamMember {
   color: string
 }
 
-interface OverdueTask {
-  id: string
-  task_name: string
-  due_date: string
-  project_id: string
-  project_name: string
-  owner_ids: string[]
-}
-
 const TOTAL_WEEKS: Record<string, number> = {
   'course-launch': 8,
   'podcast': 2,
@@ -52,32 +42,20 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
   const [duplicating, setDuplicating] = useState<Project | null>(null)
-  const [overdueTasks, setOverdueTasks] = useState<OverdueTask[]>([])
 
   useEffect(() => {
     Promise.all([
       fetch('/api/projects').then(r => r.json()),
       fetch('/api/team').then(r => r.json()),
-      fetch('/api/tasks/overdue').then(r => r.json()).catch(() => []),
-    ]).then(([proj, tm, overdue]) => {
-      console.log('[Dashboard] Overdue tasks response:', overdue)
+    ]).then(([proj, tm]) => {
       setProjects(proj)
       setTeam(tm)
-      setOverdueTasks(Array.isArray(overdue) ? overdue : [])
       setLoading(false)
     })
   }, [])
 
-  const teamMap = new Map(team.map(m => [m.id, m]))
   const workflowTypes = [...new Set(projects.map(p => p.workflow_type))]
   const filtered = filter === 'all' ? projects : projects.filter(p => p.workflow_type === filter)
-
-  const daysOverdue = (dueDate: string) => {
-    const due = new Date(dueDate + 'T00:00:00')
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    return Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
-  }
 
   if (loading) {
     return (
@@ -101,60 +79,6 @@ export default function ProjectsPage() {
           New Project
         </Link>
       </div>
-
-      {overdueTasks.length > 0 && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-2.99L13.73 4.01c-.77-1.33-2.69-1.33-3.46 0L3.34 16.01C2.57 17.33 3.53 19 5.07 19z" />
-            </svg>
-            <h2 className="font-barlow font-bold text-red-700 text-sm">
-              {overdueTasks.length} Overdue Task{overdueTasks.length !== 1 ? 's' : ''}
-            </h2>
-          </div>
-          <div className="space-y-2">
-            {overdueTasks.map(task => {
-              const days = daysOverdue(task.due_date)
-              return (
-                <Link
-                  key={task.id}
-                  href={`/projects/${task.project_id}`}
-                  className="flex items-center justify-between px-3 py-2 bg-white rounded-lg border border-red-100 hover:border-red-300 transition-colors group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex -space-x-1 shrink-0">
-                      {task.owner_ids?.map(oid => {
-                        const member = teamMap.get(oid)
-                        return member ? (
-                          <Avatar key={oid} initials={member.initials} color={member.color} size="sm" />
-                        ) : null
-                      })}
-                      {(!task.owner_ids || task.owner_ids.length === 0) && (
-                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
-                          <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-fira text-fe-anthracite truncate group-hover:text-fe-navy transition-colors">
-                        {task.task_name}
-                      </p>
-                      <p className="text-xs font-fira text-gray-400 truncate">
-                        {task.project_name}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="shrink-0 ml-3 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-red-100 text-red-600">
-                    {days}d overdue
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="flex gap-2 mb-6">
         <button
