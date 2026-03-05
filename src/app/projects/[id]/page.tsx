@@ -716,8 +716,13 @@ export default function ProjectDetailPage() {
                                     </svg>
                                   </button>
                                   <button
-                                    onClick={e => { e.stopPropagation(); setAddingDepToTask(addingDepToTask === task.id ? null : task.id) }}
-                                    className={`opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-blue transition-opacity shrink-0 ${addingDepToTask === task.id ? '!opacity-100 text-fe-blue' : ''}`}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      setAddingDepToTask(prev => prev === task.id ? null : task.id)
+                                    }}
+                                    className={`shrink-0 transition-opacity ${addingDepToTask === task.id ? 'opacity-100 text-fe-blue' : 'opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-blue'}`}
                                     title="Add dependency"
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -860,7 +865,7 @@ export default function ProjectDetailPage() {
                                         {tasks
                                           .filter(t => t.id !== task.id && !(depsMap.get(task.id) || []).includes(t.id))
                                           .map(t => (
-                                            <option key={t.id} value={t.id}>{t.phase} — {t.task_name}</option>
+                                            <option key={t.id} value={t.id}>{t.task_name} (Week {t.week_number} - {t.phase})</option>
                                           ))}
                                       </select>
                                       <button
