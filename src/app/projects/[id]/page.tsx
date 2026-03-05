@@ -73,8 +73,16 @@ export default function ProjectDetailPage() {
   const [pendingWorkflow, setPendingWorkflow] = useState<WorkflowTemplate | null>(null)
   const [switchingWorkflow, setSwitchingWorkflow] = useState(false)
   const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingTaskName, setEditingTaskName] = useState('')
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null)
+  const [addingToPhase, setAddingToPhase] = useState<string | null>(null)
+  const [newTaskName, setNewTaskName] = useState('')
+  const [newTaskOwner, setNewTaskOwner] = useState('')
+  const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
+  const ownerDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -84,12 +92,15 @@ export default function ProjectDetailPage() {
       if (workflowDropdownRef.current && !workflowDropdownRef.current.contains(e.target as Node)) {
         setShowWorkflowDropdown(false)
       }
+      if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(e.target as Node)) {
+        setShowOwnerDropdown(false)
+      }
     }
-    if (bulkMenuPhase || showWorkflowDropdown) {
+    if (bulkMenuPhase || showWorkflowDropdown || showOwnerDropdown) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [bulkMenuPhase, showWorkflowDropdown])
+  }, [bulkMenuPhase, showWorkflowDropdown, showOwnerDropdown])
 
   useEffect(() => {
     Promise.all([
@@ -169,6 +180,44 @@ export default function ProjectDetailPage() {
     setDeleting(true)
     await fetch(`/api/projects/${params.id}`, { method: 'DELETE' })
     router.push('/projects')
+  }
+
+  const renameTask = async (taskId: string) => {
+    if (!editingTaskName.trim()) return
+    await fetch(`/api/projects/${params.id}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_name: editingTaskName.trim() }),
+    })
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, task_name: editingTaskName.trim() } : t))
+    setEditingTaskId(null)
+  }
+
+  const deleteTask = async (taskId: string) => {
+    await fetch(`/api/projects/${params.id}/tasks/${taskId}`, { method: 'DELETE' })
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    setDeletingTaskId(null)
+  }
+
+  const addTask = async (phase: string, phaseOrder: number) => {
+    if (!newTaskName.trim()) return
+    const res = await fetch(`/api/projects/${params.id}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_name: newTaskName.trim(),
+        phase,
+        phase_order: phaseOrder,
+        owner_ids: newTaskOwner ? [newTaskOwner] : [],
+      }),
+    })
+    const newTask = await res.json()
+    if (res.ok) {
+      setTasks(prev => [...prev, newTask])
+      setNewTaskName('')
+      setNewTaskOwner('')
+      setAddingToPhase(null)
+    }
   }
 
   const saveEdits = async () => {
@@ -412,7 +461,7 @@ export default function ProjectDetailPage() {
                   {phase.tasks.map(task => (
                     <div
                       key={task.id}
-                      className="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50/50"
+                      className="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50/50 group/task"
                     >
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="flex -space-x-1">
@@ -423,19 +472,151 @@ export default function ProjectDetailPage() {
                             ) : null
                           })}
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-fira text-fe-anthracite truncate">{task.task_name}</p>
-                          <p className="text-xs text-gray-400 font-fira">
-                            Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          {editingTaskId === task.id ? (
+                            <form
+                              onSubmit={e => { e.preventDefault(); renameTask(task.id) }}
+                              className="flex items-center gap-2"
+                            >
+                              <input
+                                type="text"
+                                value={editingTaskName}
+                                onChange={e => setEditingTaskName(e.target.value)}
+                                className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                autoFocus
+                                onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }}
+                              />
+                              <button type="submit" className="text-fe-blue hover:text-fe-blue/80">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button type="button" onClick={() => setEditingTaskId(null)} className="text-gray-400 hover:text-gray-600">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-fira text-fe-anthracite truncate">{task.task_name}</p>
+                              <button
+                                onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.task_name) }}
+                                className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-navy transition-opacity shrink-0"
+                                title="Rename task"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setDeletingTaskId(task.id)}
+                                className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-red-500 transition-opacity shrink-0"
+                                title="Delete task"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                          {editingTaskId !== task.id && (
+                            <p className="text-xs text-gray-400 font-fira">
+                              Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <StatusBadge
-                        status={task.status}
-                        onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
-                      />
+                      {editingTaskId !== task.id && (
+                        <StatusBadge
+                          status={task.status}
+                          onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
+                        />
+                      )}
                     </div>
                   ))}
+
+                  {addingToPhase === phase.phase ? (
+                    <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newTaskName}
+                          onChange={e => setNewTaskName(e.target.value)}
+                          placeholder="Task name"
+                          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner('') }
+                            if (e.key === 'Enter' && newTaskName.trim()) addTask(phase.phase, phase.phase_order)
+                          }}
+                        />
+                        <div className="relative" ref={showOwnerDropdown ? ownerDropdownRef : undefined}>
+                          <button
+                            onClick={() => setShowOwnerDropdown(!showOwnerDropdown)}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira text-fe-blue-gray hover:bg-gray-100 transition-colors flex items-center gap-1 whitespace-nowrap"
+                          >
+                            {newTaskOwner ? (
+                              <Avatar initials={teamMap.get(newTaskOwner)?.initials || '?'} color={teamMap.get(newTaskOwner)?.color || '#999'} size="sm" />
+                            ) : 'Owner'}
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          {showOwnerDropdown && (
+                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
+                              <button
+                                onClick={() => { setNewTaskOwner(''); setShowOwnerDropdown(false) }}
+                                className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-gray-400"
+                              >
+                                No owner
+                              </button>
+                              {team.map(m => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => { setNewTaskOwner(m.id); setShowOwnerDropdown(false) }}
+                                  className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
+                                >
+                                  <Avatar initials={m.initials} color={m.color} size="sm" />
+                                  {m.name}
+                                  {newTaskOwner === m.id && (
+                                    <svg className="w-3 h-3 ml-auto text-fe-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => addTask(phase.phase, phase.phase_order)}
+                          disabled={!newTaskName.trim()}
+                          className="px-3 py-1.5 bg-fe-blue text-white rounded-lg text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Add Task
+                        </button>
+                        <button
+                          onClick={() => { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner(''); setShowOwnerDropdown(false) }}
+                          className="px-3 py-1.5 bg-gray-100 text-fe-anthracite rounded-lg text-xs font-fira hover:bg-gray-200 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setAddingToPhase(phase.phase); setNewTaskName(''); setNewTaskOwner('') }}
+                      className="w-full px-4 py-2.5 text-xs font-fira text-fe-blue-gray hover:text-fe-navy hover:bg-gray-50 transition-colors flex items-center gap-1.5 border-t border-gray-50"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Task
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -511,6 +692,34 @@ export default function ProjectDetailPage() {
                 className="flex-1 px-6 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-60"
               >
                 {switchingWorkflow ? 'Switching...' : 'Switch Workflow'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingTaskId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setDeletingTaskId(null)}>
+          <div
+            className="bg-white rounded-xl border border-gray-100 shadow-xl w-full max-w-sm mx-4 p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Delete Task</h2>
+            <p className="text-sm text-fe-anthracite font-fira mb-6">
+              Are you sure you want to delete <span className="font-bold">{tasks.find(t => t.id === deletingTaskId)?.task_name}</span>?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingTaskId(null)}
+                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteTask(deletingTaskId)}
+                className="flex-1 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-fira font-bold hover:bg-red-700 transition-colors"
+              >
+                Delete Task
               </button>
             </div>
           </div>
