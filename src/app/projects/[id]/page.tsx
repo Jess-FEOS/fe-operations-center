@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Avatar from '@/components/Avatar'
 import StatusBadge from '@/components/StatusBadge'
@@ -48,6 +48,20 @@ export default function ProjectDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
+  const bulkMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) {
+        setBulkMenuPhase(null)
+      }
+    }
+    if (bulkMenuPhase) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [bulkMenuPhase])
 
   useEffect(() => {
     Promise.all([
@@ -84,6 +98,21 @@ export default function ProjectDetailPage() {
       body: JSON.stringify({ status: newStatus }),
     })
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
+  }
+
+  const bulkUpdatePhase = async (phase: string, newStatus: TaskStatus) => {
+    const phaseTasks = tasks.filter(t => t.phase === phase)
+    await Promise.all(
+      phaseTasks.map(t =>
+        fetch(`/api/projects/${params.id}/tasks/${t.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        })
+      )
+    )
+    setTasks(prev => prev.map(t => t.phase === phase ? { ...t, status: newStatus } : t))
+    setBulkMenuPhase(null)
   }
 
   const saveEdits = async () => {
@@ -215,11 +244,11 @@ export default function ProjectDetailPage() {
 
           return (
             <div key={phase.phase} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <button
-                onClick={() => togglePhase(phase.phase)}
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={() => togglePhase(phase.phase)}
+                  className="flex items-center gap-3 flex-1 text-left"
+                >
                   <svg
                     className={`w-4 h-4 text-fe-blue-gray transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -227,11 +256,49 @@ export default function ProjectDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                   <h3 className="font-barlow font-bold text-sm text-fe-navy">{phase.phase}</h3>
+                </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-fe-blue-gray font-fira">
+                    {phaseDone}/{phaseTotal} complete
+                  </span>
+                  <div className="relative" ref={bulkMenuPhase === phase.phase ? bulkMenuRef : undefined}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setBulkMenuPhase(bulkMenuPhase === phase.phase ? null : phase.phase)
+                      }}
+                      className="px-2 py-1 text-xs font-fira text-fe-blue-gray border border-gray-200 rounded-md hover:bg-gray-100 hover:text-fe-navy transition-colors"
+                    >
+                      Set All ▾
+                    </button>
+                    {bulkMenuPhase === phase.phase && (
+                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+                        <button
+                          onClick={() => bulkUpdatePhase(phase.phase, 'done')}
+                          className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-[#046A38]" />
+                          Done
+                        </button>
+                        <button
+                          onClick={() => bulkUpdatePhase(phase.phase, 'in_progress')}
+                          className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-[#0762C8]" />
+                          In Progress
+                        </button>
+                        <button
+                          onClick={() => bulkUpdatePhase(phase.phase, 'not_started')}
+                          className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-[#9CA3AF]" />
+                          Not Started
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs text-fe-blue-gray font-fira">
-                  {phaseDone}/{phaseTotal} complete
-                </span>
-              </button>
+              </div>
 
               {isExpanded && (
                 <div className="border-t border-gray-50">
