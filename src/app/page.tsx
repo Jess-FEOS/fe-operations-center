@@ -5,6 +5,8 @@ import Link from 'next/link';
 import Avatar from '@/components/Avatar';
 import WorkflowBadge from '@/components/WorkflowBadge';
 import ProgressBar from '@/components/ProgressBar';
+import StatusBadge from '@/components/StatusBadge';
+import { TaskStatus } from '@/lib/types';
 
 interface Project {
   id: string;
@@ -45,6 +47,22 @@ interface OverdueTask {
   owner_ids: string[];
 }
 
+interface Priority {
+  id: string;
+  month: string;
+  title: string;
+  status: TaskStatus;
+  goal: string | null;
+  target_date: string | null;
+  sort_order: number;
+}
+
+const MONTH_OPTIONS = [
+  { value: '2026-03', label: 'March 2026' },
+  { value: '2026-04', label: 'April 2026' },
+  { value: '2026-05', label: 'May 2026' },
+];
+
 const WORKFLOW_TOTAL_WEEKS: Record<string, number> = {
   'course-launch': 8,
   podcast: 2,
@@ -61,6 +79,9 @@ export default function Dashboard() {
   const [overdueExpanded, setOverdueExpanded] = useState(false);
   const [overdueThisWeekOnly, setOverdueThisWeekOnly] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [priorities, setPriorities] = useState<Priority[]>([]);
+  const [allPriorities, setAllPriorities] = useState<Priority[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState('2026-03');
 
   useEffect(() => {
     async function fetchData() {
@@ -81,6 +102,22 @@ export default function Dashboard() {
         setTeam(Array.isArray(teamData) ? teamData : []);
         setTasks(Array.isArray(tasksData) ? tasksData : []);
         setOverdueTasks(Array.isArray(overdueData) ? overdueData : []);
+
+        // Fetch all priorities and seed if empty
+        const prioritiesRes = await fetch('/api/priorities');
+        let prioritiesData = await prioritiesRes.json();
+        if (Array.isArray(prioritiesData) && prioritiesData.length === 0) {
+          await fetch('/api/priorities', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'seed' }),
+          });
+          const seededRes = await fetch('/api/priorities');
+          prioritiesData = await seededRes.json();
+        }
+        const allP = Array.isArray(prioritiesData) ? prioritiesData : [];
+        setAllPriorities(allP);
+        setPriorities(allP.filter((p: Priority) => p.month === '2026-03'));
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
@@ -141,6 +178,30 @@ export default function Dashboard() {
       .map((id) => teamMap.get(id))
       .filter((m): m is TeamMember => !!m);
   }
+
+  const handleMonthChange = (month: string) => {
+    setSelectedMonth(month);
+    setPriorities(allPriorities.filter(p => p.month === month));
+  };
+
+  const handleStatusChange = async (id: string, newStatus: TaskStatus) => {
+    try {
+      const res = await fetch('/api/priorities', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setAllPriorities(prev => prev.map(p => p.id === id ? { ...p, status: updated.status } : p));
+        setPriorities(prev => prev.map(p => p.id === id ? { ...p, status: updated.status } : p));
+      }
+    } catch (err) {
+      console.error('Failed to update priority status:', err);
+    }
+  };
+
+  const launchPipeline = allPriorities.filter(p => p.goal || p.target_date);
 
   if (loading) {
     return (
@@ -304,6 +365,119 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Monthly Priorities */}
+      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
+            Monthly Priorities
+          </h2>
+          <div className="flex gap-1">
+            {MONTH_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => handleMonthChange(opt.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-fira font-bold transition-colors ${
+                  selectedMonth === opt.value
+                    ? 'bg-fe-navy text-white'
+                    : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
+                }`}
+              >
+                {opt.label.split(' ')[0]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {priorities.length === 0 ? (
+          <p className="text-sm text-fe-anthracite">No priorities for this month.</p>
+        ) : (
+          <div className="space-y-2">
+            {priorities.map(priority => (
+              <div
+                key={priority.id}
+                className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={() => handleStatusChange(priority.id, priority.status === 'done' ? 'not_started' : 'done')}
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      priority.status === 'done'
+                        ? 'border-fe-green bg-fe-green'
+                        : 'border-gray-300 hover:border-fe-green'
+                    }`}
+                  >
+                    {priority.status === 'done' && (
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                  <span className={`text-sm font-fira ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-anthracite'}`}>
+                    {priority.title}
+                  </span>
+                </div>
+                <StatusBadge
+                  status={priority.status}
+                  onClick={(newStatus) => handleStatusChange(priority.id, newStatus)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Launch Pipeline */}
+      {launchPipeline.length > 0 && (
+        <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+          <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
+            Launch Pipeline
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {launchPipeline.map(item => {
+              const monthLabel = MONTH_OPTIONS.find(m => m.value === item.month)?.label || item.month;
+              return (
+                <div
+                  key={item.id}
+                  className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
+                      {item.title}
+                    </h3>
+                    <StatusBadge
+                      status={item.status}
+                      onClick={(newStatus) => handleStatusChange(item.id, newStatus)}
+                    />
+                  </div>
+                  <div className="space-y-1.5 mt-3">
+                    <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
+                      <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {monthLabel}
+                      {item.target_date && (
+                        <span className="text-fe-blue-gray">
+                          ({new Date(item.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                        </span>
+                      )}
+                    </div>
+                    {item.goal && (
+                      <div className="flex items-center gap-2 text-xs font-fira">
+                        <svg className="w-3.5 h-3.5 text-fe-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        <span className="font-bold" style={{ color: '#B29838' }}>Goal:</span>
+                        <span className="text-fe-anthracite">{item.goal}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
