@@ -6,7 +6,7 @@ import Avatar from '@/components/Avatar';
 import WorkflowBadge from '@/components/WorkflowBadge';
 import ProgressBar from '@/components/ProgressBar';
 import StatusBadge from '@/components/StatusBadge';
-import { TaskStatus } from '@/lib/types';
+import { TaskStatus, STATUS_LABELS } from '@/lib/types';
 
 interface Project {
   id: string;
@@ -57,11 +57,24 @@ interface Priority {
   sort_order: number;
 }
 
+interface LaunchCard {
+  id: string;
+  name: string;
+  status: TaskStatus;
+  goal: string | null;
+  target_date: string | null;
+  source: 'priority' | 'project';
+  workflow_type?: string;
+  progress?: number;
+}
+
 const MONTH_OPTIONS = [
   { value: '2026-03', label: 'March 2026' },
   { value: '2026-04', label: 'April 2026' },
   { value: '2026-05', label: 'May 2026' },
 ];
+
+const ALL_STATUSES: TaskStatus[] = ['not_started', 'in_progress', 'done', 'blocked'];
 
 const WORKFLOW_TOTAL_WEEKS: Record<string, number> = {
   'course-launch': 8,
@@ -82,39 +95,35 @@ export default function Dashboard() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [allPriorities, setAllPriorities] = useState<Priority[]>([]);
   const [selectedMonth, setSelectedMonth] = useState('2026-03');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newStatus, setNewStatus] = useState<TaskStatus>('not_started');
+  const [newGoal, setNewGoal] = useState('');
+  const [newTargetDate, setNewTargetDate] = useState('');
+  const [addingPriority, setAddingPriority] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [projectsRes, teamRes, tasksRes, overdueRes] = await Promise.all([
+        const [projectsRes, teamRes, tasksRes, overdueRes, prioritiesRes] = await Promise.all([
           fetch('/api/projects'),
           fetch('/api/team'),
           fetch('/api/tasks/this-week'),
           fetch('/api/tasks/overdue').catch(() => null),
+          fetch('/api/priorities'),
         ]);
 
         const projectsData = await projectsRes.json();
         const teamData = await teamRes.json();
         const tasksData = await tasksRes.json();
         const overdueData = overdueRes ? await overdueRes.json() : [];
+        const prioritiesData = await prioritiesRes.json();
 
         setProjects(Array.isArray(projectsData) ? projectsData : []);
         setTeam(Array.isArray(teamData) ? teamData : []);
         setTasks(Array.isArray(tasksData) ? tasksData : []);
         setOverdueTasks(Array.isArray(overdueData) ? overdueData : []);
 
-        // Fetch all priorities and seed if empty
-        const prioritiesRes = await fetch('/api/priorities');
-        let prioritiesData = await prioritiesRes.json();
-        if (Array.isArray(prioritiesData) && prioritiesData.length === 0) {
-          await fetch('/api/priorities', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'seed' }),
-          });
-          const seededRes = await fetch('/api/priorities');
-          prioritiesData = await seededRes.json();
-        }
         const allP = Array.isArray(prioritiesData) ? prioritiesData : [];
         setAllPriorities(allP);
         setPriorities(allP.filter((p: Priority) => p.month === '2026-03'));
@@ -182,6 +191,7 @@ export default function Dashboard() {
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month);
     setPriorities(allPriorities.filter(p => p.month === month));
+    setShowAddForm(false);
   };
 
   const handleStatusChange = async (id: string, newStatus: TaskStatus) => {
@@ -201,7 +211,65 @@ export default function Dashboard() {
     }
   };
 
-  const launchPipeline = allPriorities.filter(p => p.goal || p.target_date);
+  const handleAddPriority = async () => {
+    if (!newTitle.trim()) return;
+    setAddingPriority(true);
+    try {
+      const res = await fetch('/api/priorities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          month: selectedMonth,
+          status: newStatus,
+          goal: newGoal.trim() || null,
+          target_date: newTargetDate || null,
+        }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setAllPriorities(prev => [...prev, created]);
+        setPriorities(prev => [...prev, created]);
+        setNewTitle('');
+        setNewStatus('not_started');
+        setNewGoal('');
+        setNewTargetDate('');
+        setShowAddForm(false);
+      }
+    } catch (err) {
+      console.error('Failed to add priority:', err);
+    } finally {
+      setAddingPriority(false);
+    }
+  };
+
+  // Build launch pipeline: priorities with goal/target_date + active projects
+  const priorityLaunches: LaunchCard[] = allPriorities
+    .filter(p => p.goal || p.target_date)
+    .map(p => ({
+      id: `priority-${p.id}`,
+      name: p.title,
+      status: p.status,
+      goal: p.goal,
+      target_date: p.target_date,
+      source: 'priority' as const,
+    }));
+
+  const projectLaunches: LaunchCard[] = projects
+    .filter(p => p.status === 'active')
+    .filter(p => !priorityLaunches.some(pl => pl.name.toLowerCase().includes(p.name.toLowerCase().split(' ')[0])))
+    .map(p => ({
+      id: `project-${p.id}`,
+      name: p.name,
+      status: p.progress === 100 ? 'done' as TaskStatus : p.progress > 0 ? 'in_progress' as TaskStatus : 'not_started' as TaskStatus,
+      goal: null,
+      target_date: p.start_date,
+      source: 'project' as const,
+      workflow_type: p.workflow_type,
+      progress: p.progress,
+    }));
+
+  const launchPipeline = [...priorityLaunches, ...projectLaunches];
 
   if (loading) {
     return (
@@ -371,9 +439,20 @@ export default function Dashboard() {
       {/* Monthly Priorities */}
       <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
-            Monthly Priorities
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
+              Monthly Priorities
+            </h2>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-fira font-bold text-fe-blue hover:bg-blue-50 transition-colors border border-fe-blue/20"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Priority
+            </button>
+          </div>
           <div className="flex gap-1">
             {MONTH_OPTIONS.map(opt => (
               <button
@@ -391,7 +470,75 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {priorities.length === 0 ? (
+        {/* Add Priority Inline Form */}
+        {showAddForm && (
+          <div className="mb-4 p-4 rounded-lg border border-blue-100 bg-blue-50/30">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div className="md:col-span-2">
+                <input
+                  type="text"
+                  placeholder="Priority name..."
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
+                  onKeyDown={e => { if (e.key === 'Enter' && newTitle.trim()) handleAddPriority(); }}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Status</label>
+                <select
+                  value={newStatus}
+                  onChange={e => setNewStatus(e.target.value as TaskStatus)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white"
+                >
+                  {ALL_STATUSES.map(s => (
+                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Goal (optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 50+ sold"
+                  value={newGoal}
+                  onChange={e => setNewGoal(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Target date (optional)</label>
+                <input
+                  type="date"
+                  value={newTargetDate}
+                  onChange={e => setNewTargetDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAddPriority}
+                disabled={!newTitle.trim() || addingPriority}
+                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-white bg-fe-blue hover:bg-fe-blue/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {addingPriority ? 'Adding...' : 'Add'}
+              </button>
+              <button
+                onClick={() => { setShowAddForm(false); setNewTitle(''); setNewGoal(''); setNewTargetDate(''); setNewStatus('not_started'); }}
+                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <span className="text-xs font-fira text-fe-blue-gray ml-2">
+                Adding to {MONTH_OPTIONS.find(m => m.value === selectedMonth)?.label}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {priorities.length === 0 && !showAddForm ? (
           <p className="text-sm text-fe-anthracite">No priorities for this month.</p>
         ) : (
           <div className="space-y-2">
@@ -415,9 +562,16 @@ export default function Dashboard() {
                       </svg>
                     )}
                   </button>
-                  <span className={`text-sm font-fira ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-anthracite'}`}>
-                    {priority.title}
-                  </span>
+                  <div className="min-w-0">
+                    <span className={`text-sm font-fira ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-anthracite'}`}>
+                      {priority.title}
+                    </span>
+                    {priority.goal && (
+                      <span className="ml-2 text-xs font-fira text-fe-gold font-bold">
+                        (Goal: {priority.goal})
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <StatusBadge
                   status={priority.status}
@@ -437,7 +591,6 @@ export default function Dashboard() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {launchPipeline.map(item => {
-              const monthLabel = MONTH_OPTIONS.find(m => m.value === item.month)?.label || item.month;
               return (
                 <div
                   key={item.id}
@@ -445,25 +598,29 @@ export default function Dashboard() {
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
-                      {item.title}
+                      {item.name}
                     </h3>
-                    <StatusBadge
-                      status={item.status}
-                      onClick={(newStatus) => handleStatusChange(item.id, newStatus)}
-                    />
+                    {item.source === 'priority' ? (
+                      <StatusBadge
+                        status={item.status}
+                        onClick={(ns) => {
+                          const realId = item.id.replace('priority-', '');
+                          handleStatusChange(realId, ns);
+                        }}
+                      />
+                    ) : (
+                      <StatusBadge status={item.status} interactive={false} />
+                    )}
                   </div>
                   <div className="space-y-1.5 mt-3">
-                    <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
-                      <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      {monthLabel}
-                      {item.target_date && (
-                        <span className="text-fe-blue-gray">
-                          ({new Date(item.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
-                        </span>
-                      )}
-                    </div>
+                    {item.target_date && (
+                      <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
+                        <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {new Date(item.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    )}
                     {item.goal && (
                       <div className="flex items-center gap-2 text-xs font-fira">
                         <svg className="w-3.5 h-3.5 text-fe-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -471,6 +628,22 @@ export default function Dashboard() {
                         </svg>
                         <span className="font-bold" style={{ color: '#B29838' }}>Goal:</span>
                         <span className="text-fe-anthracite">{item.goal}</span>
+                      </div>
+                    )}
+                    {item.source === 'project' && item.workflow_type && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <WorkflowBadge type={item.workflow_type} />
+                        {item.progress !== undefined && (
+                          <span className="text-xs font-fira text-fe-blue-gray">{item.progress}% complete</span>
+                        )}
+                      </div>
+                    )}
+                    {item.source === 'priority' && (
+                      <div className="flex items-center gap-1.5 text-xs font-fira text-fe-blue-gray">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        From priorities
                       </div>
                     )}
                   </div>
