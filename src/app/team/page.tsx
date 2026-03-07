@@ -22,34 +22,57 @@ interface Task {
   project_name: string;
 }
 
+interface AssignedTask {
+  id: string;
+  task_name: string;
+  status: string;
+  due_date: string;
+  project_id: string;
+  project_name: string;
+  owner_ids: string[];
+}
+
+const AVATAR_COLORS = ['#0762C8', '#046A38', '#B29838', '#C8350D', '#437F94', '#1B365D', '#7C3AED', '#DB2777'];
+
 export default function TeamPage() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDigest, setShowDigest] = useState(false);
 
+  // Add/Edit member state
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [memberForm, setMemberForm] = useState({ name: '', role: '', initials: '', color: AVATAR_COLORS[0] });
+
+  // Delete/Reassign state
+  const [deletingMember, setDeletingMember] = useState<TeamMember | null>(null);
+  const [assignedTasks, setAssignedTasks] = useState<AssignedTask[]>([]);
+  const [reassignments, setReassignments] = useState<Record<string, string>>({});
+  const [loadingAssigned, setLoadingAssigned] = useState(false);
+
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [teamRes, tasksRes] = await Promise.all([
-          fetch('/api/team'),
-          fetch('/api/tasks/this-week'),
-        ]);
-
-        const teamData = await teamRes.json();
-        const tasksData = await tasksRes.json();
-
-        setTeam(Array.isArray(teamData) ? teamData : []);
-        setTasks(Array.isArray(tasksData) ? tasksData : []);
-      } catch (error) {
-        console.error('Failed to fetch team data:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchData();
   }, []);
+
+  async function fetchData() {
+    try {
+      const [teamRes, tasksRes] = await Promise.all([
+        fetch('/api/team'),
+        fetch('/api/tasks/this-week'),
+      ]);
+
+      const teamData = await teamRes.json();
+      const tasksData = await tasksRes.json();
+
+      setTeam(Array.isArray(teamData) ? teamData : []);
+      setTasks(Array.isArray(tasksData) ? tasksData : []);
+    } catch (error) {
+      console.error('Failed to fetch team data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function getTasksForMember(memberId: string) {
     return tasks.filter((t) => t.owner_ids?.includes(memberId));
@@ -60,6 +83,93 @@ export default function TeamPage() {
       (t) => t.owner_ids?.includes(memberId) && t.status === 'done'
     );
   }
+
+  // Auto-generate initials from name
+  function autoInitials(name: string) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    if (parts.length === 1 && parts[0].length >= 2) return parts[0].substring(0, 2).toUpperCase();
+    return name.toUpperCase().substring(0, 2);
+  }
+
+  async function handleSaveMember() {
+    const { name, role, initials, color } = memberForm;
+    if (!name.trim() || !role.trim()) return;
+
+    const payload = {
+      name: name.trim(),
+      role: role.trim(),
+      initials: initials.trim() || autoInitials(name),
+      color,
+    };
+
+    if (editingMemberId) {
+      await fetch(`/api/team/${editingMemberId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    setShowAddMember(false);
+    setEditingMemberId(null);
+    setMemberForm({ name: '', role: '', initials: '', color: AVATAR_COLORS[0] });
+    await fetchData();
+  }
+
+  function startEdit(member: TeamMember) {
+    setEditingMemberId(member.id);
+    setMemberForm({ name: member.name, role: member.role, initials: member.initials, color: member.color });
+    setShowAddMember(true);
+  }
+
+  async function startDelete(member: TeamMember) {
+    setDeletingMember(member);
+    setLoadingAssigned(true);
+    setReassignments({});
+
+    const res = await fetch(`/api/team/${member.id}/assigned-tasks`);
+    const data = await res.json();
+    setAssignedTasks(Array.isArray(data) ? data : []);
+    setLoadingAssigned(false);
+  }
+
+  async function confirmDelete() {
+    if (!deletingMember) return;
+
+    // Build reassignment payload
+    const reassignmentList = Object.entries(reassignments)
+      .filter(([, newOwnerId]) => newOwnerId !== '')
+      .map(([taskId, newOwnerId]) => ({ taskId, newOwnerId }));
+
+    await fetch(`/api/team/${deletingMember.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reassignments: reassignmentList }),
+    });
+
+    setDeletingMember(null);
+    setAssignedTasks([]);
+    setReassignments({});
+    await fetchData();
+  }
+
+  function handleBulkReassign(newOwnerId: string) {
+    const bulk: Record<string, string> = {};
+    assignedTasks.forEach(t => { bulk[t.id] = newOwnerId; });
+    setReassignments(bulk);
+  }
+
+  const allReassigned = assignedTasks.length === 0 ||
+    assignedTasks.every(t => reassignments[t.id] && reassignments[t.id] !== '');
+
+  const otherMembers = team.filter(m => m.id !== deletingMember?.id);
 
   if (loading) {
     return (
@@ -78,6 +188,7 @@ export default function TeamPage() {
   sunday.setDate(monday.getDate() + 6);
   const weekLabel = `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
+  // Weekly Digest view
   if (showDigest) {
     return (
       <div className="font-fira">
@@ -170,21 +281,231 @@ export default function TeamPage() {
 
   return (
     <div className="font-fira">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">
           Team
         </h1>
-        <button
-          onClick={() => setShowDigest(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Weekly Digest
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              setShowAddMember(true);
+              setEditingMemberId(null);
+              setMemberForm({ name: '', role: '', initials: '', color: AVATAR_COLORS[team.length % AVATAR_COLORS.length] });
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Member
+          </button>
+          <button
+            onClick={() => setShowDigest(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-navy text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-navy/90 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Weekly Digest
+          </button>
+        </div>
       </div>
 
+      {/* Add/Edit Member Modal */}
+      {showAddMember && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">
+              {editingMemberId ? 'Edit Team Member' : 'Add Team Member'}
+            </h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Name</label>
+                <input
+                  type="text"
+                  value={memberForm.name}
+                  onChange={e => {
+                    const name = e.target.value;
+                    setMemberForm(prev => ({
+                      ...prev,
+                      name,
+                      initials: prev.initials === autoInitials(prev.name) || !prev.initials
+                        ? autoInitials(name)
+                        : prev.initials,
+                    }));
+                  }}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Role</label>
+                <input
+                  type="text"
+                  value={memberForm.role}
+                  onChange={e => setMemberForm(prev => ({ ...prev, role: e.target.value }))}
+                  placeholder="e.g., Operations Lead"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Initials</label>
+                  <input
+                    type="text"
+                    value={memberForm.initials}
+                    onChange={e => setMemberForm(prev => ({ ...prev, initials: e.target.value.toUpperCase().substring(0, 2) }))}
+                    maxLength={2}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Color</label>
+                  <div className="flex gap-1.5 flex-wrap pt-1">
+                    {AVATAR_COLORS.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setMemberForm(prev => ({ ...prev, color: c }))}
+                        className={`w-7 h-7 rounded-full border-2 transition-colors ${
+                          memberForm.color === c ? 'border-fe-navy scale-110' : 'border-transparent'
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Preview */}
+              {memberForm.name && (
+                <div className="flex items-center gap-3 pt-2">
+                  <Avatar initials={memberForm.initials || autoInitials(memberForm.name)} color={memberForm.color} size="md" />
+                  <div>
+                    <div className="font-barlow font-bold text-sm text-fe-navy">{memberForm.name}</div>
+                    <div className="text-xs text-fe-blue-gray">{memberForm.role || 'Role'}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => { setShowAddMember(false); setEditingMemberId(null); }}
+                className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveMember}
+                disabled={!memberForm.name.trim() || !memberForm.role.trim()}
+                className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+              >
+                {editingMemberId ? 'Save Changes' : 'Add Member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete/Reassign Modal */}
+      {deletingMember && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-fe-red/10 flex items-center justify-center">
+                <svg className="w-5 h-5 text-fe-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-barlow font-bold text-lg text-fe-navy">
+                  Remove {deletingMember.name}
+                </h2>
+                <p className="text-xs text-fe-blue-gray">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            {loadingAssigned ? (
+              <div className="py-8 text-center">
+                <div className="w-6 h-6 border-4 border-fe-blue border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : assignedTasks.length === 0 ? (
+              <div className="bg-fe-offwhite rounded-lg p-4 mb-4">
+                <p className="text-sm text-fe-blue-gray text-center">
+                  {deletingMember.name} has no assigned tasks. Safe to delete.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-amber-800 font-fira">
+                    {deletingMember.name} has <strong>{assignedTasks.length}</strong> assigned task{assignedTasks.length !== 1 ? 's' : ''}.
+                    Reassign them before deleting.
+                  </p>
+                </div>
+
+                {/* Bulk reassign */}
+                {otherMembers.length > 0 && (
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs font-fira text-fe-blue-gray">Reassign all to:</span>
+                    <select
+                      onChange={e => { if (e.target.value) handleBulkReassign(e.target.value); }}
+                      defaultValue=""
+                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    >
+                      <option value="">Choose...</option>
+                      {otherMembers.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Task-by-task reassignment */}
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {assignedTasks.map(task => (
+                    <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-fe-offwhite gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-fira text-fe-anthracite truncate">{task.task_name}</div>
+                        <div className="text-xs text-fe-blue-gray">{task.project_name}</div>
+                      </div>
+                      <select
+                        value={reassignments[task.id] || ''}
+                        onChange={e => setReassignments(prev => ({ ...prev, [task.id]: e.target.value }))}
+                        className={`shrink-0 px-2 py-1 border rounded text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue ${
+                          reassignments[task.id] ? 'border-fe-blue bg-fe-blue/5' : 'border-gray-200'
+                        }`}
+                      >
+                        <option value="">Reassign to...</option>
+                        {otherMembers.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => { setDeletingMember(null); setAssignedTasks([]); setReassignments({}); }}
+                className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={!allReassigned}
+                className="px-4 py-2 bg-fe-red text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {assignedTasks.length > 0 ? 'Reassign & Delete' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {team.map((member) => {
           const memberTasks = getTasksForMember(member.id);
@@ -199,8 +520,30 @@ export default function TeamPage() {
           return (
             <div
               key={member.id}
-              className="bg-white rounded-xl border border-gray-100 p-6"
+              className="bg-white rounded-xl border border-gray-100 p-6 group relative"
             >
+              {/* Edit/Delete buttons */}
+              <div className="absolute top-3 right-3 hidden group-hover:flex items-center gap-1">
+                <button
+                  onClick={() => startEdit(member)}
+                  className="p-1.5 rounded-lg text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                  title="Edit member"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => startDelete(member)}
+                  className="p-1.5 rounded-lg text-fe-blue-gray hover:text-fe-red hover:bg-red-50 transition-colors"
+                  title="Remove member"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+
               <div className="flex justify-center mb-3">
                 <Avatar
                   initials={member.initials}

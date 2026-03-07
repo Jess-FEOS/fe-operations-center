@@ -127,10 +127,29 @@ export async function GET() {
   }
 }
 
-// POST: Create a project from a project template
+// POST: Create a project from a template, or create a new template
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // Create a new template (from the template editor)
+    if (body.action === 'create_template') {
+      const { name, type, description } = body;
+      if (!name || !type) {
+        return NextResponse.json({ error: 'Missing name or type' }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from('project_templates')
+        .insert({ name, type, description: description || null })
+        .select()
+        .single();
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json(data, { status: 201 });
+    }
+
+    // Create a project from a template
     const { template_id, name, start_date } = body;
 
     if (!template_id || !name || !start_date) {
