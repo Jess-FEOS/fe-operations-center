@@ -22,11 +22,13 @@ interface ProjectTemplate {
 }
 
 const WEEK_PHASES: Record<number, string> = {
+  8: 'Planning',
   6: 'Setup',
-  4: 'Marketing Launch',
-  2: 'Enrollment Push',
+  4: 'Build',
+  3: 'Marketing Launch',
+  2: 'Pre-Launch',
   1: 'Delivery Prep',
-  0: 'Delivery',
+  0: 'Launch',
   [-1]: 'Wrap Up',
 }
 
@@ -128,14 +130,11 @@ export default function TemplatesPage() {
 
   async function handleCreateTemplate() {
     if (!newTemplateName.trim()) return
-    // Create a new empty template by inserting directly
-    const res = await fetch('/api/project-templates', {
+    await fetch('/api/project-templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'create_template', name: newTemplateName.trim(), type: newTemplateType, description: newTemplateDesc }),
     })
-    // Since the POST route is for creating projects, we need a different approach
-    // Let's use a direct Supabase insert via a dedicated route
     setShowNewTemplate(false)
     setNewTemplateName('')
     setNewTemplateDesc('')
@@ -375,7 +374,7 @@ export default function TemplatesPage() {
                         onChange={e => setNewTask({ ...newTask, week_number: Number(e.target.value) })}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                       >
-                        {[6, 4, 2, 1, 0, -1].map(w => (
+                        {[8, 6, 4, 3, 2, 1, 0, -1].map(w => (
                           <option key={w} value={w}>Wk {w} - {WEEK_PHASES[w]}</option>
                         ))}
                       </select>
@@ -433,7 +432,7 @@ export default function TemplatesPage() {
                                 onChange={e => setEditTask({ ...editTask, week_number: Number(e.target.value) })}
                                 className="px-2 py-1 border border-gray-200 rounded text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue"
                               >
-                                {[6, 4, 2, 1, 0, -1].map(w => (
+                                {[8, 6, 4, 3, 2, 1, 0, -1].map(w => (
                                   <option key={w} value={w}>Wk {w}</option>
                                 ))}
                               </select>
