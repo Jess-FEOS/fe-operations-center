@@ -29,11 +29,41 @@ interface ProjectTemplate {
   tasks: ProjectTemplateTask[]
 }
 
+// Unified card type for Step 1
+interface TemplateCard {
+  id: string
+  name: string
+  description: string
+  icon: string
+  color: string
+  badge: string
+  category: string
+  source: 'project' | 'workflow'
+  projectTemplate?: ProjectTemplate
+  workflowTemplate?: WorkflowTemplate
+}
+
 const WORKFLOW_ICONS: Record<string, string> = {
   'course-launch': 'M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z',
   'podcast': 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z',
   'newsletter': 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
   'subscription': 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
+}
+
+const CHECKLIST_ICON = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
+
+const SLUG_TO_CATEGORY: Record<string, string> = {
+  'course-launch': 'Course',
+  'podcast': 'Podcast',
+  'newsletter': 'Newsletter',
+  'subscription': 'Operations',
+}
+
+const WORKFLOW_DESCRIPTIONS: Record<string, string> = {
+  'course-launch': 'Standard course launch workflow with phased task generation.',
+  'podcast': 'Episode production from planning to publication.',
+  'newsletter': 'Newsletter creation and distribution cycle.',
+  'subscription': 'Subscription product setup and launch.',
 }
 
 const WEEK_PHASE_LABELS: Record<number, string> = {
@@ -44,6 +74,8 @@ const WEEK_PHASE_LABELS: Record<number, string> = {
   0: 'Delivery',
   [-1]: 'Wrap Up',
 }
+
+const FILTER_OPTIONS = ['All', 'Course', 'Podcast', 'Newsletter', 'Operations']
 
 export default function NewProjectPage() {
   const router = useRouter()
@@ -58,6 +90,7 @@ export default function NewProjectPage() {
   const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showTaskPreview, setShowTaskPreview] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState('All')
 
   useEffect(() => {
     Promise.all([
@@ -70,16 +103,45 @@ export default function NewProjectPage() {
     })
   }, [])
 
-  const handleSelectWorkflowTemplate = (template: WorkflowTemplate) => {
-    setSelectedTemplate(template)
-    setSelectedProjectTemplate(null)
-    setStep(2)
-  }
+  // Build unified card list
+  const allCards: TemplateCard[] = [
+    ...projectTemplates.map(pt => ({
+      id: `pt-${pt.id}`,
+      name: pt.name,
+      description: pt.description,
+      icon: WORKFLOW_ICONS[pt.type] || CHECKLIST_ICON,
+      color: '#0762C8',
+      badge: `${pt.tasks.length} tasks`,
+      category: SLUG_TO_CATEGORY[pt.type] || 'Operations',
+      source: 'project' as const,
+      projectTemplate: pt,
+    })),
+    ...templates.map(wf => ({
+      id: `wf-${wf.id}`,
+      name: wf.name,
+      description: WORKFLOW_DESCRIPTIONS[wf.slug] || `${wf.total_weeks}-week workflow.`,
+      icon: WORKFLOW_ICONS[wf.slug] || CHECKLIST_ICON,
+      color: wf.color,
+      badge: `${wf.total_weeks}-week cycle`,
+      category: SLUG_TO_CATEGORY[wf.slug] || 'Operations',
+      source: 'workflow' as const,
+      workflowTemplate: wf,
+    })),
+  ]
 
-  const handleSelectProjectTemplate = (pt: ProjectTemplate) => {
-    setSelectedProjectTemplate(pt)
-    setSelectedTemplate(null)
-    setTaskCount(pt.tasks.length)
+  const filteredCards = categoryFilter === 'All'
+    ? allCards
+    : allCards.filter(c => c.category === categoryFilter)
+
+  const handleSelectCard = (card: TemplateCard) => {
+    if (card.source === 'project' && card.projectTemplate) {
+      setSelectedProjectTemplate(card.projectTemplate)
+      setSelectedTemplate(null)
+      setTaskCount(card.projectTemplate.tasks.length)
+    } else if (card.source === 'workflow' && card.workflowTemplate) {
+      setSelectedTemplate(card.workflowTemplate)
+      setSelectedProjectTemplate(null)
+    }
     setStep(2)
   }
 
@@ -101,7 +163,6 @@ export default function NewProjectPage() {
     setCreating(true)
 
     if (selectedProjectTemplate) {
-      // Create from project template
       const res = await fetch('/api/project-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -118,7 +179,6 @@ export default function NewProjectPage() {
         setCreating(false)
       }
     } else if (selectedTemplate) {
-      // Create from workflow template (existing flow)
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,7 +208,6 @@ export default function NewProjectPage() {
     : {}
   const sortedWeeks = Object.keys(groupedTasks).map(Number).sort((a, b) => b - a)
 
-  // Calculate due dates for preview
   const getDueDatePreview = (weekNumber: number): string => {
     if (!startDate) return ''
     const start = new Date(startDate + 'T00:00:00')
@@ -157,7 +216,6 @@ export default function NewProjectPage() {
     return due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
-  const activeTemplate = selectedProjectTemplate || selectedTemplate
   const activeColor = selectedProjectTemplate
     ? '#0762C8'
     : selectedTemplate?.color || '#0762C8'
@@ -198,79 +256,70 @@ export default function NewProjectPage() {
           </div>
         ))}
         <span className="text-sm text-fe-blue-gray font-fira ml-2">
-          {step === 1 ? 'Select Template' : step === 2 ? 'Project Details' : 'Confirm'}
+          {step === 1 ? 'Choose Template' : step === 2 ? 'Project Details' : 'Confirm'}
         </span>
       </div>
 
-      {/* Step 1: Select template */}
+      {/* Step 1: Choose a Template */}
       {step === 1 && (
         <div>
-          {/* Project Templates */}
-          {projectTemplates.length > 0 && (
-            <div className="mb-8">
-              <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Project Templates</h2>
-              <p className="text-sm text-fe-blue-gray font-fira mb-4">
-                Pre-built templates with all tasks, owners, and timelines ready to go.
-              </p>
-              <div className="space-y-3">
-                {projectTemplates.map(pt => (
-                  <button
-                    key={pt.id}
-                    onClick={() => handleSelectProjectTemplate(pt)}
-                    className="w-full bg-white rounded-xl border-2 border-gray-100 p-5 text-left hover:border-fe-blue transition-colors group"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4">
-                        <div
-                          className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: '#0762C815' }}
-                        >
-                          <svg className="w-6 h-6 text-fe-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="font-barlow font-bold text-lg text-fe-navy mb-1">{pt.name}</h3>
-                          <p className="text-sm text-fe-blue-gray font-fira">{pt.description}</p>
-                        </div>
-                      </div>
-                      <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-fira font-bold bg-fe-blue/10 text-fe-blue">
-                        {pt.tasks.length} tasks
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Choose a Template</h2>
 
-          {/* Workflow Templates (existing) */}
-          <div>
-            <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Workflow Types</h2>
-            <p className="text-sm text-fe-blue-gray font-fira mb-4">
-              Standard workflow structures with auto-generated task phases.
-            </p>
+          {/* Category filter */}
+          <div className="flex gap-1.5 mb-5">
+            {FILTER_OPTIONS.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-fira font-bold transition-colors ${
+                  categoryFilter === cat
+                    ? 'bg-fe-navy text-white'
+                    : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Template grid */}
+          {filteredCards.length === 0 ? (
+            <p className="text-sm text-fe-blue-gray font-fira py-8 text-center">No templates in this category.</p>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {templates.map(template => (
+              {filteredCards.map(card => (
                 <button
-                  key={template.id}
-                  onClick={() => handleSelectWorkflowTemplate(template)}
-                  className="bg-white rounded-xl border-2 border-gray-100 p-6 text-left hover:border-fe-blue transition-colors group"
+                  key={card.id}
+                  onClick={() => handleSelectCard(card)}
+                  className="bg-white rounded-xl border-2 border-gray-100 p-5 text-left hover:border-fe-blue transition-colors group"
                 >
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
-                    style={{ backgroundColor: `${template.color}15` }}
-                  >
-                    <svg className="w-6 h-6" style={{ color: template.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={WORKFLOW_ICONS[template.slug] || ''} />
-                    </svg>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: `${card.color}15` }}
+                    >
+                      <svg className="w-5 h-5" style={{ color: card.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={card.icon} />
+                      </svg>
+                    </div>
+                    <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-gray-100 text-fe-blue-gray">
+                      {card.category}
+                    </span>
                   </div>
-                  <h3 className="font-barlow font-bold text-lg text-fe-navy mb-1">{template.name}</h3>
-                  <p className="text-sm text-fe-blue-gray font-fira">{template.total_weeks}-week cycle</p>
+                  <h3 className="font-barlow font-bold text-base text-fe-navy mb-1 group-hover:text-fe-blue transition-colors">
+                    {card.name}
+                  </h3>
+                  <p className="text-xs text-fe-blue-gray font-fira mb-3 line-clamp-2">{card.description}</p>
+                  <span
+                    className="inline-block px-2.5 py-1 rounded-full text-xs font-fira font-bold"
+                    style={{ backgroundColor: `${card.color}15`, color: card.color }}
+                  >
+                    {card.badge}
+                  </span>
                 </button>
               ))}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -389,15 +438,9 @@ export default function NewProjectPage() {
               className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
               style={{ backgroundColor: `${activeColor}15` }}
             >
-              {selectedProjectTemplate ? (
-                <svg className="w-8 h-8 text-fe-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8" style={{ color: activeColor }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={WORKFLOW_ICONS[activeSlug] || ''} />
-                </svg>
-              )}
+              <svg className="w-8 h-8" style={{ color: activeColor }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={selectedProjectTemplate ? CHECKLIST_ICON : (WORKFLOW_ICONS[activeSlug] || CHECKLIST_ICON)} />
+              </svg>
             </div>
             <h2 className="font-barlow font-bold text-xl text-fe-navy mb-1">{projectName}</h2>
             <p className="text-sm text-fe-blue-gray font-fira">
