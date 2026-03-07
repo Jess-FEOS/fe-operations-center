@@ -35,6 +35,7 @@ interface ProjectTask {
   week_number: number
   status: TaskStatus
   owner_ids: string[]
+  role_id: string | null
 }
 
 interface TaskComment {
