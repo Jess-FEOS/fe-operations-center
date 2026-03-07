@@ -49,7 +49,6 @@ export default function TeamPage() {
   const [deletingMember, setDeletingMember] = useState<TeamMember | null>(null);
   const [assignedTasks, setAssignedTasks] = useState<AssignedTask[]>([]);
   const [reassignments, setReassignments] = useState<Record<string, string>>({});
-  const [loadingAssigned, setLoadingAssigned] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -130,14 +129,26 @@ export default function TeamPage() {
   }
 
   async function startDelete(member: TeamMember) {
-    setDeletingMember(member);
-    setLoadingAssigned(true);
     setReassignments({});
 
     const res = await fetch(`/api/team/${member.id}/assigned-tasks`);
     const data = await res.json();
-    setAssignedTasks(Array.isArray(data) ? data : []);
-    setLoadingAssigned(false);
+    const tasks = Array.isArray(data) ? data : [];
+
+    if (tasks.length === 0) {
+      // No tasks — delete immediately, no modal
+      await fetch(`/api/team/${member.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reassignments: [] }),
+      });
+      await fetchData();
+      return;
+    }
+
+    // Has tasks — show reassignment modal
+    setDeletingMember(member);
+    setAssignedTasks(tasks);
   }
 
   async function confirmDelete() {
@@ -406,85 +417,62 @@ export default function TeamPage() {
         </div>
       )}
 
-      {/* Delete/Reassign Modal */}
+      {/* Reassignment Modal (only shown when member has assigned tasks) */}
       {deletingMember && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-fe-red/10 flex items-center justify-center">
-                <svg className="w-5 h-5 text-fe-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
+              <Avatar initials={deletingMember.initials} color={deletingMember.color} size="md" />
               <div>
                 <h2 className="font-barlow font-bold text-lg text-fe-navy">
                   Remove {deletingMember.name}
                 </h2>
-                <p className="text-xs text-fe-blue-gray">This action cannot be undone.</p>
+                <p className="text-xs text-fe-blue-gray">
+                  {assignedTasks.length} task{assignedTasks.length !== 1 ? 's' : ''} must be reassigned first.
+                </p>
               </div>
             </div>
 
-            {loadingAssigned ? (
-              <div className="py-8 text-center">
-                <div className="w-6 h-6 border-4 border-fe-blue border-t-transparent rounded-full animate-spin mx-auto" />
-              </div>
-            ) : assignedTasks.length === 0 ? (
-              <div className="bg-fe-offwhite rounded-lg p-4 mb-4">
-                <p className="text-sm text-fe-blue-gray text-center">
-                  {deletingMember.name} has no assigned tasks. Safe to delete.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                  <p className="text-sm text-amber-800 font-fira">
-                    {deletingMember.name} has <strong>{assignedTasks.length}</strong> assigned task{assignedTasks.length !== 1 ? 's' : ''}.
-                    Reassign them before deleting.
-                  </p>
-                </div>
-
-                {/* Bulk reassign */}
-                {otherMembers.length > 0 && (
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-xs font-fira text-fe-blue-gray">Reassign all to:</span>
-                    <select
-                      onChange={e => { if (e.target.value) handleBulkReassign(e.target.value); }}
-                      defaultValue=""
-                      className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-                    >
-                      <option value="">Choose...</option>
-                      {otherMembers.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Task-by-task reassignment */}
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {assignedTasks.map(task => (
-                    <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-fe-offwhite gap-3">
-                      <div className="min-w-0">
-                        <div className="text-xs font-fira text-fe-anthracite truncate">{task.task_name}</div>
-                        <div className="text-xs text-fe-blue-gray">{task.project_name}</div>
-                      </div>
-                      <select
-                        value={reassignments[task.id] || ''}
-                        onChange={e => setReassignments(prev => ({ ...prev, [task.id]: e.target.value }))}
-                        className={`shrink-0 px-2 py-1 border rounded text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue ${
-                          reassignments[task.id] ? 'border-fe-blue bg-fe-blue/5' : 'border-gray-200'
-                        }`}
-                      >
-                        <option value="">Reassign to...</option>
-                        {otherMembers.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
+            {/* Bulk reassign */}
+            {otherMembers.length > 0 && (
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs font-fira text-fe-blue-gray">Reassign all to:</span>
+                <select
+                  onChange={e => { if (e.target.value) handleBulkReassign(e.target.value); }}
+                  defaultValue=""
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                >
+                  <option value="">Choose...</option>
+                  {otherMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
-                </div>
-              </>
+                </select>
+              </div>
             )}
+
+            {/* Task-by-task reassignment */}
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {assignedTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-fe-offwhite gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-fira text-fe-anthracite truncate">{task.task_name}</div>
+                    <div className="text-xs text-fe-blue-gray">{task.project_name}</div>
+                  </div>
+                  <select
+                    value={reassignments[task.id] || ''}
+                    onChange={e => setReassignments(prev => ({ ...prev, [task.id]: e.target.value }))}
+                    className={`shrink-0 px-2 py-1 border rounded text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue ${
+                      reassignments[task.id] ? 'border-fe-blue bg-fe-blue/5' : 'border-gray-200'
+                    }`}
+                  >
+                    <option value="">Reassign to...</option>
+                    {otherMembers.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
 
             <div className="flex gap-3 mt-5">
               <button
@@ -498,7 +486,7 @@ export default function TeamPage() {
                 disabled={!allReassigned}
                 className="px-4 py-2 bg-fe-red text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {assignedTasks.length > 0 ? 'Reassign & Delete' : 'Confirm Delete'}
+                Reassign & Delete
               </button>
             </div>
           </div>
