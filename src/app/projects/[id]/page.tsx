@@ -103,7 +103,9 @@ export default function ProjectDetailPage() {
   const [addingToPhase, setAddingToPhase] = useState<string | null>(null)
   const [newTaskName, setNewTaskName] = useState('')
   const [newTaskOwner, setNewTaskOwner] = useState('')
+  const [newTaskRole, setNewTaskRole] = useState('')
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
+  const [roles, setRoles] = useState<{ id: string; name: string; color: string }[]>([])
   const [notes, setNotes] = useState('')
   const notesRef = useRef<string>('')
   const [expandedComments, setExpandedComments] = useState<string | null>(null)
@@ -149,7 +151,8 @@ export default function ProjectDetailPage() {
       fetch(`/api/projects/${params.id}`).then(r => r.json()),
       fetch('/api/team').then(r => r.json()),
       fetch('/api/workflow-templates').then(r => r.json()),
-    ]).then(([projectData, teamData, templates]) => {
+      fetch('/api/roles').then(r => r.json()),
+    ]).then(([projectData, teamData, templates, rolesData]) => {
       setProject(projectData.project)
       setTasks(projectData.tasks || [])
       setTeam(teamData)
@@ -167,6 +170,7 @@ export default function ProjectDetailPage() {
       setNotes(initialNotes)
       notesRef.current = initialNotes
       setWorkflowTemplates(templates)
+      setRoles(Array.isArray(rolesData) ? rolesData : [])
       // Expand all phases by default
       const phases = new Set<string>((projectData.tasks || []).map((t: ProjectTask) => t.phase))
       setExpandedPhases(phases)
@@ -253,7 +257,7 @@ export default function ProjectDetailPage() {
   }
 
   const addTask = async (phase: string, phaseOrder: number) => {
-    if (!newTaskName.trim()) return
+    if (!newTaskName.trim() || !newTaskRole) return
     const res = await fetch(`/api/projects/${params.id}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -262,6 +266,7 @@ export default function ProjectDetailPage() {
         phase,
         phase_order: phaseOrder,
         owner_ids: newTaskOwner ? [newTaskOwner] : [],
+        role_id: newTaskRole,
       }),
     })
     const newTask = await res.json()
@@ -269,6 +274,7 @@ export default function ProjectDetailPage() {
       setTasks(prev => [...prev, newTask])
       setNewTaskName('')
       setNewTaskOwner('')
+      setNewTaskRole('')
       setAddingToPhase(null)
     }
   }
@@ -649,7 +655,7 @@ export default function ProjectDetailPage() {
                         <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 group/task">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              {task.owner_ids.map(oid => {
+                              {task.owner_ids.length > 0 ? task.owner_ids.map(oid => {
                                 const member = teamMap.get(oid)
                                 return member ? (
                                   <div key={oid} className="flex items-center gap-1" title={member.role_data ? `${member.role_data.name} · ${member.name}` : member.name}>
@@ -661,7 +667,24 @@ export default function ProjectDetailPage() {
                                     </span>
                                   </div>
                                 ) : null
-                              })}
+                              }) : task.role_id ? (
+                                <div className="flex items-center gap-1">
+                                  {(() => {
+                                    const role = roles.find(r => r.id === task.role_id)
+                                    return role ? (
+                                      <>
+                                        <div className="w-6 h-6 rounded-full border-2 border-dashed flex items-center justify-center" style={{ borderColor: role.color }}>
+                                          <span className="text-[8px] font-bold" style={{ color: role.color }}>?</span>
+                                        </div>
+                                        <span className="text-xs font-fira">
+                                          <span className="font-bold" style={{ color: role.color }}>{role.name}</span>
+                                          <span className="text-amber-500"> — Unassigned</span>
+                                        </span>
+                                      </>
+                                    ) : null
+                                  })()}
+                                </div>
+                              ) : null}
                             </div>
                             <div className="min-w-0 flex-1">
                               {editingTaskId === task.id ? (
@@ -1022,10 +1045,22 @@ export default function ProjectDetailPage() {
                           className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                           autoFocus
                           onKeyDown={e => {
-                            if (e.key === 'Escape') { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner('') }
-                            if (e.key === 'Enter' && newTaskName.trim()) addTask(phase.phase, phase.phase_order)
+                            if (e.key === 'Escape') { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner(''); setNewTaskRole('') }
+                            if (e.key === 'Enter' && newTaskName.trim() && newTaskRole) addTask(phase.phase, phase.phase_order)
                           }}
                         />
+                        <select
+                          value={newTaskRole}
+                          onChange={e => setNewTaskRole(e.target.value)}
+                          className={`px-3 py-2 border rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white shrink-0 ${
+                            newTaskRole ? 'border-gray-200' : 'border-amber-300 bg-amber-50'
+                          }`}
+                        >
+                          <option value="">Role *</option>
+                          {roles.map(r => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
+                        </select>
                         <div className="relative" ref={showOwnerDropdown ? ownerDropdownRef : undefined}>
                           <button
                             onClick={() => setShowOwnerDropdown(!showOwnerDropdown)}
@@ -1033,7 +1068,7 @@ export default function ProjectDetailPage() {
                           >
                             {newTaskOwner ? (
                               <Avatar initials={teamMap.get(newTaskOwner)?.initials || '?'} color={teamMap.get(newTaskOwner)?.color || '#999'} size="sm" />
-                            ) : 'Owner'}
+                            ) : 'Person'}
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
@@ -1044,7 +1079,7 @@ export default function ProjectDetailPage() {
                                 onClick={() => { setNewTaskOwner(''); setShowOwnerDropdown(false) }}
                                 className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-gray-400"
                               >
-                                No owner
+                                No person (role only)
                               </button>
                               {team.map(m => (
                                 <button
@@ -1065,16 +1100,19 @@ export default function ProjectDetailPage() {
                           )}
                         </div>
                       </div>
+                      {!newTaskRole && roles.length === 0 && (
+                        <p className="text-xs text-amber-600 font-fira mt-1.5">No roles exist yet. <a href="/team" className="underline hover:text-amber-800">Create a role first</a>.</p>
+                      )}
                       <div className="flex gap-2 mt-2">
                         <button
                           onClick={() => addTask(phase.phase, phase.phase_order)}
-                          disabled={!newTaskName.trim()}
+                          disabled={!newTaskName.trim() || !newTaskRole}
                           className="px-3 py-1.5 bg-fe-blue text-white rounded-lg text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Add Task
                         </button>
                         <button
-                          onClick={() => { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner(''); setShowOwnerDropdown(false) }}
+                          onClick={() => { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner(''); setNewTaskRole(''); setShowOwnerDropdown(false) }}
                           className="px-3 py-1.5 bg-gray-100 text-fe-anthracite rounded-lg text-xs font-fira hover:bg-gray-200 transition-colors"
                         >
                           Cancel
@@ -1083,7 +1121,7 @@ export default function ProjectDetailPage() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => { setAddingToPhase(phase.phase); setNewTaskName(''); setNewTaskOwner('') }}
+                      onClick={() => { setAddingToPhase(phase.phase); setNewTaskName(''); setNewTaskOwner(''); setNewTaskRole('') }}
                       className="w-full px-4 py-2.5 text-xs font-fira text-fe-blue-gray hover:text-fe-navy hover:bg-gray-50 transition-colors flex items-center gap-1.5 border-t border-gray-50"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

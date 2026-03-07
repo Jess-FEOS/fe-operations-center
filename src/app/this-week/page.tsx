@@ -15,6 +15,12 @@ interface TeamMember {
   role_data: { id: string; name: string; color: string } | null
 }
 
+interface Role {
+  id: string
+  name: string
+  color: string
+}
+
 interface WeekTask {
   id: string
   task_name: string
@@ -25,11 +31,13 @@ interface WeekTask {
   status: TaskStatus
   due_date: string
   owner_ids: string[]
+  role_id: string | null
 }
 
 export default function ThisWeekPage() {
   const [tasks, setTasks] = useState<WeekTask[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [selectedMember, setSelectedMember] = useState<string | null>(null)
 
   useEffect(() => {
@@ -39,6 +47,9 @@ export default function ThisWeekPage() {
     fetch('/api/team')
       .then((res) => res.json())
       .then(setTeam)
+    fetch('/api/roles')
+      .then((res) => res.json())
+      .then((data) => setRoles(Array.isArray(data) ? data : []))
   }, [])
 
   const teamById = team.reduce<Record<string, TeamMember>>((acc, m) => {
@@ -137,7 +148,7 @@ export default function ThisWeekPage() {
                         <p className="text-xs text-gray-400">{task.phase}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {task.owner_ids.map((oid) => {
+                        {task.owner_ids.length > 0 ? task.owner_ids.map((oid) => {
                           const member = teamById[oid]
                           return member ? (
                             <div key={oid} className="flex items-center gap-1">
@@ -153,7 +164,20 @@ export default function ThisWeekPage() {
                               </span>
                             </div>
                           ) : null
-                        })}
+                        }) : task.role_id ? (() => {
+                          const role = roles.find(r => r.id === task.role_id)
+                          return role ? (
+                            <div className="flex items-center gap-1">
+                              <div className="w-6 h-6 rounded-full border-2 border-dashed flex items-center justify-center" style={{ borderColor: role.color }}>
+                                <span className="text-[8px] font-bold" style={{ color: role.color }}>?</span>
+                              </div>
+                              <span className="text-xs font-fira">
+                                <span className="font-bold" style={{ color: role.color }}>{role.name}</span>
+                                <span className="text-amber-500"> — Unassigned</span>
+                              </span>
+                            </div>
+                          ) : null
+                        })() : null}
                       </div>
                     </div>
 

@@ -9,11 +9,18 @@ export async function POST(
   try {
     const { id } = params;
     const body = await request.json();
-    const { task_name, phase, phase_order, owner_ids } = body;
+    const { task_name, phase, phase_order, owner_ids, role_id } = body;
 
     if (!task_name || !phase) {
       return NextResponse.json(
         { error: 'Missing required fields: task_name, phase' },
+        { status: 400 }
+      );
+    }
+
+    if (!role_id) {
+      return NextResponse.json(
+        { error: 'role_id is required. Every task must be assigned to a role.' },
         { status: 400 }
       );
     }
@@ -50,6 +57,7 @@ export async function POST(
         week_number: 1,
         status: 'not_started',
         owner_ids: owner_ids || [],
+        role_id,
       })
       .select()
       .single();

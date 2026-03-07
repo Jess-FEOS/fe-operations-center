@@ -79,6 +79,7 @@ export default function TeamPage() {
   const [roleForm, setRoleForm] = useState({ name: '', description: '', color: ROLE_COLORS[0] });
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [deletingRole, setDeletingRole] = useState<Role | null>(null);
+  const [deleteRoleReassignTo, setDeleteRoleReassignTo] = useState('');
 
   // Toast
   const [toast, setToast] = useState<Toast>({ message: '', visible: false });
@@ -318,15 +319,31 @@ export default function TeamPage() {
   async function handleDeleteRole() {
     if (!deletingRole) return;
 
-    const res = await fetch(`/api/roles/${deletingRole.id}`, { method: 'DELETE' });
+    const hasUsage = deletingRole.holders.length > 0 ||
+      deletingRole.project_task_count > 0 ||
+      deletingRole.template_task_count > 0;
+
+    const payload: Record<string, unknown> = {};
+    if (hasUsage && deleteRoleReassignTo) {
+      payload.reassign_to_role_id = deleteRoleReassignTo;
+    }
+
+    const res = await fetch(`/api/roles/${deletingRole.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
     if (res.status === 409) {
       const data = await res.json();
-      showToast(`Cannot delete "${deletingRole.name}" - ${data.members_count} member(s) assigned${data.has_tasks ? ', tasks linked' : ''}`);
+      const taskCount = data.total_task_count || 0;
+      showToast(`This role has ${taskCount} task${taskCount !== 1 ? 's' : ''} assigned. Reassign them before deleting.`);
     } else {
       showToast(`Role "${deletingRole.name}" deleted`);
     }
 
     setDeletingRole(null);
+    setDeleteRoleReassignTo('');
     await fetchData();
   }
 
@@ -568,34 +585,58 @@ export default function TeamPage() {
         )}
 
         {/* Delete Role Confirm */}
-        {deletingRole && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl p-6 w-full max-w-sm">
-              <h2 className="font-barlow font-bold text-lg text-fe-navy mb-2">
-                Delete &ldquo;{deletingRole.name}&rdquo;?
-              </h2>
-              {(deletingRole.holders.length > 0 || deletingRole.project_task_count > 0 || deletingRole.template_task_count > 0) && (
-                <p className="text-sm text-fe-red mb-3">
-                  This role has {deletingRole.holders.length} member(s) and {deletingRole.project_task_count + deletingRole.template_task_count} task(s) linked. Reassign them first.
-                </p>
-              )}
-              <div className="flex gap-3 mt-4">
-                <button
-                  onClick={() => setDeletingRole(null)}
-                  className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteRole}
-                  className="px-4 py-2 bg-fe-red text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors"
-                >
-                  Delete Role
-                </button>
+        {deletingRole && (() => {
+          const totalTasks = deletingRole.project_task_count + deletingRole.template_task_count;
+          const hasUsage = deletingRole.holders.length > 0 || totalTasks > 0;
+          const otherRoles = roles.filter(r => r.id !== deletingRole.id);
+
+          return (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl p-6 w-full max-w-md">
+                <h2 className="font-barlow font-bold text-lg text-fe-navy mb-2">
+                  Delete &ldquo;{deletingRole.name}&rdquo;?
+                </h2>
+                {hasUsage && (
+                  <div className="mb-4">
+                    <p className="text-sm text-fe-red mb-3">
+                      This role has {totalTasks} task{totalTasks !== 1 ? 's' : ''} assigned
+                      {deletingRole.holders.length > 0 ? ` and ${deletingRole.holders.length} member${deletingRole.holders.length !== 1 ? 's' : ''}` : ''}.
+                      Reassign them to a different role before deleting.
+                    </p>
+                    <div>
+                      <label className="block text-xs font-fira font-bold text-fe-navy mb-1">Reassign all to:</label>
+                      <select
+                        value={deleteRoleReassignTo}
+                        onChange={e => setDeleteRoleReassignTo(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                      >
+                        <option value="">Select a role...</option>
+                        {otherRoles.map(r => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => { setDeletingRole(null); setDeleteRoleReassignTo(''); }}
+                    className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteRole}
+                    disabled={hasUsage && !deleteRoleReassignTo}
+                    className="px-4 py-2 bg-fe-red text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {hasUsage && deleteRoleReassignTo ? 'Reassign & Delete' : 'Delete Role'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Roles Grid */}
         {roles.length === 0 ? (

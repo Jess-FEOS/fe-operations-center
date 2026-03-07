@@ -114,6 +114,7 @@ export async function DELETE(
     }
 
     // 3. Clean up any remaining project_tasks that still reference this member
+    //    Remove the person but keep role_id intact (task stays assigned to the role)
     const { data: remainingTasks } = await supabase
       .from('project_tasks')
       .select('id, owner_ids')

@@ -13,6 +13,16 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (body.status !== undefined) updates.status = body.status;
     if (body.task_name !== undefined) updates.task_name = body.task_name;
+    if (body.owner_ids !== undefined) updates.owner_ids = body.owner_ids;
+    if (body.role_id !== undefined) updates.role_id = body.role_id;
+
+    // Prevent clearing role_id — tasks must always have a role
+    if (body.role_id === null || body.role_id === '') {
+      return NextResponse.json(
+        { error: 'role_id cannot be removed. Every task must be assigned to a role.' },
+        { status: 400 }
+      );
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(

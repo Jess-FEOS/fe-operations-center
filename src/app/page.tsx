@@ -48,6 +48,22 @@ interface OverdueTask {
   owner_ids: string[];
 }
 
+interface UnassignedTask {
+  id: string;
+  task_name: string;
+  project_id: string;
+  project_name: string;
+  role_id: string;
+  status: string;
+  due_date: string;
+}
+
+interface Role {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Priority {
   id: string;
   month: string;
@@ -89,8 +105,12 @@ export default function Dashboard() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<OverdueTask[]>([]);
+  const [unassignedTasks, setUnassignedTasks] = useState<UnassignedTask[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [overdueExpanded, setOverdueExpanded] = useState(false);
+  const [unassignedExpanded, setUnassignedExpanded] = useState(false);
+  const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
   const [overdueThisWeekOnly, setOverdueThisWeekOnly] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [priorities, setPriorities] = useState<Priority[]>([]);
@@ -106,12 +126,14 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [projectsRes, teamRes, tasksRes, overdueRes, prioritiesRes] = await Promise.all([
+        const [projectsRes, teamRes, tasksRes, overdueRes, prioritiesRes, unassignedRes, rolesRes] = await Promise.all([
           fetch('/api/projects'),
           fetch('/api/team'),
           fetch('/api/tasks/this-week'),
           fetch('/api/tasks/overdue').catch(() => null),
           fetch('/api/priorities'),
+          fetch('/api/tasks/unassigned').catch(() => null),
+          fetch('/api/roles').catch(() => null),
         ]);
 
         const projectsData = await projectsRes.json();
@@ -119,11 +141,15 @@ export default function Dashboard() {
         const tasksData = await tasksRes.json();
         const overdueData = overdueRes ? await overdueRes.json() : [];
         const prioritiesData = await prioritiesRes.json();
+        const unassignedData = unassignedRes ? await unassignedRes.json() : [];
+        const rolesData = rolesRes ? await rolesRes.json() : [];
 
         setProjects(Array.isArray(projectsData) ? projectsData : []);
         setTeam(Array.isArray(teamData) ? teamData : []);
         setTasks(Array.isArray(tasksData) ? tasksData : []);
         setOverdueTasks(Array.isArray(overdueData) ? overdueData : []);
+        setUnassignedTasks(Array.isArray(unassignedData) ? unassignedData : []);
+        setRoles(Array.isArray(rolesData) ? rolesData : []);
 
         const allP = Array.isArray(prioritiesData) ? prioritiesData : [];
         setAllPriorities(allP);
@@ -432,6 +458,111 @@ export default function Dashboard() {
                   );
                 })}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Unassigned Tasks Banner */}
+      {unassignedTasks.length > 0 && (
+        <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setUnassignedExpanded(!unassignedExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="font-barlow font-bold text-amber-700 text-sm">
+                {unassignedTasks.length} Task{unassignedTasks.length !== 1 ? 's' : ''} With No Person Assigned
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-fira text-amber-600">
+              {unassignedExpanded ? 'Collapse' : 'View All'}
+              <svg className={`w-4 h-4 transition-transform ${unassignedExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
+
+          {unassignedExpanded && (
+            <div className="px-4 pb-4">
+              {(() => {
+                const roleMap = new Map(roles.map(r => [r.id, r]));
+                const byRole = unassignedTasks.reduce<Record<string, UnassignedTask[]>>((acc, t) => {
+                  const key = t.role_id;
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(t);
+                  return acc;
+                }, {});
+
+                return (
+                  <div className="space-y-4 pt-2 border-t border-amber-200">
+                    {Object.entries(byRole).map(([roleId, roleTasks]) => {
+                      const role = roleMap.get(roleId);
+                      return (
+                        <div key={roleId}>
+                          <div className="flex items-center gap-2 mb-2 mt-2">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full"
+                              style={{ backgroundColor: role?.color || '#999' }}
+                            />
+                            <h3 className="text-xs font-barlow font-bold text-amber-800">
+                              {role?.name || 'Unknown Role'} ({roleTasks.length})
+                            </h3>
+                          </div>
+                          <div className="space-y-1">
+                            {roleTasks.map(task => (
+                              <div
+                                key={task.id}
+                                className="flex items-center justify-between px-3 py-2 bg-white rounded-lg border border-amber-100"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div
+                                    className="w-6 h-6 rounded-full border-2 border-dashed flex items-center justify-center shrink-0"
+                                    style={{ borderColor: role?.color || '#999' }}
+                                  >
+                                    <span className="text-[8px] font-bold" style={{ color: role?.color || '#999' }}>?</span>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-sm font-fira text-fe-anthracite truncate block">{task.task_name}</span>
+                                    <span className="text-xs font-fira text-fe-blue-gray">{task.project_name}</span>
+                                  </div>
+                                </div>
+                                <select
+                                  value=""
+                                  onChange={async (e) => {
+                                    const memberId = e.target.value;
+                                    if (!memberId) return;
+                                    setClaimingTaskId(task.id);
+                                    await fetch(`/api/projects/${task.project_id}/tasks/${task.id}`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ owner_ids: [memberId] }),
+                                    });
+                                    setUnassignedTasks(prev => prev.filter(t => t.id !== task.id));
+                                    setClaimingTaskId(null);
+                                  }}
+                                  disabled={claimingTaskId === task.id}
+                                  className="shrink-0 px-2 py-1 border border-amber-200 rounded text-xs font-fira bg-white focus:outline-none focus:ring-1 focus:ring-fe-blue"
+                                >
+                                  <option value="">Assign to...</option>
+                                  {team.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.role_data ? `${m.role_data.name} · ${m.name}` : m.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

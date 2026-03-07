@@ -53,27 +53,76 @@ export async function DELETE(
     const { data: projectTasks } = await supabase
       .from('project_tasks')
       .select('id')
-      .eq('role_id', id)
-      .limit(1);
+      .eq('role_id', id);
 
     const { data: templateTasks } = await supabase
       .from('project_template_tasks')
       .select('id')
-      .eq('role_id', id)
-      .limit(1);
+      .eq('role_id', id);
 
     const hasMembers = members && members.length > 0;
-    const hasTasks = (projectTasks && projectTasks.length > 0) || (templateTasks && templateTasks.length > 0);
+    const projectTaskCount = projectTasks?.length || 0;
+    const templateTaskCount = templateTasks?.length || 0;
+    const totalTaskCount = projectTaskCount + templateTaskCount;
 
-    if (hasMembers || hasTasks) {
+    // Parse optional reassignment target from request body
+    let reassignToRoleId: string | null = null;
+    try {
+      const body = await request.json();
+      reassignToRoleId = body.reassign_to_role_id || null;
+    } catch {
+      // No body is fine
+    }
+
+    // If tasks exist and no reassignment target provided, block deletion
+    if (totalTaskCount > 0 && !reassignToRoleId) {
+      return NextResponse.json(
+        {
+          error: 'Role has tasks assigned',
+          project_task_count: projectTaskCount,
+          template_task_count: templateTaskCount,
+          total_task_count: totalTaskCount,
+          members_count: members?.length || 0,
+        },
+        { status: 409 }
+      );
+    }
+
+    // If members exist and no task reassignment needed, still block
+    if (hasMembers && !reassignToRoleId) {
       return NextResponse.json(
         {
           error: 'Role is in use',
           members_count: members?.length || 0,
-          has_tasks: hasTasks,
+          project_task_count: projectTaskCount,
+          template_task_count: templateTaskCount,
+          total_task_count: totalTaskCount,
         },
         { status: 409 }
       );
+    }
+
+    // Reassign tasks to the target role if provided
+    if (reassignToRoleId) {
+      if (projectTaskCount > 0) {
+        await supabase
+          .from('project_tasks')
+          .update({ role_id: reassignToRoleId })
+          .eq('role_id', id);
+      }
+      if (templateTaskCount > 0) {
+        await supabase
+          .from('project_template_tasks')
+          .update({ role_id: reassignToRoleId })
+          .eq('role_id', id);
+      }
+      // Reassign members too
+      if (hasMembers) {
+        await supabase
+          .from('team_members')
+          .update({ role_id: reassignToRoleId })
+          .eq('role_id', id);
+      }
     }
 
     const { error } = await supabase
