@@ -15,6 +15,7 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.role !== undefined) updates.role = body.role;
+    if (body.role_id !== undefined) updates.role_id = body.role_id;
     if (body.initials !== undefined) updates.initials = body.initials;
     if (body.color !== undefined) updates.color = body.color;
 
@@ -46,18 +47,28 @@ export async function DELETE(
   try {
     const { id } = params;
 
-    // Check for reassignment data in the request body
-    let reassignments: { taskId: string; newOwnerId: string }[] = [];
+    // Get the member's name for template task matching
+    const { data: member } = await supabase
+      .from('team_members')
+      .select('name')
+      .eq('id', id)
+      .single();
+
+    const firstName = member ? member.name.split(' ')[0].toLowerCase() : '';
+
+    // Parse reassignment data from the body
+    let projectReassignments: { taskId: string; newOwnerId: string }[] = [];
+    let templateReassignments: { taskId: string; newOwnerName: string }[] = [];
     try {
       const body = await request.json();
-      reassignments = body.reassignments || [];
+      projectReassignments = body.projectReassignments || [];
+      templateReassignments = body.templateReassignments || [];
     } catch {
       // No body is fine if there are no tasks to reassign
     }
 
-    // Process reassignments: update owner_ids arrays in project_tasks
-    for (const r of reassignments) {
-      // Fetch the current task
+    // 1. Process project task reassignments (UUID-based owner_ids)
+    for (const r of projectReassignments) {
       const { data: task } = await supabase
         .from('project_tasks')
         .select('owner_ids')
@@ -68,8 +79,6 @@ export async function DELETE(
         const newOwnerIds = (task.owner_ids || [])
           .filter((oid: string) => oid !== id)
           .concat(r.newOwnerId);
-
-        // Deduplicate
         const unique = [...new Set(newOwnerIds)];
 
         await supabase
@@ -79,7 +88,32 @@ export async function DELETE(
       }
     }
 
-    // Remove this member from any remaining project_tasks owner_ids
+    // 2. Process template task reassignments (name-based owner string)
+    for (const r of templateReassignments) {
+      const { data: task } = await supabase
+        .from('project_template_tasks')
+        .select('owner')
+        .eq('id', r.taskId)
+        .single();
+
+      if (task && firstName) {
+        // Replace this person's name in the owner string with the new owner name
+        const parts = task.owner.split(/\s*\+\s*/);
+        const newParts = parts.map((p: string) =>
+          p.trim().toLowerCase() === firstName ? r.newOwnerName : p.trim()
+        );
+        // Deduplicate (in case new owner was already listed)
+        const unique = [...new Set(newParts)];
+        const newOwner = unique.join(' + ');
+
+        await supabase
+          .from('project_template_tasks')
+          .update({ owner: newOwner })
+          .eq('id', r.taskId);
+      }
+    }
+
+    // 3. Clean up any remaining project_tasks that still reference this member
     const { data: remainingTasks } = await supabase
       .from('project_tasks')
       .select('id, owner_ids')
@@ -95,7 +129,28 @@ export async function DELETE(
       }
     }
 
-    // Delete the team member
+    // 4. Clean up any remaining template tasks that reference this person by name
+    if (firstName) {
+      const { data: allTemplateTasks } = await supabase
+        .from('project_template_tasks')
+        .select('id, owner');
+
+      if (allTemplateTasks) {
+        for (const task of allTemplateTasks) {
+          const parts = (task.owner as string).split(/\s*\+\s*/);
+          if (parts.some((p: string) => p.trim().toLowerCase() === firstName)) {
+            const filtered = parts.filter((p: string) => p.trim().toLowerCase() !== firstName);
+            const newOwner = filtered.length > 0 ? filtered.join(' + ') : 'Unassigned';
+            await supabase
+              .from('project_template_tasks')
+              .update({ owner: newOwner })
+              .eq('id', task.id);
+          }
+        }
+      }
+    }
+
+    // 5. Delete the team member
     const { error } = await supabase
       .from('team_members')
       .delete()

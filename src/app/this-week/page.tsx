@@ -12,6 +12,7 @@ interface TeamMember {
   initials: string
   color: string
   role: string
+  role_data: { id: string; name: string; color: string } | null
 }
 
 interface WeekTask {
@@ -135,16 +136,22 @@ export default function ThisWeekPage() {
                         </p>
                         <p className="text-xs text-gray-400">{task.phase}</p>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
                         {task.owner_ids.map((oid) => {
                           const member = teamById[oid]
                           return member ? (
-                            <Avatar
-                              key={oid}
-                              initials={member.initials}
-                              color={member.color}
-                              size="sm"
-                            />
+                            <div key={oid} className="flex items-center gap-1">
+                              <Avatar
+                                initials={member.initials}
+                                color={member.color}
+                                size="sm"
+                              />
+                              <span className="text-xs font-fira text-fe-blue-gray">
+                                {member.role_data ? (
+                                  <><span className="font-bold" style={{ color: member.role_data.color }}>{member.role_data.name}</span> &middot; {member.name.split(' ')[0]}</>
+                                ) : member.name.split(' ')[0]}
+                              </span>
+                            </div>
                           ) : null
                         })}
                       </div>

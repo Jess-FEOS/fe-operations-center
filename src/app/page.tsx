@@ -25,6 +25,7 @@ interface TeamMember {
   name: string;
   initials: string;
   color: string;
+  role_data: { id: string; name: string; color: string } | null;
 }
 
 interface Task {

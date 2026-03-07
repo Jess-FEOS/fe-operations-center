@@ -1,9 +1,19 @@
+export interface Role {
+  id: string
+  name: string
+  description: string | null
+  color: string
+  created_at: string
+}
+
 export interface TeamMember {
   id: string
   name: string
   role: string
+  role_id: string | null
   initials: string
   color: string
+  role_data: { id: string; name: string; description: string | null; color: string } | null
 }
 
 export interface WorkflowTemplate {
@@ -48,6 +58,7 @@ export interface ProjectTask {
   week_number: number
   status: 'not_started' | 'in_progress' | 'done' | 'blocked'
   owner_ids: string[]
+  role_id: string | null
 }
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'done' | 'blocked'

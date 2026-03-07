@@ -415,16 +415,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: tasksError.message }, { status: 500 });
     }
 
-    // Fetch team members to resolve owner names to IDs
+    // Fetch team members to resolve owner names to IDs and role_ids
     const { data: teamMembers } = await supabase
       .from('team_members')
-      .select('id, name');
+      .select('id, name, role_id');
 
     const nameToId: Record<string, string> = {};
+    const nameToRoleId: Record<string, string | null> = {};
     (teamMembers || []).forEach((m: any) => {
       const firstName = m.name.split(' ')[0];
       nameToId[firstName.toLowerCase()] = m.id;
       nameToId[m.name.toLowerCase()] = m.id;
+      nameToRoleId[firstName.toLowerCase()] = m.role_id || null;
+      nameToRoleId[m.name.toLowerCase()] = m.role_id || null;
     });
 
     function resolveOwnerIds(ownerStr: string): string[] {
@@ -437,6 +440,16 @@ export async function POST(request: NextRequest) {
         }
       }
       return ids;
+    }
+
+    function resolveRoleId(ownerStr: string): string | null {
+      const parts = ownerStr.split(/\s*\+\s*/);
+      // Use the first owner's role_id
+      for (const part of parts) {
+        const key = part.trim().toLowerCase();
+        if (nameToRoleId[key]) return nameToRoleId[key];
+      }
+      return null;
     }
 
     // Look up a matching workflow template for the project type
@@ -494,6 +507,7 @@ export async function POST(request: NextRequest) {
           week_number: task.week_number,
           status: 'not_started',
           owner_ids: resolveOwnerIds(task.owner),
+          role_id: task.role_id || resolveRoleId(task.owner),
         };
       });
 

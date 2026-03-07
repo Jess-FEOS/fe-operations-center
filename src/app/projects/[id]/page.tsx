@@ -75,6 +75,7 @@ interface TeamMember {
   name: string
   initials: string
   color: string
+  role_data: { id: string; name: string; color: string } | null
 }
 
 export default function ProjectDetailPage() {
@@ -647,11 +648,18 @@ export default function ProjectDetailPage() {
                       <div key={task.id} className="border-b border-gray-50 last:border-b-0">
                         <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 group/task">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="flex -space-x-1">
+                            <div className="flex items-center gap-1.5">
                               {task.owner_ids.map(oid => {
                                 const member = teamMap.get(oid)
                                 return member ? (
-                                  <Avatar key={oid} initials={member.initials} color={member.color} size="sm" />
+                                  <div key={oid} className="flex items-center gap-1" title={member.role_data ? `${member.role_data.name} · ${member.name}` : member.name}>
+                                    <Avatar initials={member.initials} color={member.color} size="sm" />
+                                    <span className="text-xs font-fira text-fe-blue-gray">
+                                      {member.role_data ? (
+                                        <><span className="font-bold" style={{ color: member.role_data.color }}>{member.role_data.name}</span> &middot; {member.name.split(' ')[0]}</>
+                                      ) : member.name.split(' ')[0]}
+                                    </span>
+                                  </div>
                                 ) : null
                               })}
                             </div>
@@ -1045,7 +1053,7 @@ export default function ProjectDetailPage() {
                                   className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
                                 >
                                   <Avatar initials={m.initials} color={m.color} size="sm" />
-                                  {m.name}
+                                  {m.role_data ? <><span className="font-bold" style={{ color: m.role_data.color }}>{m.role_data.name}</span> &middot; {m.name}</> : m.name}
                                   {newTaskOwner === m.id && (
                                     <svg className="w-3 h-3 ml-auto text-fe-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
