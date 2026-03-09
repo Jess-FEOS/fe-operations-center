@@ -63,16 +63,15 @@ export default function PerformancePage() {
   const [formNotes, setFormNotes] = useState('')
 
   const fetchMetrics = async () => {
-    const [courseData, metricsData, projectsData, allProjectsData, campaignsData] = await Promise.all([
+    const [courseData, metricsData, projectsData, campaignsData] = await Promise.all([
       fetch('/api/course-metrics').then(r => r.json()).catch(() => []),
       fetch('/api/metrics').then(r => r.json()).catch(() => []),
-      fetch('/api/projects').then(r => r.json()).catch(() => []),
       fetch('/api/projects').then(r => r.json()).catch(() => []),
       fetch('/api/campaigns').then(r => r.json()).catch(() => []),
     ])
     setCourseMetrics(Array.isArray(courseData) ? courseData : [])
     setGeneralMetrics(Array.isArray(metricsData) ? metricsData : [])
-    const ap = Array.isArray(allProjectsData) ? allProjectsData : []
+    const ap = Array.isArray(projectsData) ? projectsData : []
     setAllProjects(ap)
     setProjects(ap.filter((p: Project) => p.workflow_type === 'course-launch'))
     setCampaigns(Array.isArray(campaignsData) ? campaignsData : [])
