@@ -687,13 +687,14 @@ export default function Dashboard() {
                 <label className="block text-xs font-fira text-fe-blue-gray mb-1">Title <span className="text-red-400">*</span></label>
                 <input
                   type="text"
-                  placeholder="Priority name..."
+                  placeholder="e.g. Fill Analyst Academy — 30 seats by May 11th"
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
                   onKeyDown={e => { if (e.key === 'Enter' && newTitle.trim()) handleAddPriority(); }}
                   autoFocus
                 />
+                <p className="text-xs font-fira text-gray-400 mt-1">Priorities are outcomes, not actions. What must be true by end of this month for the business to move forward?</p>
               </div>
               <div>
                 <label className="block text-xs font-fira text-fe-blue-gray mb-1">Month</label>
@@ -720,17 +721,17 @@ export default function Dashboard() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Goal (optional)</label>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Success Looks Like (optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. 50 enrollments"
+                  placeholder="e.g. 30 enrollments, $15,000 revenue"
                   value={newGoal}
                   onChange={e => setNewGoal(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
                 />
               </div>
               <div>
-                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Target date (optional)</label>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Must be achieved by (optional)</label>
                 <input
                   type="date"
                   value={newTargetDate}
@@ -795,23 +796,31 @@ export default function Dashboard() {
                     )}
                   </button>
                   <div className="min-w-0">
-                    <span className={`text-sm font-fira ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-anthracite'}`}>
+                    <span className={`text-sm font-fira font-bold ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-navy'}`}>
                       {priority.title}
                     </span>
-                    {priority.goal && (
-                      <span className="ml-2 text-xs font-fira text-fe-gold font-bold">
-                        (Goal: {priority.goal})
-                      </span>
-                    )}
                     {priority.project_id && priority.project_name ? (
-                      <Link href={`/projects/${priority.project_id}`} className="block mt-1">
-                        <div className="text-xs font-fira text-fe-blue-gray">{priority.project_name}</div>
-                        <ProgressBar percent={priority.project_progress || 0} size="sm" />
+                      <Link href={`/projects/${priority.project_id}`} className="flex items-center gap-1 mt-0.5 group/link">
+                        <svg className="w-3 h-3 text-fe-blue-gray shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
+                        </svg>
+                        <span className="text-xs font-fira text-fe-blue-gray group-hover/link:text-fe-blue transition-colors">&rarr; {priority.project_name}</span>
                       </Link>
                     ) : (
-                      <div className="mt-1">
+                      <div className="mt-0.5">
                         <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
                       </div>
+                    )}
+                    {priority.goal && (
+                      <p className="text-xs font-fira text-fe-gold font-bold mt-1">
+                        Success: {priority.goal}
+                      </p>
+                    )}
+                    {priority.target_date && (
+                      <p className="text-xs font-fira text-fe-blue-gray mt-0.5">
+                        By {new Date(priority.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -825,12 +834,13 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Launch Pipeline */}
+      {/* Upcoming Launches */}
       {launchPipeline.length > 0 && (
         <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
-          <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
-            Launch Pipeline
+          <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">
+            Upcoming Launches
           </h2>
+          <p className="text-xs font-fira text-fe-blue-gray mb-4">Prepare now — these are coming</p>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {launchPipeline.map(item => {
               return (
@@ -943,9 +953,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Active Projects */}
+      {/* Projects In Progress */}
       <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
-        Active Projects
+        Projects In Progress
       </h2>
 
       {projects.length === 0 ? (
