@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Avatar from '@/components/Avatar';
 import WorkflowBadge from '@/components/WorkflowBadge';
@@ -151,8 +151,20 @@ export default function Dashboard() {
   const [newProjectId, setNewProjectId] = useState('');
   const [allProjectsList, setAllProjectsList] = useState<{ id: string; name: string; workflow_type: string; launch_date?: string | null; priority_id?: string | null }[]>([]);
   const [addingPriority, setAddingPriority] = useState(false);
+  const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState('');
+  const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null);
+  const [editPTitle, setEditPTitle] = useState('');
+  const [editPMonth, setEditPMonth] = useState('');
+  const [editPStatus, setEditPStatus] = useState<TaskStatus>('not_started');
+  const [editPGoal, setEditPGoal] = useState('');
+  const [editPTargetDate, setEditPTargetDate] = useState('');
+  const [editPProjectId, setEditPProjectId] = useState('');
+  const [savingPriority, setSavingPriority] = useState(false);
+  const [deletingPriorityId, setDeletingPriorityId] = useState<string | null>(null);
   const [projectSort, setProjectSort] = useState('launch_date');
   const [projectFilter, setProjectFilter] = useState('all');
+  const manualFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -306,6 +318,15 @@ export default function Dashboard() {
   const handleAddPriority = async () => {
     if (!newTitle.trim()) return;
     const monthToUse = newMonth || selectedMonth;
+    // Client-side duplicate check
+    const isDuplicate = allPriorities.some(p =>
+      p.title.toLowerCase() === newTitle.trim().toLowerCase() && p.month === monthToUse
+    );
+    if (isDuplicate) {
+      setDuplicateWarning('A priority with this title already exists for this month');
+      return;
+    }
+    setDuplicateWarning('');
     setAddingPriority(true);
     try {
       const res = await fetch('/api/priorities', {
@@ -340,12 +361,72 @@ export default function Dashboard() {
         setNewTargetDate('');
         setNewMonth('');
         setNewProjectId('');
+        setSelectedSuggestionId(null);
+        setDuplicateWarning('');
         setShowAddForm(false);
       }
     } catch (err) {
       console.error('Failed to add priority:', err);
     } finally {
       setAddingPriority(false);
+    }
+  };
+
+  const startEditPriority = (p: Priority) => {
+    setEditingPriorityId(p.id);
+    setEditPTitle(p.title);
+    setEditPMonth(p.month);
+    setEditPStatus(p.status);
+    setEditPGoal(p.goal || '');
+    setEditPTargetDate(p.target_date || '');
+    setEditPProjectId(p.project_id || '');
+  };
+
+  const cancelEditPriority = () => {
+    setEditingPriorityId(null);
+  };
+
+  const saveEditPriority = async () => {
+    if (!editingPriorityId || !editPTitle.trim()) return;
+    setSavingPriority(true);
+    try {
+      const res = await fetch('/api/priorities', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingPriorityId,
+          title: editPTitle.trim(),
+          month: editPMonth,
+          status: editPStatus,
+          goal: editPGoal.trim() || null,
+          target_date: editPTargetDate || null,
+          project_id: editPProjectId || null,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        const updater = (p: Priority) => p.id === editingPriorityId ? { ...p, ...updated } : p;
+        setAllPriorities(prev => prev.map(updater));
+        setPriorities(prev => prev.map(updater));
+        setEditingPriorityId(null);
+      }
+    } catch (err) {
+      console.error('Failed to save priority:', err);
+    } finally {
+      setSavingPriority(false);
+    }
+  };
+
+  const deletePriority = async (id: string) => {
+    try {
+      const res = await fetch(`/api/priorities?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setAllPriorities(prev => prev.filter(p => p.id !== id));
+        setPriorities(prev => prev.filter(p => p.id !== id));
+        setDeletingPriorityId(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete priority:', err);
     }
   };
 
@@ -399,13 +480,20 @@ export default function Dashboard() {
     setNewTargetDate(proj.launch_date || '');
     if (proj.launch_date) {
       const mb = monthBefore(proj.launch_date);
-      // Only set if it's one of the available month options
       if (MONTH_OPTIONS.some(o => o.value === mb)) {
         setNewMonth(mb);
       }
     }
     setNewStatus('not_started');
     setNewGoal('');
+    setSelectedSuggestionId(proj.id);
+    setDuplicateWarning('');
+    // Scroll to manual form and briefly highlight
+    setTimeout(() => {
+      manualFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      manualFormRef.current?.classList.add('ring-2', 'ring-fe-blue');
+      setTimeout(() => manualFormRef.current?.classList.remove('ring-2', 'ring-fe-blue'), 1500);
+    }, 50);
   }
 
   // Pre-fill and open form for a ghost card project
@@ -760,9 +848,14 @@ export default function Dashboard() {
                         </div>
                         <button
                           onClick={() => useSuggestion(proj)}
-                          className="shrink-0 px-3 py-1 rounded text-xs font-fira font-bold text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                          disabled={selectedSuggestionId === proj.id}
+                          className={`shrink-0 px-3 py-1 rounded text-xs font-fira font-bold transition-colors ${
+                            selectedSuggestionId === proj.id
+                              ? 'text-gray-400 cursor-default'
+                              : 'text-fe-blue hover:bg-fe-blue/10'
+                          }`}
                         >
-                          Use This &rarr;
+                          {selectedSuggestionId === proj.id ? 'Selected \u2713' : 'Use This \u2192'}
                         </button>
                       </div>
                     );
@@ -773,6 +866,7 @@ export default function Dashboard() {
             )}
 
             {/* SECTION 2: Manual form */}
+            <div ref={manualFormRef} className="rounded-lg transition-all" />
             <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-2">
               {suggestedProjects.length > 0 ? 'Or add your own' : 'Add a priority'}
             </h3>
@@ -847,6 +941,9 @@ export default function Dashboard() {
                 </select>
               </div>
             </div>
+            {duplicateWarning && (
+              <p className="text-xs font-fira text-red-500 font-bold mb-2">{duplicateWarning}</p>
+            )}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleAddPriority}
@@ -856,7 +953,7 @@ export default function Dashboard() {
                 {addingPriority ? 'Adding...' : 'Add'}
               </button>
               <button
-                onClick={() => { setShowAddForm(false); setNewTitle(''); setNewGoal(''); setNewTargetDate(''); setNewStatus('not_started'); setNewMonth(''); setNewProjectId(''); }}
+                onClick={() => { setShowAddForm(false); setNewTitle(''); setNewGoal(''); setNewTargetDate(''); setNewStatus('not_started'); setNewMonth(''); setNewProjectId(''); setSelectedSuggestionId(null); setDuplicateWarning(''); }}
                 className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors"
               >
                 Cancel
@@ -869,61 +966,145 @@ export default function Dashboard() {
           <p className="text-sm text-fe-anthracite">No priorities for this month.</p>
         ) : (
           <div className="space-y-2">
-            {priorities.map(priority => (
-              <div
-                key={priority.id}
-                className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <button
-                    onClick={() => handleStatusChange(priority.id, priority.status === 'done' ? 'not_started' : 'done')}
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      priority.status === 'done'
-                        ? 'border-fe-green bg-fe-green'
-                        : 'border-gray-300 hover:border-fe-green'
-                    }`}
-                  >
-                    {priority.status === 'done' && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
-                  <div className="min-w-0">
-                    <span className={`text-sm font-fira font-bold ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-navy'}`}>
-                      {priority.title}
-                    </span>
-                    {priority.project_id && priority.project_name ? (
-                      <Link href={`/projects/${priority.project_id}`} className="flex items-center gap-1 mt-0.5 group/link">
-                        <svg className="w-3 h-3 text-fe-blue-gray shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
-                        </svg>
-                        <span className="text-xs font-fira text-fe-blue-gray group-hover/link:text-fe-blue transition-colors">&rarr; {priority.project_name}</span>
-                      </Link>
-                    ) : (
-                      <div className="mt-0.5">
-                        <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
+            {priorities.map(priority => {
+              // Inline edit mode for this priority
+              if (editingPriorityId === priority.id) {
+                return (
+                  <div key={priority.id} className="p-4 rounded-lg border border-fe-blue/30 bg-blue-50/20">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-fira text-fe-blue-gray mb-1">Title</label>
+                        <input type="text" value={editPTitle} onChange={e => setEditPTitle(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue" />
                       </div>
-                    )}
-                    {priority.goal && (
-                      <p className="text-xs font-fira text-fe-gold font-bold mt-1">
-                        Success: {priority.goal}
-                      </p>
-                    )}
-                    {priority.target_date && (
-                      <p className="text-xs font-fira text-fe-blue-gray mt-0.5">
-                        By {new Date(priority.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    )}
+                      <div>
+                        <label className="block text-xs font-fira text-fe-blue-gray mb-1">Month</label>
+                        <select value={editPMonth} onChange={e => setEditPMonth(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white">
+                          {MONTH_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-fira text-fe-blue-gray mb-1">Status</label>
+                        <select value={editPStatus} onChange={e => setEditPStatus(e.target.value as TaskStatus)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white">
+                          {ALL_STATUSES.map(s => (<option key={s} value={s}>{STATUS_LABELS[s]}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-fira text-fe-blue-gray mb-1">Success Looks Like</label>
+                        <input type="text" value={editPGoal} onChange={e => setEditPGoal(e.target.value)} placeholder="e.g. 30 enrollments" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-fira text-fe-blue-gray mb-1">Must be achieved by</label>
+                        <input type="date" value={editPTargetDate} onChange={e => setEditPTargetDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-fira text-fe-blue-gray mb-1">Link to Project</label>
+                        <select value={editPProjectId} onChange={e => setEditPProjectId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white">
+                          <option value="">None</option>
+                          {allProjectsList.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={saveEditPriority} disabled={!editPTitle.trim() || savingPriority} className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-white bg-fe-blue hover:bg-fe-blue/90 transition-colors disabled:opacity-50">{savingPriority ? 'Saving...' : 'Save'}</button>
+                      <button onClick={cancelEditPriority} className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Delete confirmation
+              if (deletingPriorityId === priority.id) {
+                return (
+                  <div key={priority.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-red-200 bg-red-50">
+                    <span className="text-sm font-fira text-red-700">Delete &ldquo;{priority.title}&rdquo;?</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => deletePriority(priority.id)} className="px-3 py-1 rounded text-xs font-fira font-bold text-white bg-red-500 hover:bg-red-600 transition-colors">Yes, delete</button>
+                      <button onClick={() => setDeletingPriorityId(null)} className="px-3 py-1 rounded text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors">No</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Normal display
+              return (
+                <div
+                  key={priority.id}
+                  className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors group/card"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      onClick={() => handleStatusChange(priority.id, priority.status === 'done' ? 'not_started' : 'done')}
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        priority.status === 'done'
+                          ? 'border-fe-green bg-fe-green'
+                          : 'border-gray-300 hover:border-fe-green'
+                      }`}
+                    >
+                      {priority.status === 'done' && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="min-w-0">
+                      <span className={`text-sm font-fira font-bold ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-navy'}`}>
+                        {priority.title}
+                      </span>
+                      {priority.project_id && priority.project_name ? (
+                        <Link href={`/projects/${priority.project_id}`} className="flex items-center gap-1 mt-0.5 group/link">
+                          <svg className="w-3 h-3 text-fe-blue-gray shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
+                          </svg>
+                          <span className="text-xs font-fira text-fe-blue-gray group-hover/link:text-fe-blue transition-colors">&rarr; {priority.project_name}</span>
+                        </Link>
+                      ) : (
+                        <div className="mt-0.5">
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
+                        </div>
+                      )}
+                      {priority.goal && (
+                        <p className="text-xs font-fira text-fe-gold font-bold mt-1">
+                          Success: {priority.goal}
+                        </p>
+                      )}
+                      {priority.target_date && (
+                        <p className="text-xs font-fira text-fe-blue-gray mt-0.5">
+                          By {new Date(priority.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Edit/Delete icons — visible on hover */}
+                    <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => startEditPriority(priority)}
+                        className="p-1 rounded text-fe-blue-gray hover:text-fe-navy hover:bg-gray-100 transition-colors"
+                        title="Edit"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setDeletingPriorityId(priority.id)}
+                        className="p-1 rounded text-fe-blue-gray hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Delete"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                    <StatusBadge
+                      status={priority.status}
+                      onClick={(newStatus) => handleStatusChange(priority.id, newStatus)}
+                    />
                   </div>
                 </div>
-                <StatusBadge
-                  status={priority.status}
-                  onClick={(newStatus) => handleStatusChange(priority.id, newStatus)}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

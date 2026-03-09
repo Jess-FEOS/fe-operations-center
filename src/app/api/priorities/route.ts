@@ -161,15 +161,27 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status } = body;
+    const { id } = body;
 
-    if (!id || !status) {
-      return NextResponse.json({ error: 'Missing required fields: id, status' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (body.status !== undefined) updates.status = body.status;
+    if (body.title !== undefined) updates.title = body.title;
+    if (body.month !== undefined) updates.month = body.month;
+    if (body.goal !== undefined) updates.goal = body.goal;
+    if (body.target_date !== undefined) updates.target_date = body.target_date;
+    if (body.project_id !== undefined) updates.project_id = body.project_id;
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from('monthly_priorities')
-      .update({ status })
+      .update(updates)
       .eq('id', id)
       .select()
       .single();
@@ -179,6 +191,30 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json(data);
+  } catch (err) {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from('monthly_priorities')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
