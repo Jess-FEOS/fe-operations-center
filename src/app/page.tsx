@@ -81,22 +81,6 @@ interface Priority {
   project_progress?: number | null;
 }
 
-interface LaunchCard {
-  id: string;
-  name: string;
-  status: TaskStatus;
-  goal: string | null;
-  target_date: string | null;
-  source: 'priority' | 'project';
-  workflow_type?: string;
-  progress?: number;
-  launch_date?: string | null;
-  priority_status?: string | null;
-  open_tasks?: number;
-  project_name?: string;
-  project_id?: string;
-}
-
 interface Campaign {
   id: string;
   name: string;
@@ -502,26 +486,9 @@ export default function Dashboard() {
     setShowAddForm(true);
   }
 
-  // Build Upcoming Launches from priorities with a future target_date only
+  // Upcoming Launches: projects from /api/dashboard, enriched with priority + progress info
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const launchPipeline: LaunchCard[] = allPriorities
-    .filter(p => {
-      if (!p.target_date) return false;
-      const td = new Date(p.target_date + 'T00:00:00');
-      return td >= today;
-    })
-    .sort((a, b) => (a.target_date || '').localeCompare(b.target_date || ''))
-    .map(p => ({
-      id: `priority-${p.id}`,
-      name: p.title,
-      status: p.status,
-      goal: p.goal,
-      target_date: p.target_date,
-      source: 'priority' as const,
-      project_name: p.project_name || undefined,
-      project_id: p.project_id || undefined,
-    }));
 
   if (loading) {
     return (
@@ -1142,61 +1109,56 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Upcoming Launches */}
-      {launchPipeline.length > 0 && (
+      {/* Upcoming Launches — project cards from /api/dashboard */}
+      {upcomingLaunches.length > 0 && (
         <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
           <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">
             Upcoming Launches
           </h2>
           <p className="text-xs font-fira text-fe-blue-gray mb-4">Prepare now — these are coming</p>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {launchPipeline.map(item => {
-              const realId = item.id.replace('priority-', '');
+            {upcomingLaunches.map(proj => {
+              const linkedPriority = allPriorities.find(p => p.project_id === proj.id);
+              const activeProj = projectsRaw.find(p => p.id === proj.id);
               return (
-                <div
-                  key={item.id}
-                  className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow"
+                <Link
+                  key={proj.id}
+                  href={`/projects/${proj.id}`}
+                  className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow block"
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
-                      {item.name}
+                      {proj.name}
                     </h3>
-                    <StatusBadge
-                      status={item.status}
-                      onClick={(ns) => handleStatusChange(realId, ns)}
-                    />
+                    <StatusBadge status={(proj.status as TaskStatus) || 'not_started'} interactive={false} />
                   </div>
-                  <div className="space-y-1.5 mt-3">
-                    {item.target_date && (
-                      <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
-                        <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        {new Date(item.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  <div className="flex items-center gap-2 mb-3">
+                    <WorkflowBadge type={proj.workflow_type} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
+                      <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </div>
+                    {activeProj && activeProj.total_tasks > 0 && (
+                      <div>
+                        <ProgressBar percent={activeProj.progress} />
+                        <p className="text-xs font-fira text-fe-blue-gray mt-1">
+                          {activeProj.done_tasks}/{activeProj.total_tasks} tasks complete
+                        </p>
                       </div>
                     )}
-                    {item.goal && (
-                      <div className="flex items-center gap-2 text-xs font-fira">
-                        <svg className="w-3.5 h-3.5 text-fe-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                        </svg>
-                        <span className="font-bold" style={{ color: '#B29838' }}>Success:</span>
-                        <span className="text-fe-anthracite">{item.goal}</span>
-                      </div>
-                    )}
-                    {item.project_name ? (
-                      <Link href={`/projects/${item.project_id}`} className="flex items-center gap-1.5 text-xs font-fira text-fe-blue-gray hover:text-fe-blue transition-colors">
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
-                        </svg>
-                        &rarr; {item.project_name}
-                      </Link>
+                    {linkedPriority ? (
+                      <p className="text-xs font-fira text-fe-blue-gray">
+                        &rarr; {linkedPriority.title}
+                      </p>
                     ) : (
-                      <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No priority linked</span>
                     )}
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
