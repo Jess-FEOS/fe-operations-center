@@ -18,6 +18,9 @@ interface Project {
   total_tasks: number;
   done_tasks: number;
   progress: number;
+  launch_date?: string | null;
+  priority_id?: string | null;
+  priority_status?: string | null;
 }
 
 interface TeamMember {
@@ -72,6 +75,10 @@ interface Priority {
   goal: string | null;
   target_date: string | null;
   sort_order: number;
+  project_id?: string | null;
+  project_name?: string | null;
+  project_status?: string | null;
+  project_progress?: number | null;
 }
 
 interface LaunchCard {
@@ -83,6 +90,21 @@ interface LaunchCard {
   source: 'priority' | 'project';
   workflow_type?: string;
   progress?: number;
+  launch_date?: string | null;
+  priority_status?: string | null;
+  open_tasks?: number;
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  campaign_type: string | null;
+  status: string;
+  goal_metric: string | null;
+  actual_metric: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  owner_ids: string[] | null;
 }
 
 const MONTH_OPTIONS = [
@@ -107,6 +129,7 @@ export default function Dashboard() {
   const [overdueTasks, setOverdueTasks] = useState<OverdueTask[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<UnassignedTask[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [overdueExpanded, setOverdueExpanded] = useState(false);
   const [unassignedExpanded, setUnassignedExpanded] = useState(false);
@@ -126,34 +149,42 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [projectsRes, teamRes, tasksRes, overdueRes, prioritiesRes, unassignedRes, rolesRes] = await Promise.all([
-          fetch('/api/projects'),
+        const [dashboardRes, teamRes, prioritiesRes, tasksRes, overdueRes, unassignedRes, rolesRes] = await Promise.all([
+          fetch('/api/dashboard'),
           fetch('/api/team'),
+          fetch('/api/priorities'),
           fetch('/api/tasks/this-week'),
           fetch('/api/tasks/overdue').catch(() => null),
-          fetch('/api/priorities'),
           fetch('/api/tasks/unassigned').catch(() => null),
           fetch('/api/roles').catch(() => null),
         ]);
 
-        const projectsData = await projectsRes.json();
+        const dashboardData = await dashboardRes.json();
         const teamData = await teamRes.json();
+        const allPrioritiesData = await prioritiesRes.json();
         const tasksData = await tasksRes.json();
         const overdueData = overdueRes ? await overdueRes.json() : [];
-        const prioritiesData = await prioritiesRes.json();
         const unassignedData = unassignedRes ? await unassignedRes.json() : [];
         const rolesData = rolesRes ? await rolesRes.json() : [];
 
-        setProjects(Array.isArray(projectsData) ? projectsData : []);
+        // Use dashboard active_projects as primary project source
+        setProjects(Array.isArray(dashboardData.active_projects) ? dashboardData.active_projects : []);
         setTeam(Array.isArray(teamData) ? teamData : []);
         setTasks(Array.isArray(tasksData) ? tasksData : []);
         setOverdueTasks(Array.isArray(overdueData) ? overdueData : []);
         setUnassignedTasks(Array.isArray(unassignedData) ? unassignedData : []);
         setRoles(Array.isArray(rolesData) ? rolesData : []);
+        setCampaigns(Array.isArray(dashboardData.active_campaigns) ? dashboardData.active_campaigns : []);
 
-        const allP = Array.isArray(prioritiesData) ? prioritiesData : [];
+        // Use dashboard monthly_priorities for the current month
+        const dashboardPriorities: Priority[] = Array.isArray(dashboardData.monthly_priorities) ? dashboardData.monthly_priorities : [];
+
+        // Use /api/priorities for allPriorities (needed for month switching and launch pipeline)
+        const allP = Array.isArray(allPrioritiesData) ? allPrioritiesData : [];
         setAllPriorities(allP);
-        setPriorities(allP.filter((p: Priority) => p.month === '2026-03'));
+
+        // For the current month (2026-03), use the enriched dashboard priorities
+        setPriorities(dashboardPriorities);
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
@@ -294,6 +325,9 @@ export default function Dashboard() {
       source: 'project' as const,
       workflow_type: p.workflow_type,
       progress: p.progress,
+      launch_date: p.launch_date,
+      priority_status: p.priority_status,
+      open_tasks: p.total_tasks - p.done_tasks,
     }));
 
   const launchPipeline = [...priorityLaunches, ...projectLaunches];
@@ -703,6 +737,16 @@ export default function Dashboard() {
                         (Goal: {priority.goal})
                       </span>
                     )}
+                    {priority.project_id && priority.project_name ? (
+                      <Link href={`/projects/${priority.project_id}`} className="block mt-1">
+                        <div className="text-xs font-fira text-fe-blue-gray">{priority.project_name}</div>
+                        <ProgressBar percent={priority.project_progress || 0} size="sm" />
+                      </Link>
+                    ) : (
+                      <div className="mt-1">
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <StatusBadge
@@ -745,12 +789,29 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="space-y-1.5 mt-3">
-                    {item.target_date && (
+                    {item.launch_date ? (
+                      <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
+                        <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {new Date(item.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    ) : item.target_date ? (
                       <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
                         <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                         {new Date(item.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    ) : (
+                      <span className="text-xs font-fira text-gray-400">No launch date set</span>
+                    )}
+                    {item.priority_status && (
+                      <span className="text-xs font-fira text-fe-blue-gray">Priority: <span className="font-bold">{STATUS_LABELS[item.priority_status as TaskStatus]}</span></span>
+                    )}
+                    {item.open_tasks !== undefined && (
+                      <div>
+                        <span className="text-xs font-fira text-fe-blue-gray">{item.open_tasks} open tasks</span>
                       </div>
                     )}
                     {item.goal && (
@@ -785,6 +846,36 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Active Campaigns */}
+      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
+          Active Campaigns
+        </h2>
+        {campaigns.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No active campaigns — add one from the Marketing page.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {campaigns.map(campaign => (
+              <div key={campaign.id} className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">{campaign.name}</h3>
+                  <StatusBadge status={(campaign.status as TaskStatus) || 'not_started'} interactive={false} />
+                </div>
+                {campaign.campaign_type && (
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-gray-100 text-fe-blue-gray mb-2">{campaign.campaign_type}</span>
+                )}
+                {campaign.project_name && (
+                  <p className="text-xs font-fira text-fe-blue-gray mb-1">Project: {campaign.project_name}</p>
+                )}
+                {campaign.goal_metric && (
+                  <p className="text-xs font-fira text-fe-anthracite">Goal: <span className="font-bold">{campaign.goal_metric}</span></p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Active Projects */}
       <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">

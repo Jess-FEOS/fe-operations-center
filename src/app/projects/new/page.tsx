@@ -22,6 +22,13 @@ interface ProjectTemplate {
   tasks: ProjectTemplateTask[]
 }
 
+interface Priority {
+  id: string
+  title: string
+  month: string
+  project_id: string | null
+}
+
 const TYPE_ICONS: Record<string, string> = {
   'course-launch': 'M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z',
   'podcast': 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z',
@@ -69,14 +76,22 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(true)
   const [showTaskPreview, setShowTaskPreview] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState('All')
+  const [priorities, setPriorities] = useState<Priority[]>([])
+  const [selectedPriority, setSelectedPriority] = useState('')
+  const [launchDate, setLaunchDate] = useState('')
+  const [revenueGoal, setRevenueGoal] = useState('')
+  const [enrollmentGoal, setEnrollmentGoal] = useState('')
 
   useEffect(() => {
-    fetch('/api/project-templates')
-      .then(r => r.json())
-      .then(data => {
-        setTemplates(Array.isArray(data) ? data : [])
-        setLoading(false)
-      })
+    Promise.all([
+      fetch('/api/project-templates').then(r => r.json()),
+      fetch('/api/priorities').then(r => r.json()).catch(() => []),
+    ]).then(([templatesData, prioritiesData]) => {
+      setTemplates(Array.isArray(templatesData) ? templatesData : [])
+      const allP = Array.isArray(prioritiesData) ? prioritiesData : []
+      setPriorities(allP.filter((p: Priority) => !p.project_id))
+      setLoading(false)
+    })
   }, [])
 
   const filteredTemplates = categoryFilter === 'All'
@@ -104,6 +119,10 @@ export default function NewProjectPage() {
         template_id: selected.id,
         name: projectName.trim(),
         start_date: startDate,
+        priority_id: selectedPriority || null,
+        launch_date: launchDate || null,
+        revenue_goal: revenueGoal ? parseFloat(revenueGoal) : null,
+        enrollment_goal: enrollmentGoal ? parseInt(enrollmentGoal) : null,
       }),
     })
     const data = await res.json()
@@ -298,6 +317,50 @@ export default function NewProjectPage() {
                 </p>
               )}
             </div>
+            <div>
+              <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Link to Monthly Priority</label>
+              <select
+                value={selectedPriority}
+                onChange={e => setSelectedPriority(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
+              >
+                <option value="">None (no priority linked)</option>
+                {priorities.map(p => (
+                  <option key={p.id} value={p.id}>{p.title} ({p.month})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Launch Date <span className="font-normal text-fe-blue-gray">(optional)</span></label>
+              <input
+                type="date"
+                value={launchDate}
+                onChange={e => setLaunchDate(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Revenue Goal <span className="font-normal text-fe-blue-gray">(optional)</span></label>
+                <input
+                  type="number"
+                  value={revenueGoal}
+                  onChange={e => setRevenueGoal(e.target.value)}
+                  placeholder="e.g., 50000"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Enrollment Goal <span className="font-normal text-fe-blue-gray">(optional)</span></label>
+                <input
+                  type="number"
+                  value={enrollmentGoal}
+                  onChange={e => setEnrollmentGoal(e.target.value)}
+                  placeholder="e.g., 100"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Task Preview */}
@@ -394,6 +457,30 @@ export default function NewProjectPage() {
               <div className="flex justify-between text-sm font-fira">
                 <span className="text-fe-blue-gray">Wrap Up</span>
                 <span className="font-bold text-fe-navy">{getDueDatePreview(minWeek)} ({Math.abs(minWeek)} week{Math.abs(minWeek) > 1 ? 's' : ''} after)</span>
+              </div>
+            )}
+            {selectedPriority && (
+              <div className="flex justify-between text-sm font-fira">
+                <span className="text-fe-blue-gray">Linked Priority</span>
+                <span className="font-bold text-fe-navy">{priorities.find(p => p.id === selectedPriority)?.title || 'Unknown'}</span>
+              </div>
+            )}
+            {launchDate && (
+              <div className="flex justify-between text-sm font-fira">
+                <span className="text-fe-blue-gray">Launch Date</span>
+                <span className="font-bold text-fe-navy">{new Date(launchDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+              </div>
+            )}
+            {revenueGoal && (
+              <div className="flex justify-between text-sm font-fira">
+                <span className="text-fe-blue-gray">Revenue Goal</span>
+                <span className="font-bold text-fe-navy">${parseFloat(revenueGoal).toLocaleString()}</span>
+              </div>
+            )}
+            {enrollmentGoal && (
+              <div className="flex justify-between text-sm font-fira">
+                <span className="text-fe-blue-gray">Enrollment Goal</span>
+                <span className="font-bold text-fe-navy">{parseInt(enrollmentGoal).toLocaleString()}</span>
               </div>
             )}
           </div>

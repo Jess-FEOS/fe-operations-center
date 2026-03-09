@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Avatar from '@/components/Avatar'
 import StatusBadge from '@/components/StatusBadge'
 import WorkflowBadge from '@/components/WorkflowBadge'
@@ -69,6 +70,12 @@ interface Project {
   current_week: number
   status: string
   notes: string | null
+  priority_id: string | null
+  priority_title: string | null
+  priority_status: string | null
+  launch_date: string | null
+  revenue_goal: number | null
+  enrollment_goal: number | null
 }
 
 interface TeamMember {
@@ -77,6 +84,16 @@ interface TeamMember {
   initials: string
   color: string
   role_data: { id: string; name: string; color: string } | null
+}
+
+interface ProjectMetric {
+  id: string
+  metric_name: string
+  metric_value: number
+  metric_date: string
+  notes: string | null
+  campaign_name: string | null
+  priority_title: string | null
 }
 
 export default function ProjectDetailPage() {
@@ -121,6 +138,7 @@ export default function ProjectDetailPage() {
   const [linkUrl, setLinkUrl] = useState('')
   const [dependencies, setDependencies] = useState<TaskDependency[]>([])
   const [addingDepToTask, setAddingDepToTask] = useState<string | null>(null)
+  const [projectMetrics, setProjectMetrics] = useState<ProjectMetric[]>([])
   const commentAuthorRef = useRef<HTMLDivElement>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const workflowDropdownRef = useRef<HTMLDivElement>(null)
@@ -153,7 +171,8 @@ export default function ProjectDetailPage() {
       fetch('/api/team').then(r => r.json()),
       fetch('/api/workflow-templates').then(r => r.json()),
       fetch('/api/roles').then(r => r.json()),
-    ]).then(([projectData, teamData, templates, rolesData]) => {
+      fetch(`/api/metrics?project_id=${params.id}`).then(r => r.json()).catch(() => []),
+    ]).then(([projectData, teamData, templates, rolesData, metricsData]) => {
       setProject(projectData.project)
       setTasks(projectData.tasks || [])
       setTeam(teamData)
@@ -172,6 +191,7 @@ export default function ProjectDetailPage() {
       notesRef.current = initialNotes
       setWorkflowTemplates(templates)
       setRoles(Array.isArray(rolesData) ? rolesData : [])
+      setProjectMetrics(Array.isArray(metricsData) ? metricsData : [])
       // Expand all phases by default
       const phases = new Set<string>((projectData.tasks || []).map((t: ProjectTask) => t.phase))
       setExpandedPhases(phases)
@@ -533,6 +553,22 @@ export default function ProjectDetailPage() {
                 <p className="text-sm text-fe-blue-gray font-fira">
                   Started {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </p>
+                {/* Priority chip */}
+                <div className="flex items-center gap-2 mt-1">
+                  {project.priority_id && project.priority_title ? (
+                    <Link
+                      href="/"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-fira font-bold bg-fe-blue/10 text-fe-blue hover:bg-fe-blue/20 transition-colors"
+                    >
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: project.priority_status === 'done' ? '#046A38' : project.priority_status === 'in_progress' ? '#0762C8' : '#647692' }} />
+                      {project.priority_title}
+                    </Link>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-fira font-bold bg-gray-100 text-gray-400">
+                      No priority linked
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
@@ -541,6 +577,29 @@ export default function ProjectDetailPage() {
                   rows={2}
                   className="mt-3 w-full px-3 py-2 text-sm font-fira text-fe-anthracite bg-transparent border border-transparent rounded-lg hover:border-gray-200 focus:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fe-blue resize-y placeholder:text-gray-300 transition-colors"
                 />
+                {/* Info row: launch_date, revenue_goal, enrollment_goal */}
+                {(project.launch_date || project.revenue_goal || project.enrollment_goal) && (
+                  <div className="flex flex-wrap gap-4 mt-3">
+                    {project.launch_date && (
+                      <div className="flex items-center gap-1.5 text-xs font-fira text-fe-anthracite">
+                        <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    )}
+                    {project.revenue_goal && (
+                      <div className="text-xs font-fira text-fe-anthracite">
+                        Revenue Goal: <span className="font-bold">${Number(project.revenue_goal).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {project.enrollment_goal && (
+                      <div className="text-xs font-fira text-fe-anthracite">
+                        Enrollment Goal: <span className="font-bold">{Number(project.enrollment_goal).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1136,6 +1195,31 @@ export default function ProjectDetailPage() {
             </div>
           )
         })}
+      </div>
+
+      {/* Metrics Section */}
+      <div className="mt-6 bg-white rounded-xl border border-gray-100 p-5">
+        <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-4">Metrics</h2>
+        {projectMetrics.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No metrics logged yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {projectMetrics.map(metric => (
+              <div key={metric.id} className="border border-gray-100 rounded-lg p-4">
+                <div className="text-2xl font-barlow font-extrabold text-fe-navy">
+                  {typeof metric.metric_value === 'number' ? metric.metric_value.toLocaleString() : metric.metric_value}
+                </div>
+                <div className="text-xs font-fira text-fe-blue-gray mt-1">{metric.metric_name}</div>
+                <div className="text-xs font-fira text-gray-400 mt-0.5">
+                  {new Date(metric.metric_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+                {metric.notes && (
+                  <p className="text-xs font-fira text-fe-anthracite mt-2">{metric.notes}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showDuplicate && project && (

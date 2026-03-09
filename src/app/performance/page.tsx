@@ -10,6 +10,26 @@ interface Project {
   start_date: string
 }
 
+interface Campaign {
+  id: string
+  name: string
+  project_id: string | null
+}
+
+interface Metric {
+  id: string
+  project_id: string | null
+  campaign_id: string | null
+  priority_id: string | null
+  metric_name: string
+  metric_value: number
+  metric_date: string
+  notes: string | null
+  project_name: string | null
+  campaign_name: string | null
+  priority_title: string | null
+}
+
 interface CourseMetric {
   id: string
   project_id: string
@@ -24,74 +44,98 @@ interface CourseMetric {
 }
 
 export default function PerformancePage() {
-  const [metrics, setMetrics] = useState<CourseMetric[]>([])
+  const [courseMetrics, setCourseMetrics] = useState<CourseMetric[]>([])
+  const [generalMetrics, setGeneralMetrics] = useState<Metric[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [allProjects, setAllProjects] = useState<Project[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [filteredCampaigns, setFilteredCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // Form state
   const [formProjectId, setFormProjectId] = useState('')
-  const [formEnrollment, setFormEnrollment] = useState('')
-  const [formRevenue, setFormRevenue] = useState('')
-  const [formOpenRate, setFormOpenRate] = useState('')
-  const [formClickRate, setFormClickRate] = useState('')
+  const [formCampaignId, setFormCampaignId] = useState('')
+  const [formMetricName, setFormMetricName] = useState('')
+  const [formMetricValue, setFormMetricValue] = useState('')
+  const [formMetricDate, setFormMetricDate] = useState('')
   const [formNotes, setFormNotes] = useState('')
 
-  useEffect(() => {
-    Promise.all([
+  const fetchMetrics = async () => {
+    const [courseData, metricsData, projectsData, allProjectsData, campaignsData] = await Promise.all([
       fetch('/api/course-metrics').then(r => r.json()).catch(() => []),
+      fetch('/api/metrics').then(r => r.json()).catch(() => []),
       fetch('/api/projects').then(r => r.json()).catch(() => []),
-    ]).then(([metricsData, projectsData]) => {
-      setMetrics(Array.isArray(metricsData) ? metricsData : [])
-      const allProjects = Array.isArray(projectsData) ? projectsData : []
-      setProjects(allProjects.filter((p: Project) => p.workflow_type === 'course-launch'))
-      setLoading(false)
-    })
+      fetch('/api/projects').then(r => r.json()).catch(() => []),
+      fetch('/api/campaigns').then(r => r.json()).catch(() => []),
+    ])
+    setCourseMetrics(Array.isArray(courseData) ? courseData : [])
+    setGeneralMetrics(Array.isArray(metricsData) ? metricsData : [])
+    const ap = Array.isArray(allProjectsData) ? allProjectsData : []
+    setAllProjects(ap)
+    setProjects(ap.filter((p: Project) => p.workflow_type === 'course-launch'))
+    setCampaigns(Array.isArray(campaignsData) ? campaignsData : [])
+  }
+
+  useEffect(() => {
+    fetchMetrics().then(() => setLoading(false))
   }, [])
+
+  // Filter campaigns by selected project
+  useEffect(() => {
+    if (formProjectId) {
+      setFilteredCampaigns(campaigns.filter(c => c.project_id === formProjectId))
+    } else {
+      setFilteredCampaigns(campaigns)
+    }
+    setFormCampaignId('')
+  }, [formProjectId, campaigns])
 
   const resetForm = () => {
     setFormProjectId('')
-    setFormEnrollment('')
-    setFormRevenue('')
-    setFormOpenRate('')
-    setFormClickRate('')
+    setFormCampaignId('')
+    setFormMetricName('')
+    setFormMetricValue('')
+    setFormMetricDate('')
     setFormNotes('')
   }
 
-  const submitMetrics = async () => {
-    if (!formProjectId) return
+  const submitMetric = async () => {
+    if (!formMetricName.trim() || !formMetricValue || !formMetricDate) return
     setSaving(true)
-    const res = await fetch('/api/course-metrics', {
+    const res = await fetch('/api/metrics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        project_id: formProjectId,
-        enrollment_count: parseInt(formEnrollment) || 0,
-        revenue: parseFloat(formRevenue) || 0,
-        email_open_rate: formOpenRate ? parseFloat(formOpenRate) : null,
-        email_click_rate: formClickRate ? parseFloat(formClickRate) : null,
+        project_id: formProjectId || null,
+        campaign_id: formCampaignId || null,
+        metric_name: formMetricName.trim(),
+        metric_value: parseFloat(formMetricValue),
+        metric_date: formMetricDate,
         notes: formNotes.trim() || null,
       }),
     })
-    const data = await res.json()
     if (res.ok) {
-      setMetrics(prev => [data, ...prev])
+      await fetchMetrics()
       resetForm()
       setShowForm(false)
     }
     setSaving(false)
   }
 
-  // Projects that already have metrics logged
-  const loggedProjectIds = new Set(metrics.map(m => m.project_id))
-  const unloggedProjects = projects.filter(p => !loggedProjectIds.has(p.id))
+  // Group general metrics by project name
+  const metricsByProject = generalMetrics.reduce<Record<string, Metric[]>>((acc, m) => {
+    const key = m.project_name || 'Unlinked'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(m)
+    return acc
+  }, {})
 
-  // Sort metrics by project start date for the chart
-  const chartMetrics = [...metrics].sort((a, b) =>
+  // Course metrics chart data
+  const chartMetrics = [...courseMetrics].sort((a, b) =>
     (a.project_start_date || '').localeCompare(b.project_start_date || '')
   )
-
   const maxEnrollment = Math.max(...chartMetrics.map(m => m.enrollment_count), 1)
   const maxRevenue = Math.max(...chartMetrics.map(m => Number(m.revenue)), 1)
 
@@ -123,82 +167,82 @@ export default function PerformancePage() {
       {/* Log Metrics Form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
-          <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Log Course Metrics</h2>
+          <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Log Metric</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Project</label>
+            <div>
+              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Project <span className="text-gray-400">(optional)</span></label>
               <select
                 value={formProjectId}
                 onChange={e => setFormProjectId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
               >
-                <option value="">Select a course launch project...</option>
-                {projects.map(p => (
+                <option value="">No project</option>
+                {allProjects.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Enrollment Count</label>
+              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Campaign <span className="text-gray-400">(optional)</span></label>
+              <select
+                value={formCampaignId}
+                onChange={e => setFormCampaignId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+              >
+                <option value="">No campaign</option>
+                {filteredCampaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Metric Name</label>
+              <input
+                type="text"
+                value={formMetricName}
+                onChange={e => setFormMetricName(e.target.value)}
+                placeholder="e.g., Enrollment Count, Revenue, CTR"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Value</label>
               <input
                 type="number"
-                value={formEnrollment}
-                onChange={e => setFormEnrollment(e.target.value)}
+                step="any"
+                value={formMetricValue}
+                onChange={e => setFormMetricValue(e.target.value)}
                 placeholder="0"
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
               />
             </div>
             <div>
-              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Revenue ($)</label>
+              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Date</label>
               <input
-                type="number"
-                step="0.01"
-                value={formRevenue}
-                onChange={e => setFormRevenue(e.target.value)}
-                placeholder="0.00"
+                type="date"
+                value={formMetricDate}
+                onChange={e => setFormMetricDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
               />
             </div>
             <div>
-              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Email Open Rate (%)</label>
-              <input
-                type="number"
-                step="0.1"
-                value={formOpenRate}
-                onChange={e => setFormOpenRate(e.target.value)}
-                placeholder="e.g. 42.5"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Email Click Rate (%)</label>
-              <input
-                type="number"
-                step="0.1"
-                value={formClickRate}
-                onChange={e => setFormClickRate(e.target.value)}
-                placeholder="e.g. 8.2"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Notes</label>
+              <label className="block text-xs text-fe-blue-gray font-fira mb-1">Notes <span className="text-gray-400">(optional)</span></label>
               <textarea
                 value={formNotes}
                 onChange={e => setFormNotes(e.target.value)}
                 placeholder="Any additional notes..."
-                rows={2}
+                rows={1}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue resize-none"
               />
             </div>
           </div>
           <div className="flex gap-2 mt-4">
             <button
-              onClick={submitMetrics}
-              disabled={!formProjectId || saving}
+              onClick={submitMetric}
+              disabled={!formMetricName.trim() || !formMetricValue || !formMetricDate || saving}
               className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {saving ? 'Saving...' : 'Save Metrics'}
+              {saving ? 'Saving...' : 'Save Metric'}
             </button>
             <button
               onClick={() => { resetForm(); setShowForm(false) }}
@@ -210,66 +254,96 @@ export default function PerformancePage() {
         </div>
       )}
 
-      {/* Course Launch Metrics Cards */}
-      <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Course Launch Metrics</h2>
-      {metrics.length === 0 ? (
+      {/* General Metrics by Project */}
+      <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Metrics</h2>
+      {generalMetrics.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-8 text-center mb-8">
-          <p className="text-fe-blue-gray font-fira">No metrics logged yet. Click "Log Metrics" to get started.</p>
+          <p className="text-fe-blue-gray font-fira">No metrics logged yet. Click &quot;Log Metrics&quot; to get started.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-          {metrics.map(m => (
-            <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-5">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <Link
-                    href={`/projects/${m.project_id}`}
-                    className="font-barlow font-bold text-lg text-fe-navy hover:text-fe-blue transition-colors"
-                  >
-                    {m.project_name}
-                  </Link>
-                  <p className="text-xs text-fe-blue-gray font-fira mt-0.5">
-                    Logged {new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
-                <span className="px-2.5 py-0.5 rounded text-xs font-fira font-bold text-white" style={{ backgroundColor: '#0762C8' }}>
-                  Course Launch
-                </span>
+        <div className="space-y-6 mb-8">
+          {Object.entries(metricsByProject).map(([projectName, projectMetrics]) => (
+            <div key={projectName}>
+              <h3 className="font-barlow font-bold text-sm text-fe-navy mb-3">{projectName}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {projectMetrics.map(m => (
+                  <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                    <div className="text-2xl font-barlow font-extrabold text-fe-navy">
+                      {typeof m.metric_value === 'number' ? m.metric_value.toLocaleString() : m.metric_value}
+                    </div>
+                    <div className="text-xs text-fe-blue-gray font-fira mt-1">{m.metric_name}</div>
+                    <div className="text-xs font-fira text-gray-400 mt-0.5">
+                      {new Date(m.metric_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                    {m.notes && (
+                      <p className="text-xs font-fira text-fe-anthracite mt-2">{m.notes}</p>
+                    )}
+                  </div>
+                ))}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-2xl font-barlow font-extrabold text-fe-navy">
-                    {m.enrollment_count.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-fe-blue-gray font-fira">Enrollments</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-barlow font-extrabold text-fe-navy">
-                    ${Number(m.revenue).toLocaleString()}
-                  </div>
-                  <div className="text-xs text-fe-blue-gray font-fira">Revenue</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-barlow font-extrabold text-fe-navy">
-                    {m.email_open_rate !== null ? `${m.email_open_rate}%` : '—'}
-                  </div>
-                  <div className="text-xs text-fe-blue-gray font-fira">Email Open Rate</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-barlow font-extrabold text-fe-navy">
-                    {m.email_click_rate !== null ? `${m.email_click_rate}%` : '—'}
-                  </div>
-                  <div className="text-xs text-fe-blue-gray font-fira">Email Click Rate</div>
-                </div>
-              </div>
-              {m.notes && (
-                <div className="mt-4 pt-3 border-t border-gray-100">
-                  <p className="text-sm text-fe-anthracite font-fira">{m.notes}</p>
-                </div>
-              )}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Course Launch Metrics Cards */}
+      {courseMetrics.length > 0 && (
+        <>
+          <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Course Launch Metrics</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+            {courseMetrics.map(m => (
+              <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <Link
+                      href={`/projects/${m.project_id}`}
+                      className="font-barlow font-bold text-lg text-fe-navy hover:text-fe-blue transition-colors"
+                    >
+                      {m.project_name}
+                    </Link>
+                    <p className="text-xs text-fe-blue-gray font-fira mt-0.5">
+                      Logged {new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded text-xs font-fira font-bold text-white" style={{ backgroundColor: '#0762C8' }}>
+                    Course Launch
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-2xl font-barlow font-extrabold text-fe-navy">
+                      {m.enrollment_count.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-fe-blue-gray font-fira">Enrollments</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-barlow font-extrabold text-fe-navy">
+                      ${Number(m.revenue).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-fe-blue-gray font-fira">Revenue</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-barlow font-extrabold text-fe-navy">
+                      {m.email_open_rate !== null ? `${m.email_open_rate}%` : '\u2014'}
+                    </div>
+                    <div className="text-xs text-fe-blue-gray font-fira">Email Open Rate</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-barlow font-extrabold text-fe-navy">
+                      {m.email_click_rate !== null ? `${m.email_click_rate}%` : '\u2014'}
+                    </div>
+                    <div className="text-xs text-fe-blue-gray font-fira">Email Click Rate</div>
+                  </div>
+                </div>
+                {m.notes && (
+                  <div className="mt-4 pt-3 border-t border-gray-100">
+                    <p className="text-sm text-fe-anthracite font-fira">{m.notes}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Trends Chart */}
