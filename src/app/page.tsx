@@ -149,7 +149,7 @@ export default function Dashboard() {
   const [newTargetDate, setNewTargetDate] = useState('');
   const [newMonth, setNewMonth] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
-  const [allProjectsList, setAllProjectsList] = useState<{ id: string; name: string; workflow_type: string }[]>([]);
+  const [allProjectsList, setAllProjectsList] = useState<{ id: string; name: string; workflow_type: string; launch_date?: string | null; priority_id?: string | null }[]>([]);
   const [addingPriority, setAddingPriority] = useState(false);
   const [projectSort, setProjectSort] = useState('launch_date');
   const [projectFilter, setProjectFilter] = useState('all');
@@ -348,6 +348,71 @@ export default function Dashboard() {
       setAddingPriority(false);
     }
   };
+
+  // Generate suggested priority title based on workflow type
+  function generateSuggestion(proj: { name: string; workflow_type: string; launch_date?: string | null }) {
+    const dateFmt = proj.launch_date
+      ? new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : 'launch';
+    switch (proj.workflow_type) {
+      case 'course-launch': return `Fill ${proj.name} — enroll students by ${dateFmt}`;
+      case 'newsletter': return `Grow ${proj.name} subscriber list before ${dateFmt}`;
+      case 'podcast': return `Build audience and launch ${proj.name} by ${dateFmt}`;
+      case 'subscription': return `Build waitlist for ${proj.name} by ${dateFmt}`;
+      default: return `Complete ${proj.name} by ${dateFmt}`;
+    }
+  }
+
+  // Get the month before a date as YYYY-MM string
+  function monthBefore(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setMonth(d.getMonth() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  // Projects eligible for priority suggestions: active, launch within 90 days, no priority_id
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const in90Days = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const suggestedProjects = allProjectsList.filter(p => {
+    if (p.priority_id) return false;
+    if (!p.launch_date) return false;
+    const ld = new Date(p.launch_date + 'T00:00:00');
+    return ld >= now && ld <= in90Days;
+  });
+
+  // Ghost cards: active projects launching within 60 days with no linked priority
+  const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+  const ghostProjects = allProjectsList.filter(p => {
+    if (p.priority_id) return false;
+    if (!p.launch_date) return false;
+    const ld = new Date(p.launch_date + 'T00:00:00');
+    return ld >= now && ld <= in60Days;
+  });
+
+  // Pre-fill form from a suggested project
+  function useSuggestion(proj: { id: string; name: string; workflow_type: string; launch_date?: string | null }) {
+    setNewTitle(generateSuggestion(proj));
+    setNewProjectId(proj.id);
+    setNewTargetDate(proj.launch_date || '');
+    if (proj.launch_date) {
+      const mb = monthBefore(proj.launch_date);
+      // Only set if it's one of the available month options
+      if (MONTH_OPTIONS.some(o => o.value === mb)) {
+        setNewMonth(mb);
+      }
+    }
+    setNewStatus('not_started');
+    setNewGoal('');
+  }
+
+  // Pre-fill and open form for a ghost card project
+  function openGhostPriority(proj: { id: string; name: string; workflow_type: string; launch_date?: string | null }) {
+    useSuggestion(proj);
+    setShowAddForm(true);
+  }
 
   // Build Upcoming Launches from priorities with a future target_date only
   const today = new Date();
@@ -640,12 +705,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Monthly Priorities */}
+      {/* This Month's Focus */}
       <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
-              Monthly Priorities
+              This Month&apos;s Focus
             </h2>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
@@ -674,9 +739,43 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Add Priority Inline Form */}
+        {/* Add Priority Modal */}
         {showAddForm && (
           <div className="mb-4 p-4 rounded-lg border border-blue-100 bg-blue-50/30">
+            {/* SECTION 1: Suggested from your projects */}
+            {suggestedProjects.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-2">Suggested from your projects</h3>
+                <div className="space-y-2">
+                  {suggestedProjects.map(proj => {
+                    const suggestion = generateSuggestion(proj);
+                    const launchFmt = proj.launch_date
+                      ? new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : null;
+                    return (
+                      <div key={proj.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-gray-200 bg-white">
+                        <div className="min-w-0">
+                          <p className="text-sm font-fira text-fe-navy truncate">{suggestion}</p>
+                          <p className="text-xs font-fira text-fe-blue-gray mt-0.5">{proj.name}{launchFmt ? ` · launches ${launchFmt}` : ''}</p>
+                        </div>
+                        <button
+                          onClick={() => useSuggestion(proj)}
+                          className="shrink-0 px-3 py-1 rounded text-xs font-fira font-bold text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                        >
+                          Use This &rarr;
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="border-t border-gray-200 mt-4 mb-3" />
+              </div>
+            )}
+
+            {/* SECTION 2: Manual form */}
+            <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-2">
+              {suggestedProjects.length > 0 ? 'Or add your own' : 'Add a priority'}
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div className="md:col-span-2">
                 <label className="block text-xs font-fira text-fe-blue-gray mb-1">Title <span className="text-red-400">*</span></label>
@@ -825,6 +924,39 @@ export default function Dashboard() {
                 />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Ghost cards for unlinked projects launching soon */}
+        {ghostProjects.length > 0 && (
+          <div className={`space-y-2 ${priorities.length > 0 || showAddForm ? 'mt-3' : ''}`}>
+            {ghostProjects.map(proj => {
+              const launchFmt = proj.launch_date
+                ? new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : '';
+              return (
+                <div
+                  key={`ghost-${proj.id}`}
+                  className="flex items-center justify-between px-4 py-3 rounded-lg border-2 border-dashed border-amber-200 bg-amber-50/30"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm">&#9888;&#65039;</span>
+                    <span className="text-sm font-fira text-amber-700">
+                      No priority set — <span className="font-bold">{proj.name}</span> launches {launchFmt}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => openGhostPriority(proj)}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-fira font-bold text-amber-700 hover:bg-amber-100 transition-colors border border-amber-300"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Set Priority
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
