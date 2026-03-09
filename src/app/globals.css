@@ -14,6 +14,23 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'Barlow', sans-serif;
 }
 
+option {
+  color: #1f2937 !important;
+  background-color: #ffffff !important;
+}
+
+select option {
+  color: #1f2937 !important;
+  background-color: #ffffff !important;
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+  color: #1f2937 !important;
+  background-color: #e5e7eb !important;
+}
+
 @media print {
   aside {
     display: none !important;
