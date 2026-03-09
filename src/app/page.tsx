@@ -20,7 +20,10 @@ interface Project {
   progress: number;
   launch_date?: string | null;
   priority_id?: string | null;
+  priority_title?: string | null;
   priority_status?: string | null;
+  revenue_goal?: number | null;
+  enrollment_goal?: number | null;
 }
 
 interface TeamMember {
@@ -93,6 +96,22 @@ interface Campaign {
   owner_ids: string[] | null;
 }
 
+interface EnrollmentRow {
+  id: string;
+  name: string;
+  enrollment_goal: number | null;
+  enrollment_actual: number;
+  revenue_goal: number | null;
+  revenue_actual: number;
+  launch_date: string | null;
+}
+
+interface AttentionNeeded {
+  overdue_count: number;
+  no_priority_projects: { id: string; name: string }[];
+  stalled_launching_soon: { id: string; name: string; launch_date: string }[];
+}
+
 const MONTH_OPTIONS = [
   { value: '2026-03', label: 'March 2026' },
   { value: '2026-04', label: 'April 2026' },
@@ -100,13 +119,6 @@ const MONTH_OPTIONS = [
 ];
 
 const ALL_STATUSES: TaskStatus[] = ['not_started', 'in_progress', 'done', 'blocked'];
-
-const WORKFLOW_TOTAL_WEEKS: Record<string, number> = {
-  'course-launch': 8,
-  podcast: 2,
-  newsletter: 2,
-  subscription: 12,
-};
 
 export default function Dashboard() {
   const [projectsRaw, setProjectsRaw] = useState<Project[]>([]);
@@ -116,7 +128,6 @@ export default function Dashboard() {
   const [unassignedTasks, setUnassignedTasks] = useState<UnassignedTask[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [upcomingLaunches, setUpcomingLaunches] = useState<{ id: string; name: string; launch_date: string; status: string; workflow_type: string; priority_id: string | null; priority_title: string | null; total_tasks: number; done_tasks: number; progress: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [overdueExpanded, setOverdueExpanded] = useState(false);
   const [unassignedExpanded, setUnassignedExpanded] = useState(false);
@@ -146,9 +157,18 @@ export default function Dashboard() {
   const [editPProjectId, setEditPProjectId] = useState('');
   const [savingPriority, setSavingPriority] = useState(false);
   const [deletingPriorityId, setDeletingPriorityId] = useState<string | null>(null);
-  const [projectSort, setProjectSort] = useState('launch_date');
-  const [projectFilter, setProjectFilter] = useState('all');
   const manualFormRef = useRef<HTMLDivElement>(null);
+
+  // New dashboard sections
+  const [nextLaunch, setNextLaunch] = useState<Project | null>(null);
+  const [enrollmentTracker, setEnrollmentTracker] = useState<EnrollmentRow[]>([]);
+  const [attentionNeeded, setAttentionNeeded] = useState<AttentionNeeded>({ overdue_count: 0, no_priority_projects: [], stalled_launching_soon: [] });
+
+  // Metric logging modal
+  const [logMetricProjectId, setLogMetricProjectId] = useState<string | null>(null);
+  const [logMetricName, setLogMetricName] = useState('enrollments');
+  const [logMetricValue, setLogMetricValue] = useState('');
+  const [logMetricSaving, setLogMetricSaving] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -173,7 +193,6 @@ export default function Dashboard() {
         const rolesData = rolesRes ? await rolesRes.json() : [];
         const projectsListData = projectsListRes ? await projectsListRes.json() : [];
 
-        // Use dashboard active_projects as primary project source
         setProjectsRaw(Array.isArray(dashboardData.active_projects) ? dashboardData.active_projects : []);
         setTeam(Array.isArray(teamData) ? teamData : []);
         setTasks(Array.isArray(tasksData) ? tasksData : []);
@@ -182,7 +201,9 @@ export default function Dashboard() {
         setRoles(Array.isArray(rolesData) ? rolesData : []);
         setAllProjectsList(Array.isArray(projectsListData) ? projectsListData : []);
         setCampaigns(Array.isArray(dashboardData.active_campaigns) ? dashboardData.active_campaigns : []);
-        setUpcomingLaunches(Array.isArray(dashboardData.upcoming_launches) ? dashboardData.upcoming_launches : []);
+        setNextLaunch(dashboardData.next_launch || null);
+        setEnrollmentTracker(Array.isArray(dashboardData.enrollment_tracker) ? dashboardData.enrollment_tracker : []);
+        setAttentionNeeded(dashboardData.attention_needed || { overdue_count: 0, no_priority_projects: [], stalled_launching_soon: [] });
 
         // Use /api/priorities as the SOLE source for priorities — deduplicate by ID
         const rawP = Array.isArray(allPrioritiesData) ? allPrioritiesData : [];
@@ -204,27 +225,6 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  // Sort + filter active projects
-  const sortedProjects = (() => {
-    let list = [...projectsRaw];
-    if (projectFilter !== 'all') {
-      list = list.filter(p => p.workflow_type === projectFilter);
-    }
-    list.sort((a, b) => {
-      if (projectSort === 'launch_date') {
-        if (a.launch_date && b.launch_date) return a.launch_date.localeCompare(b.launch_date);
-        if (a.launch_date && !b.launch_date) return -1;
-        if (!a.launch_date && b.launch_date) return 1;
-        return 0;
-      }
-      if (projectSort === 'start_date') return a.start_date.localeCompare(b.start_date);
-      if (projectSort === 'name') return a.name.localeCompare(b.name);
-      if (projectSort === 'progress') return b.progress - a.progress;
-      return 0;
-    });
-    return list;
-  })();
-  const projects = sortedProjects;
   const activeProjectCount = projectsRaw.filter((p) => p.status === 'active').length || projectsRaw.length;
   const dueThisWeekCount = tasks.length;
   const overdueCount = overdueTasks.length;
@@ -232,17 +232,15 @@ export default function Dashboard() {
 
   const daysOverdue = (dueDate: string) => {
     const due = new Date(dueDate + 'T00:00:00');
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+    const n = new Date();
+    n.setHours(0, 0, 0, 0);
+    return Math.floor((n.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  // Filter overdue tasks by "this week only" (last 7 days)
   const filteredOverdue = overdueThisWeekOnly
     ? overdueTasks.filter(t => daysOverdue(t.due_date) <= 7)
     : overdueTasks;
 
-  // Group by project
   const overdueByProject = filteredOverdue.reduce<Record<string, { projectName: string; projectId: string; tasks: OverdueTask[] }>>((acc, task) => {
     if (!acc[task.project_id]) {
       acc[task.project_id] = { projectName: task.project_name, projectId: task.project_id, tasks: [] };
@@ -263,18 +261,6 @@ export default function Dashboard() {
   };
 
   const teamMap = new Map(team.map((m) => [m.id, m]));
-
-  function getProjectOwners(projectId: string): TeamMember[] {
-    const ownerIds = new Set<string>();
-    tasks
-      .filter((t) => t.project_id === projectId)
-      .forEach((t) => {
-        t.owner_ids?.forEach((id) => ownerIds.add(id));
-      });
-    return Array.from(ownerIds)
-      .map((id) => teamMap.get(id))
-      .filter((m): m is TeamMember => !!m);
-  }
 
   const handleMonthChange = (month: string) => {
     setSelectedMonth(month);
@@ -302,7 +288,6 @@ export default function Dashboard() {
   const handleAddPriority = async () => {
     if (!newTitle.trim()) return;
     const monthToUse = newMonth || selectedMonth;
-    // Client-side duplicate check
     const isDuplicate = allPriorities.some(p =>
       p.title.toLowerCase() === newTitle.trim().toLowerCase() && p.month === monthToUse
     );
@@ -327,7 +312,6 @@ export default function Dashboard() {
       });
       if (res.ok) {
         const created = await res.json();
-        // If project_id was selected, also PATCH the project to set its priority_id
         if (newProjectId && created.id) {
           await fetch(`/api/projects/${newProjectId}`, {
             method: 'PATCH',
@@ -414,7 +398,6 @@ export default function Dashboard() {
     }
   };
 
-  // Generate suggested priority title based on workflow type
   function generateSuggestion(proj: { name: string; workflow_type: string; launch_date?: string | null }) {
     const dateFmt = proj.launch_date
       ? new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -428,7 +411,6 @@ export default function Dashboard() {
     }
   }
 
-  // Get the month before a date as YYYY-MM string
   function monthBefore(dateStr: string): string {
     const d = new Date(dateStr + 'T00:00:00');
     d.setMonth(d.getMonth() - 1);
@@ -437,7 +419,6 @@ export default function Dashboard() {
     return `${y}-${m}`;
   }
 
-  // Projects eligible for priority suggestions: active, launch within 90 days, no priority_id
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const in90Days = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
@@ -448,7 +429,6 @@ export default function Dashboard() {
     return ld >= now && ld <= in90Days;
   });
 
-  // Ghost cards: active projects launching within 60 days with no linked priority
   const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
   const ghostProjects = allProjectsList.filter(p => {
     if (p.priority_id) return false;
@@ -457,7 +437,6 @@ export default function Dashboard() {
     return ld >= now && ld <= in60Days;
   });
 
-  // Pre-fill form from a suggested project
   function useSuggestion(proj: { id: string; name: string; workflow_type: string; launch_date?: string | null }) {
     setNewTitle(generateSuggestion(proj));
     setNewProjectId(proj.id);
@@ -472,7 +451,6 @@ export default function Dashboard() {
     setNewGoal('');
     setSelectedSuggestionId(proj.id);
     setDuplicateWarning('');
-    // Scroll to manual form and briefly highlight
     setTimeout(() => {
       manualFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       manualFormRef.current?.classList.add('ring-2', 'ring-fe-blue');
@@ -480,14 +458,52 @@ export default function Dashboard() {
     }, 50);
   }
 
-  // Pre-fill and open form for a ghost card project
   function openGhostPriority(proj: { id: string; name: string; workflow_type: string; launch_date?: string | null }) {
     useSuggestion(proj);
     setShowAddForm(true);
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Countdown helper
+  const daysUntil = (dateStr: string) => {
+    const target = new Date(dateStr + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  // Log metric handler
+  const handleLogMetric = async () => {
+    if (!logMetricProjectId || !logMetricValue) return;
+    setLogMetricSaving(true);
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await fetch('/api/metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: logMetricProjectId,
+          metric_name: logMetricName,
+          metric_value: parseFloat(logMetricValue),
+          metric_date: todayStr,
+        }),
+      });
+      if (res.ok) {
+        // Update local tracker state
+        setEnrollmentTracker(prev => prev.map(row => {
+          if (row.id !== logMetricProjectId) return row;
+          if (logMetricName === 'enrollments') return { ...row, enrollment_actual: parseFloat(logMetricValue) };
+          if (logMetricName === 'revenue') return { ...row, revenue_actual: parseFloat(logMetricValue) };
+          return row;
+        }));
+        setLogMetricProjectId(null);
+        setLogMetricValue('');
+      }
+    } catch (err) {
+      console.error('Failed to log metric:', err);
+    } finally {
+      setLogMetricSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -503,6 +519,8 @@ export default function Dashboard() {
     { label: 'Overdue', value: overdueCount },
     { label: 'Completed This Week', value: completedThisWeekCount },
   ];
+
+  const hasAttentionItems = attentionNeeded.overdue_count > 0 || attentionNeeded.no_priority_projects.length > 0 || attentionNeeded.stalled_launching_soon.length > 0;
 
   return (
     <div className="font-fira">
@@ -527,6 +545,60 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* ===== 1. NEXT LAUNCH COUNTDOWN ===== */}
+      {nextLaunch ? (
+        <div className="mb-8 bg-gradient-to-r from-fe-navy to-fe-blue rounded-xl p-6 text-white">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-fira uppercase tracking-widest text-white/60 mb-1">Next Launch</p>
+              <h2 className="font-barlow font-extrabold text-2xl leading-tight mb-2">{nextLaunch.name}</h2>
+              <div className="flex items-center gap-3 mb-4">
+                <WorkflowBadge type={nextLaunch.workflow_type} />
+                {nextLaunch.launch_date && (
+                  <span className="text-sm font-fira text-white/80">
+                    {new Date(nextLaunch.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
+              {nextLaunch.priority_title ? (
+                <p className="text-sm font-fira text-white/70 mb-4">
+                  Priority: {nextLaunch.priority_title}
+                </p>
+              ) : (
+                <p className="text-sm font-fira text-amber-300 mb-4">
+                  &#9888;&#65039; No priority set
+                </p>
+              )}
+              <div className="mb-2">
+                <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${nextLaunch.progress}%`, backgroundColor: nextLaunch.progress >= 75 ? '#22c55e' : nextLaunch.progress >= 40 ? '#B29838' : '#ef4444' }}
+                  />
+                </div>
+                <p className="text-xs font-fira text-white/70 mt-1">
+                  {nextLaunch.done_tasks}/{nextLaunch.total_tasks} tasks complete ({nextLaunch.progress}%)
+                </p>
+              </div>
+              <Link href={`/projects/${nextLaunch.id}`} className="inline-flex items-center gap-1 text-sm font-fira font-bold text-white hover:text-white/80 transition-colors mt-1">
+                View Project &rarr;
+              </Link>
+            </div>
+            {nextLaunch.launch_date && (
+              <div className="text-center px-6 py-4 bg-white/10 rounded-xl shrink-0">
+                <div className="text-5xl font-barlow font-extrabold">{daysUntil(nextLaunch.launch_date)}</div>
+                <div className="text-sm font-fira text-white/70 mt-1">days until launch</div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-8 bg-white border border-gray-100 rounded-xl p-6">
+          <p className="text-xs font-fira uppercase tracking-widest text-fe-blue-gray mb-1">Next Launch</p>
+          <p className="text-sm text-fe-blue-gray font-fira">No upcoming launches scheduled. Set a launch date on a project to see the countdown.</p>
+        </div>
+      )}
 
       {/* Overdue Tasks Banner */}
       {overdueTasks.length > 0 && (
@@ -796,7 +868,6 @@ export default function Dashboard() {
         {/* Add Priority Modal */}
         {showAddForm && (
           <div className="mb-4 p-4 rounded-lg border border-blue-100 bg-blue-50/30">
-            {/* SECTION 1: Suggested from your projects */}
             {suggestedProjects.length > 0 && (
               <div className="mb-4">
                 <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-2">Suggested from your projects</h3>
@@ -831,7 +902,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* SECTION 2: Manual form */}
             <div ref={manualFormRef} className="rounded-lg transition-all" />
             <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-2">
               {suggestedProjects.length > 0 ? 'Or add your own' : 'Add a priority'}
@@ -933,7 +1003,6 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-2">
             {priorities.map(priority => {
-              // Inline edit mode for this priority
               if (editingPriorityId === priority.id) {
                 return (
                   <div key={priority.id} className="p-4 rounded-lg border border-fe-blue/30 bg-blue-50/20">
@@ -978,7 +1047,6 @@ export default function Dashboard() {
                 );
               }
 
-              // Delete confirmation
               if (deletingPriorityId === priority.id) {
                 return (
                   <div key={priority.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-red-200 bg-red-50">
@@ -991,7 +1059,6 @@ export default function Dashboard() {
                 );
               }
 
-              // Normal display
               return (
                 <div
                   key={priority.id}
@@ -1042,7 +1109,6 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* Edit/Delete icons — visible on hover */}
                     <div className="flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
                       <button
                         onClick={() => startEditPriority(priority)}
@@ -1108,59 +1174,176 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Upcoming Launches — exclusively from dashboardData.upcoming_launches (projects only) */}
+      {/* ===== 2. ENROLLMENT & REVENUE TRACKER ===== */}
       <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
-        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">
-          Upcoming Launches
-        </h2>
-        <p className="text-xs font-fira text-fe-blue-gray mb-4">Prepare now — these are coming</p>
-        {upcomingLaunches.length === 0 ? (
-          <p className="text-sm text-fe-blue-gray font-fira">No upcoming launches scheduled.</p>
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Enrollment &amp; Revenue Tracker</h2>
+        <p className="text-xs font-fira text-fe-blue-gray mb-4">Course launches with enrollment or revenue goals</p>
+        {enrollmentTracker.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No enrollment or revenue goals set — add them by editing a project.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {upcomingLaunches.map(proj => (
-              <Link
-                key={proj.id}
-                href={`/projects/${proj.id}`}
-                className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow block"
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
-                    {proj.name}
-                  </h3>
-                  <StatusBadge status={(proj.status as TaskStatus) || 'not_started'} interactive={false} />
-                </div>
-                <div className="flex items-center gap-2 mb-3">
-                  <WorkflowBadge type={proj.workflow_type} />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
-                    <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    {new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          <div className="space-y-3">
+            {enrollmentTracker.map(row => {
+              const enrollPct = row.enrollment_goal ? Math.min(100, Math.round((row.enrollment_actual / row.enrollment_goal) * 100)) : 0;
+              const revPct = row.revenue_goal ? Math.min(100, Math.round((row.revenue_actual / row.revenue_goal) * 100)) : 0;
+              return (
+                <div key={row.id} className="border border-gray-100 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Link href={`/projects/${row.id}`} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">{row.name}</Link>
+                    <button
+                      onClick={() => { setLogMetricProjectId(row.id); setLogMetricName('enrollments'); setLogMetricValue(''); }}
+                      className="px-2.5 py-1 rounded text-xs font-fira font-bold text-fe-blue border border-fe-blue/20 hover:bg-blue-50 transition-colors"
+                    >
+                      Log Result
+                    </button>
                   </div>
-                  {proj.total_tasks > 0 && (
-                    <div>
-                      <ProgressBar percent={proj.progress} />
-                      <p className="text-xs font-fira text-fe-blue-gray mt-1">
-                        {proj.done_tasks}/{proj.total_tasks} tasks complete
-                      </p>
-                    </div>
-                  )}
-                  {proj.priority_title ? (
-                    <p className="text-xs font-fira text-fe-blue-gray">
-                      &rarr; {proj.priority_title}
-                    </p>
-                  ) : (
-                    <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No priority linked</span>
-                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {row.enrollment_goal && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-fira text-fe-blue-gray">Enrollment</span>
+                          <span className="text-xs font-fira font-bold text-fe-anthracite">{row.enrollment_actual}/{row.enrollment_goal}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${enrollPct}%`, backgroundColor: enrollPct >= 75 ? '#22c55e' : enrollPct >= 40 ? '#B29838' : '#ef4444' }} />
+                        </div>
+                      </div>
+                    )}
+                    {row.revenue_goal && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-fira text-fe-blue-gray">Revenue</span>
+                          <span className="text-xs font-fira font-bold text-fe-anthracite">${row.revenue_actual.toLocaleString()}/${('$' + row.revenue_goal.toLocaleString())}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${revPct}%`, backgroundColor: revPct >= 75 ? '#22c55e' : revPct >= 40 ? '#B29838' : '#ef4444' }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Log Metric Modal */}
+      {logMetricProjectId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setLogMetricProjectId(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-barlow font-bold text-lg text-fe-navy mb-4">Log Result</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Project</label>
+                <p className="text-sm font-fira text-fe-navy font-bold">{enrollmentTracker.find(r => r.id === logMetricProjectId)?.name}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Metric</label>
+                <select
+                  value={logMetricName}
+                  onChange={e => setLogMetricName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white"
+                >
+                  <option value="enrollments">Enrollments</option>
+                  <option value="revenue">Revenue ($)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Value</label>
+                <input
+                  type="number"
+                  value={logMetricValue}
+                  onChange={e => setLogMetricValue(e.target.value)}
+                  placeholder={logMetricName === 'revenue' ? 'e.g. 15000' : 'e.g. 30'}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={handleLogMetric}
+                disabled={!logMetricValue || logMetricSaving}
+                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-white bg-fe-blue hover:bg-fe-blue/90 transition-colors disabled:opacity-50"
+              >
+                {logMetricSaving ? 'Saving...' : 'Log'}
+              </button>
+              <button
+                onClick={() => setLogMetricProjectId(null)}
+                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 3. ATTENTION NEEDED ===== */}
+      {hasAttentionItems && (
+        <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+          <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">Attention Needed</h2>
+          <div className="space-y-3">
+            {attentionNeeded.overdue_count > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-red-50 border border-red-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-500 text-sm font-bold">&#128308;</span>
+                  <span className="text-sm font-fira text-red-700">
+                    <span className="font-bold">{attentionNeeded.overdue_count}</span> overdue task{attentionNeeded.overdue_count !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <Link href="/this-week" className="text-xs font-fira font-bold text-red-600 hover:text-red-800 transition-colors">
+                  View All &rarr;
+                </Link>
+              </div>
+            )}
+
+            {attentionNeeded.no_priority_projects.length > 0 && (
+              <div className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-amber-500 text-sm font-bold">&#9888;&#65039;</span>
+                  <span className="text-sm font-fira text-amber-700 font-bold">Projects with no priority linked</span>
+                </div>
+                <div className="space-y-1.5">
+                  {attentionNeeded.no_priority_projects.map(proj => (
+                    <div key={proj.id} className="flex items-center justify-between">
+                      <Link href={`/projects/${proj.id}`} className="text-sm font-fira text-fe-anthracite hover:text-fe-navy transition-colors">{proj.name}</Link>
+                      <button
+                        onClick={() => {
+                          const match = allProjectsList.find(p => p.id === proj.id);
+                          if (match) openGhostPriority(match);
+                        }}
+                        className="text-xs font-fira font-bold text-amber-600 hover:text-amber-800 transition-colors"
+                      >
+                        + Set Priority
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {attentionNeeded.stalled_launching_soon.length > 0 && (
+              <div className="px-4 py-3 rounded-lg bg-yellow-50 border border-yellow-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-yellow-500 text-sm font-bold">&#128993;</span>
+                  <span className="text-sm font-fira text-yellow-700 font-bold">Launching within 30 days with 0% progress</span>
+                </div>
+                <div className="space-y-1.5">
+                  {attentionNeeded.stalled_launching_soon.map(proj => (
+                    <div key={proj.id} className="flex items-center justify-between">
+                      <Link href={`/projects/${proj.id}`} className="text-sm font-fira text-fe-anthracite hover:text-fe-navy transition-colors">{proj.name}</Link>
+                      <span className="text-xs font-fira text-yellow-600">
+                        {new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Active Campaigns */}
       <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
@@ -1191,91 +1374,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      {/* Projects In Progress */}
-      <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
-        Projects In Progress
-      </h2>
-
-      <div style={{display:'flex', gap:'12px', marginBottom:'12px', alignItems:'center'}}>
-        <select value={projectSort} onChange={e => setProjectSort(e.target.value)} style={{fontSize:'13px', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ddd'}}>
-          <option value="launch_date">Sort: Launch Date</option>
-          <option value="start_date">Sort: Start Date</option>
-          <option value="name">Sort: Name</option>
-          <option value="progress">Sort: Progress</option>
-        </select>
-        <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)} style={{fontSize:'13px', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ddd'}}>
-          <option value="all">All Types</option>
-          <option value="course-launch">Course Launch</option>
-          <option value="newsletter">Newsletter</option>
-          <option value="podcast">Podcast</option>
-          <option value="subscription">Subscription</option>
-          <option value="operations">Operations</option>
-        </select>
-      </div>
-
-      {projects.length === 0 ? (
-        <p className="text-fe-anthracite">No active projects found.</p>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {projects.map((project) => {
-            const totalWeeks =
-              WORKFLOW_TOTAL_WEEKS[project.workflow_type] ?? 8;
-            const owners = getProjectOwners(project.id);
-
-            return (
-              <Link
-                key={project.id}
-                href={`/projects/${project.id}`}
-                className="bg-white border border-gray-100 rounded-xl p-5 block hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <h3 className="font-barlow font-bold text-lg text-fe-navy">
-                    {project.name}
-                  </h3>
-                  <WorkflowBadge type={project.workflow_type} />
-                </div>
-
-                <p className="text-sm text-fe-anthracite mb-3">
-                  Week {project.current_week} of {totalWeeks}
-                </p>
-
-                <ProgressBar percent={project.progress} size="sm" />
-
-                <div className="mt-2 mb-1 space-y-0.5">
-                  <p className="text-xs font-fira text-fe-anthracite">
-                    📅 Started: {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                  <p className="text-xs font-fira">
-                    {project.launch_date ? (
-                      <span className="text-fe-anthracite">🚀 Launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                    ) : (
-                      <span className="text-gray-400">🚀 No launch date set</span>
-                    )}
-                  </p>
-                </div>
-
-                <p className="text-sm text-fe-anthracite mt-1 mb-3">
-                  {project.done_tasks} of {project.total_tasks} tasks complete
-                </p>
-
-                {owners.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {owners.map((member) => (
-                      <Avatar
-                        key={member.id}
-                        initials={member.initials}
-                        color={member.color}
-                        size="sm"
-                      />
-                    ))}
-                  </div>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

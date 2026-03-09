@@ -21,10 +21,10 @@ export async function GET() {
     // Current month for priorities
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // 90 days from now for upcoming launches
-    const ninetyDaysOut = new Date(now);
-    ninetyDaysOut.setDate(now.getDate() + 90);
-    const ninetyDaysStr = ninetyDaysOut.toISOString().split('T')[0];
+    // 30 days from now
+    const thirtyDaysOut = new Date(now);
+    thirtyDaysOut.setDate(now.getDate() + 30);
+    const thirtyDaysStr = thirtyDaysOut.toISOString().split('T')[0];
 
     // Run all queries in parallel
     const [
@@ -32,16 +32,16 @@ export async function GET() {
       allTasksRes,
       thisWeekTasksRes,
       prioritiesRes,
-      upcomingLaunchesRes,
       campaignsRes,
+      latestMetricsRes,
     ] = await Promise.all([
-      // Active projects with linked priority
+      // Active projects with linked priority + goals
       supabase
         .from('projects')
         .select('*, monthly_priorities!projects_priority_id_fkey(title, status)')
         .eq('status', 'active'),
 
-      // All tasks for active projects (for overdue + unassigned counts)
+      // All tasks for active projects
       supabase
         .from('project_tasks')
         .select('id, project_id, status, due_date, owner_ids'),
@@ -60,27 +60,24 @@ export async function GET() {
         .eq('month', currentMonth)
         .order('sort_order', { ascending: true }),
 
-      // Upcoming launches (projects with launch_date in next 90 days)
-      supabase
-        .from('projects')
-        .select('id, name, launch_date, status, workflow_type, priority_id, monthly_priorities!projects_priority_id_fkey(title)')
-        .gte('launch_date', todayStr)
-        .lte('launch_date', ninetyDaysStr)
-        .order('launch_date', { ascending: true }),
-
       // Active campaigns
       supabase
         .from('campaigns')
         .select('*, projects(name)')
         .neq('status', 'done'),
+
+      // Latest metrics for enrollment and revenue per project
+      supabase
+        .from('metrics')
+        .select('project_id, metric_name, metric_value')
+        .in('metric_name', ['enrollments', 'revenue'])
+        .order('metric_date', { ascending: false }),
     ]);
 
     // -- Active projects with progress + priority info --
     const projects = projectsRes.data || [];
     const allTasks = allTasksRes.data || [];
 
-    // Build project progress map
-    const activeProjectIds = new Set(projects.map((p: any) => p.id));
     const activeProjects = projects.map((project: any) => {
       const tasks = allTasks.filter((t: any) => t.project_id === project.id);
       const total = tasks.length;
@@ -94,6 +91,8 @@ export async function GET() {
         priority_id: project.priority_id,
         priority_title: project.monthly_priorities?.title || null,
         priority_status: project.monthly_priorities?.status || null,
+        revenue_goal: project.revenue_goal || null,
+        enrollment_goal: project.enrollment_goal || null,
         progress: total > 0 ? Math.round((done / total) * 100) : 0,
         total_tasks: total,
         done_tasks: done,
@@ -121,8 +120,6 @@ export async function GET() {
 
     // -- Monthly priorities with linked project info --
     const prioritiesRaw = prioritiesRes.data || [];
-
-    // Calculate progress for linked projects in priorities
     const monthlyPriorities = prioritiesRaw.map((p: any) => {
       let projectProgress = null;
       if (p.project_id) {
@@ -140,29 +137,58 @@ export async function GET() {
       };
     });
 
-    // -- Upcoming launches (enriched with priority title + task progress) --
-    const upcomingLaunchesRaw = upcomingLaunchesRes.data || [];
-    const upcomingLaunches = upcomingLaunchesRaw.map((proj: any) => {
-      const tasks = allTasks.filter((t: any) => t.project_id === proj.id);
-      const total = tasks.length;
-      const done = tasks.filter((t: any) => t.status === 'done').length;
-      return {
-        id: proj.id,
-        name: proj.name,
-        launch_date: proj.launch_date,
-        status: proj.status,
-        workflow_type: proj.workflow_type,
-        priority_id: proj.priority_id || null,
-        priority_title: proj.monthly_priorities?.title || null,
-        total_tasks: total,
-        done_tasks: done,
-        progress: total > 0 ? Math.round((done / total) * 100) : 0,
-      };
-    });
+    // -- Next Launch Countdown --
+    // Find soonest future launch among active projects
+    const projectsWithFutureLaunch = activeProjects
+      .filter((p: any) => p.launch_date && p.launch_date >= todayStr)
+      .sort((a: any, b: any) => a.launch_date.localeCompare(b.launch_date));
+    const nextLaunch = projectsWithFutureLaunch.length > 0 ? projectsWithFutureLaunch[0] : null;
+
+    // -- Enrollment & Revenue Tracker --
+    // Build latest metric per project (take first occurrence per project+metric_name since sorted desc)
+    const metricsRaw = latestMetricsRes.data || [];
+    const latestMetricMap: Record<string, Record<string, number>> = {};
+    for (const m of metricsRaw) {
+      if (!m.project_id) continue;
+      if (!latestMetricMap[m.project_id]) latestMetricMap[m.project_id] = {};
+      // Only keep the first (latest) value per metric_name
+      if (latestMetricMap[m.project_id][m.metric_name] === undefined) {
+        latestMetricMap[m.project_id][m.metric_name] = Number(m.metric_value) || 0;
+      }
+    }
+
+    const enrollmentTracker = activeProjects
+      .filter((p: any) => p.workflow_type === 'course-launch' && (p.enrollment_goal || p.revenue_goal))
+      .map((p: any) => {
+        const metrics = latestMetricMap[p.id] || {};
+        return {
+          id: p.id,
+          name: p.name,
+          enrollment_goal: p.enrollment_goal,
+          enrollment_actual: metrics['enrollments'] || 0,
+          revenue_goal: p.revenue_goal,
+          revenue_actual: metrics['revenue'] || 0,
+          launch_date: p.launch_date,
+        };
+      });
+
+    // -- Attention Needed --
+    // Projects with no priority linked
+    const noPriorityProjects = activeProjects
+      .filter((p: any) => !p.priority_id)
+      .map((p: any) => ({ id: p.id, name: p.name }));
+
+    // Projects launching within 30 days with 0% progress
+    const stalled30Day = activeProjects
+      .filter((p: any) => {
+        if (!p.launch_date) return false;
+        return p.launch_date >= todayStr && p.launch_date <= thirtyDaysStr && p.progress === 0;
+      })
+      .map((p: any) => ({ id: p.id, name: p.name, launch_date: p.launch_date }));
 
     // -- Active campaigns --
-    const campaignsRaw = campaignsRes.data || [];
-    const activeCampaigns = campaignsRaw.map((c: any) => ({
+    const campaignsRaw2 = campaignsRes.data || [];
+    const activeCampaigns = campaignsRaw2.map((c: any) => ({
       ...c,
       project_name: c.projects?.name || null,
       projects: undefined,
@@ -174,8 +200,14 @@ export async function GET() {
       overdue_count: overdueCount,
       unassigned_count: unassignedCount,
       monthly_priorities: monthlyPriorities,
-      upcoming_launches: upcomingLaunches,
       active_campaigns: activeCampaigns,
+      next_launch: nextLaunch,
+      enrollment_tracker: enrollmentTracker,
+      attention_needed: {
+        overdue_count: overdueCount,
+        no_priority_projects: noPriorityProjects,
+        stalled_launching_soon: stalled30Day,
+      },
     });
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
