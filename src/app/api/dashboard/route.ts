@@ -63,7 +63,7 @@ export async function GET() {
       // Upcoming launches (projects with launch_date in next 90 days)
       supabase
         .from('projects')
-        .select('id, name, launch_date, status, workflow_type')
+        .select('id, name, launch_date, status, workflow_type, priority_id, monthly_priorities!projects_priority_id_fkey(title)')
         .gte('launch_date', todayStr)
         .lte('launch_date', ninetyDaysStr)
         .order('launch_date', { ascending: true }),
@@ -140,8 +140,25 @@ export async function GET() {
       };
     });
 
-    // -- Upcoming launches --
-    const upcomingLaunches = upcomingLaunchesRes.data || [];
+    // -- Upcoming launches (enriched with priority title + task progress) --
+    const upcomingLaunchesRaw = upcomingLaunchesRes.data || [];
+    const upcomingLaunches = upcomingLaunchesRaw.map((proj: any) => {
+      const tasks = allTasks.filter((t: any) => t.project_id === proj.id);
+      const total = tasks.length;
+      const done = tasks.filter((t: any) => t.status === 'done').length;
+      return {
+        id: proj.id,
+        name: proj.name,
+        launch_date: proj.launch_date,
+        status: proj.status,
+        workflow_type: proj.workflow_type,
+        priority_id: proj.priority_id || null,
+        priority_title: proj.monthly_priorities?.title || null,
+        total_tasks: total,
+        done_tasks: done,
+        progress: total > 0 ? Math.round((done / total) * 100) : 0,
+      };
+    });
 
     // -- Active campaigns --
     const campaignsRaw = campaignsRes.data || [];

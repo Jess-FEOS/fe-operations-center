@@ -116,7 +116,7 @@ export default function Dashboard() {
   const [unassignedTasks, setUnassignedTasks] = useState<UnassignedTask[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [upcomingLaunches, setUpcomingLaunches] = useState<{ id: string; name: string; launch_date: string; status: string; workflow_type: string }[]>([]);
+  const [upcomingLaunches, setUpcomingLaunches] = useState<{ id: string; name: string; launch_date: string; status: string; workflow_type: string; priority_id: string | null; priority_title: string | null; total_tasks: number; done_tasks: number; progress: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [overdueExpanded, setOverdueExpanded] = useState(false);
   const [unassignedExpanded, setUnassignedExpanded] = useState(false);
@@ -486,7 +486,6 @@ export default function Dashboard() {
     setShowAddForm(true);
   }
 
-  // Upcoming Launches: projects from /api/dashboard, enriched with priority + progress info
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -1109,61 +1108,59 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Upcoming Launches — project cards from /api/dashboard */}
-      {upcomingLaunches.length > 0 && (
-        <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
-          <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">
-            Upcoming Launches
-          </h2>
-          <p className="text-xs font-fira text-fe-blue-gray mb-4">Prepare now — these are coming</p>
+      {/* Upcoming Launches — exclusively from dashboardData.upcoming_launches (projects only) */}
+      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">
+          Upcoming Launches
+        </h2>
+        <p className="text-xs font-fira text-fe-blue-gray mb-4">Prepare now — these are coming</p>
+        {upcomingLaunches.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No upcoming launches scheduled.</p>
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {upcomingLaunches.map(proj => {
-              const linkedPriority = allPriorities.find(p => p.project_id === proj.id);
-              const activeProj = projectsRaw.find(p => p.id === proj.id);
-              return (
-                <Link
-                  key={proj.id}
-                  href={`/projects/${proj.id}`}
-                  className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow block"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
-                      {proj.name}
-                    </h3>
-                    <StatusBadge status={(proj.status as TaskStatus) || 'not_started'} interactive={false} />
+            {upcomingLaunches.map(proj => (
+              <Link
+                key={proj.id}
+                href={`/projects/${proj.id}`}
+                className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow block"
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
+                    {proj.name}
+                  </h3>
+                  <StatusBadge status={(proj.status as TaskStatus) || 'not_started'} interactive={false} />
+                </div>
+                <div className="flex items-center gap-2 mb-3">
+                  <WorkflowBadge type={proj.workflow_type} />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
+                    <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <WorkflowBadge type={proj.workflow_type} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
-                      <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      {new Date(proj.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                    </div>
-                    {activeProj && activeProj.total_tasks > 0 && (
-                      <div>
-                        <ProgressBar percent={activeProj.progress} />
-                        <p className="text-xs font-fira text-fe-blue-gray mt-1">
-                          {activeProj.done_tasks}/{activeProj.total_tasks} tasks complete
-                        </p>
-                      </div>
-                    )}
-                    {linkedPriority ? (
-                      <p className="text-xs font-fira text-fe-blue-gray">
-                        &rarr; {linkedPriority.title}
+                  {proj.total_tasks > 0 && (
+                    <div>
+                      <ProgressBar percent={proj.progress} />
+                      <p className="text-xs font-fira text-fe-blue-gray mt-1">
+                        {proj.done_tasks}/{proj.total_tasks} tasks complete
                       </p>
-                    ) : (
-                      <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No priority linked</span>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
+                    </div>
+                  )}
+                  {proj.priority_title ? (
+                    <p className="text-xs font-fira text-fe-blue-gray">
+                      &rarr; {proj.priority_title}
+                    </p>
+                  ) : (
+                    <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No priority linked</span>
+                  )}
+                </div>
+              </Link>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Active Campaigns */}
       <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
