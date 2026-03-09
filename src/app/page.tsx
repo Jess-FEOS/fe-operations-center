@@ -23,15 +23,6 @@ interface Project {
   priority_status?: string | null;
 }
 
-function sortProjectsByLaunchDate(projs: Project[]): Project[] {
-  return [...projs].sort((a, b) => {
-    if (a.launch_date && b.launch_date) return a.launch_date.localeCompare(b.launch_date);
-    if (a.launch_date && !b.launch_date) return -1;
-    if (!a.launch_date && b.launch_date) return 1;
-    return 0;
-  });
-}
-
 interface TeamMember {
   id: string;
   name: string;
@@ -102,6 +93,8 @@ interface LaunchCard {
   launch_date?: string | null;
   priority_status?: string | null;
   open_tasks?: number;
+  project_name?: string;
+  project_id?: string;
 }
 
 interface Campaign {
@@ -158,6 +151,8 @@ export default function Dashboard() {
   const [newProjectId, setNewProjectId] = useState('');
   const [allProjectsList, setAllProjectsList] = useState<{ id: string; name: string; workflow_type: string }[]>([]);
   const [addingPriority, setAddingPriority] = useState(false);
+  const [projectSort, setProjectSort] = useState('launch_date');
+  const [projectFilter, setProjectFilter] = useState('all');
 
   useEffect(() => {
     async function fetchData() {
@@ -213,8 +208,28 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  const projects = sortProjectsByLaunchDate(projectsRaw);
-  const activeProjectCount = projects.filter((p) => p.status === 'active').length || projects.length;
+  // Sort + filter active projects
+  const sortedProjects = (() => {
+    let list = [...projectsRaw];
+    if (projectFilter !== 'all') {
+      list = list.filter(p => p.workflow_type === projectFilter);
+    }
+    list.sort((a, b) => {
+      if (projectSort === 'launch_date') {
+        if (a.launch_date && b.launch_date) return a.launch_date.localeCompare(b.launch_date);
+        if (a.launch_date && !b.launch_date) return -1;
+        if (!a.launch_date && b.launch_date) return 1;
+        return 0;
+      }
+      if (projectSort === 'start_date') return a.start_date.localeCompare(b.start_date);
+      if (projectSort === 'name') return a.name.localeCompare(b.name);
+      if (projectSort === 'progress') return b.progress - a.progress;
+      return 0;
+    });
+    return list;
+  })();
+  const projects = sortedProjects;
+  const activeProjectCount = projectsRaw.filter((p) => p.status === 'active').length || projectsRaw.length;
   const dueThisWeekCount = tasks.length;
   const overdueCount = overdueTasks.length;
   const completedThisWeekCount = tasks.filter((t) => t.status === 'done').length;
@@ -334,46 +349,26 @@ export default function Dashboard() {
     }
   };
 
-  // Build launch pipeline from upcoming_launches (primary) + fallback to priorities with target_date
-  const seenLaunchIds = new Set<string>();
-  const launchPipeline: LaunchCard[] = [];
-
-  // Primary: upcoming launches from dashboard (projects with launch_date)
-  for (const ul of upcomingLaunches) {
-    const key = `project-${ul.id}`;
-    if (seenLaunchIds.has(key)) continue;
-    seenLaunchIds.add(key);
-    const proj = projects.find(p => p.id === ul.id);
-    launchPipeline.push({
-      id: key,
-      name: ul.name,
-      status: proj ? (proj.progress === 100 ? 'done' as TaskStatus : proj.progress > 0 ? 'in_progress' as TaskStatus : 'not_started' as TaskStatus) : (ul.status as TaskStatus) || 'not_started',
-      goal: null,
-      target_date: ul.launch_date,
-      source: 'project' as const,
-      workflow_type: ul.workflow_type,
-      progress: proj?.progress,
-      launch_date: ul.launch_date,
-      priority_status: proj?.priority_status,
-      open_tasks: proj ? proj.total_tasks - proj.done_tasks : undefined,
-    });
-  }
-
-  // Fallback: priorities with target_date (if no upcoming launches, or to supplement)
-  for (const p of allPriorities) {
-    if (!p.goal && !p.target_date) continue;
-    const key = `priority-${p.id}`;
-    if (seenLaunchIds.has(key)) continue;
-    seenLaunchIds.add(key);
-    launchPipeline.push({
-      id: key,
+  // Build Upcoming Launches from priorities with a future target_date only
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const launchPipeline: LaunchCard[] = allPriorities
+    .filter(p => {
+      if (!p.target_date) return false;
+      const td = new Date(p.target_date + 'T00:00:00');
+      return td >= today;
+    })
+    .sort((a, b) => (a.target_date || '').localeCompare(b.target_date || ''))
+    .map(p => ({
+      id: `priority-${p.id}`,
       name: p.title,
       status: p.status,
       goal: p.goal,
       target_date: p.target_date,
       source: 'priority' as const,
-    });
-  }
+      project_name: p.project_name || undefined,
+      project_id: p.project_id || undefined,
+    }));
 
   if (loading) {
     return (
@@ -843,6 +838,7 @@ export default function Dashboard() {
           <p className="text-xs font-fira text-fe-blue-gray mb-4">Prepare now — these are coming</p>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {launchPipeline.map(item => {
+              const realId = item.id.replace('priority-', '');
               return (
                 <div
                   key={item.id}
@@ -852,42 +848,18 @@ export default function Dashboard() {
                     <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">
                       {item.name}
                     </h3>
-                    {item.source === 'priority' ? (
-                      <StatusBadge
-                        status={item.status}
-                        onClick={(ns) => {
-                          const realId = item.id.replace('priority-', '');
-                          handleStatusChange(realId, ns);
-                        }}
-                      />
-                    ) : (
-                      <StatusBadge status={item.status} interactive={false} />
-                    )}
+                    <StatusBadge
+                      status={item.status}
+                      onClick={(ns) => handleStatusChange(realId, ns)}
+                    />
                   </div>
                   <div className="space-y-1.5 mt-3">
-                    {item.launch_date ? (
-                      <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
-                        <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        {new Date(item.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </div>
-                    ) : item.target_date ? (
+                    {item.target_date && (
                       <div className="flex items-center gap-2 text-xs font-fira text-fe-anthracite">
                         <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                         {new Date(item.target_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </div>
-                    ) : (
-                      <span className="text-xs font-fira text-gray-400">No launch date set</span>
-                    )}
-                    {item.priority_status && (
-                      <span className="text-xs font-fira text-fe-blue-gray">Priority: <span className="font-bold">{STATUS_LABELS[item.priority_status as TaskStatus]}</span></span>
-                    )}
-                    {item.open_tasks !== undefined && (
-                      <div>
-                        <span className="text-xs font-fira text-fe-blue-gray">{item.open_tasks} open tasks</span>
                       </div>
                     )}
                     {item.goal && (
@@ -895,25 +867,20 @@ export default function Dashboard() {
                         <svg className="w-3.5 h-3.5 text-fe-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                         </svg>
-                        <span className="font-bold" style={{ color: '#B29838' }}>Goal:</span>
+                        <span className="font-bold" style={{ color: '#B29838' }}>Success:</span>
                         <span className="text-fe-anthracite">{item.goal}</span>
                       </div>
                     )}
-                    {item.source === 'project' && item.workflow_type && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <WorkflowBadge type={item.workflow_type} />
-                        {item.progress !== undefined && (
-                          <span className="text-xs font-fira text-fe-blue-gray">{item.progress}% complete</span>
-                        )}
-                      </div>
-                    )}
-                    {item.source === 'priority' && (
-                      <div className="flex items-center gap-1.5 text-xs font-fira text-fe-blue-gray">
+                    {item.project_name ? (
+                      <Link href={`/projects/${item.project_id}`} className="flex items-center gap-1.5 text-xs font-fira text-fe-blue-gray hover:text-fe-blue transition-colors">
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
                         </svg>
-                        From priorities
-                      </div>
+                        &rarr; {item.project_name}
+                      </Link>
+                    ) : (
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
                     )}
                   </div>
                 </div>
@@ -957,6 +924,23 @@ export default function Dashboard() {
       <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
         Projects In Progress
       </h2>
+
+      <div style={{display:'flex', gap:'12px', marginBottom:'12px', alignItems:'center'}}>
+        <select value={projectSort} onChange={e => setProjectSort(e.target.value)} style={{fontSize:'13px', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ddd'}}>
+          <option value="launch_date">Sort: Launch Date</option>
+          <option value="start_date">Sort: Start Date</option>
+          <option value="name">Sort: Name</option>
+          <option value="progress">Sort: Progress</option>
+        </select>
+        <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)} style={{fontSize:'13px', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ddd'}}>
+          <option value="all">All Types</option>
+          <option value="course-launch">Course Launch</option>
+          <option value="newsletter">Newsletter</option>
+          <option value="podcast">Podcast</option>
+          <option value="subscription">Subscription</option>
+          <option value="operations">Operations</option>
+        </select>
+      </div>
 
       {projects.length === 0 ? (
         <p className="text-fe-anthracite">No active projects found.</p>
