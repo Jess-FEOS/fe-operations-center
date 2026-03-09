@@ -130,6 +130,7 @@ export default function Dashboard() {
   const [unassignedTasks, setUnassignedTasks] = useState<UnassignedTask[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [upcomingLaunches, setUpcomingLaunches] = useState<{ id: string; name: string; launch_date: string; status: string; workflow_type: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [overdueExpanded, setOverdueExpanded] = useState(false);
   const [unassignedExpanded, setUnassignedExpanded] = useState(false);
@@ -175,6 +176,7 @@ export default function Dashboard() {
         setUnassignedTasks(Array.isArray(unassignedData) ? unassignedData : []);
         setRoles(Array.isArray(rolesData) ? rolesData : []);
         setCampaigns(Array.isArray(dashboardData.active_campaigns) ? dashboardData.active_campaigns : []);
+        setUpcomingLaunches(Array.isArray(dashboardData.upcoming_launches) ? dashboardData.upcoming_launches : []);
 
         // Use /api/priorities as the SOLE source for priorities — deduplicate by ID
         const rawP = Array.isArray(allPrioritiesData) ? allPrioritiesData : [];
@@ -302,36 +304,46 @@ export default function Dashboard() {
     }
   };
 
-  // Build launch pipeline: priorities with goal/target_date + active projects
-  const priorityLaunches: LaunchCard[] = allPriorities
-    .filter(p => p.goal || p.target_date)
-    .map(p => ({
-      id: `priority-${p.id}`,
+  // Build launch pipeline from upcoming_launches (primary) + fallback to priorities with target_date
+  const seenLaunchIds = new Set<string>();
+  const launchPipeline: LaunchCard[] = [];
+
+  // Primary: upcoming launches from dashboard (projects with launch_date)
+  for (const ul of upcomingLaunches) {
+    const key = `project-${ul.id}`;
+    if (seenLaunchIds.has(key)) continue;
+    seenLaunchIds.add(key);
+    const proj = projects.find(p => p.id === ul.id);
+    launchPipeline.push({
+      id: key,
+      name: ul.name,
+      status: proj ? (proj.progress === 100 ? 'done' as TaskStatus : proj.progress > 0 ? 'in_progress' as TaskStatus : 'not_started' as TaskStatus) : (ul.status as TaskStatus) || 'not_started',
+      goal: null,
+      target_date: ul.launch_date,
+      source: 'project' as const,
+      workflow_type: ul.workflow_type,
+      progress: proj?.progress,
+      launch_date: ul.launch_date,
+      priority_status: proj?.priority_status,
+      open_tasks: proj ? proj.total_tasks - proj.done_tasks : undefined,
+    });
+  }
+
+  // Fallback: priorities with target_date (if no upcoming launches, or to supplement)
+  for (const p of allPriorities) {
+    if (!p.goal && !p.target_date) continue;
+    const key = `priority-${p.id}`;
+    if (seenLaunchIds.has(key)) continue;
+    seenLaunchIds.add(key);
+    launchPipeline.push({
+      id: key,
       name: p.title,
       status: p.status,
       goal: p.goal,
       target_date: p.target_date,
       source: 'priority' as const,
-    }));
-
-  const projectLaunches: LaunchCard[] = projects
-    .filter(p => p.status === 'active')
-    .filter(p => !priorityLaunches.some(pl => pl.name.toLowerCase().includes(p.name.toLowerCase().split(' ')[0])))
-    .map(p => ({
-      id: `project-${p.id}`,
-      name: p.name,
-      status: p.progress === 100 ? 'done' as TaskStatus : p.progress > 0 ? 'in_progress' as TaskStatus : 'not_started' as TaskStatus,
-      goal: null,
-      target_date: p.start_date,
-      source: 'project' as const,
-      workflow_type: p.workflow_type,
-      progress: p.progress,
-      launch_date: p.launch_date,
-      priority_status: p.priority_status,
-      open_tasks: p.total_tasks - p.done_tasks,
-    }));
-
-  const launchPipeline = [...priorityLaunches, ...projectLaunches];
+    });
+  }
 
   if (loading) {
     return (
