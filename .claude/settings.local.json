@@ -7,7 +7,12 @@
       "Bash(./node_modules/.bin/tsc:*)",
       "Bash(node_modules/.bin/next build:*)",
       "Bash(ls:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npx supabase:*)",
+      "Bash(node:*)",
+      "Bash(./node_modules/.bin/next:*)",
+      "Bash(curl:*)",
+      "Bash(git:*)"
     ]
   }
 }

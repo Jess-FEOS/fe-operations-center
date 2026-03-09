@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data: projects, error: projectsError } = await supabase
       .from('projects')
-      .select('*')
+      .select('*, monthly_priorities!projects_priority_id_fkey(title, status)')
       .eq('status', 'active');
 
     if (projectsError) {
@@ -16,14 +16,22 @@ export async function GET(request: NextRequest) {
     }
 
     const projectsWithProgress = await Promise.all(
-      (projects || []).map(async (project) => {
+      (projects || []).map(async (project: any) => {
         const { data: tasks, error: tasksError } = await supabase
           .from('project_tasks')
           .select('status')
           .eq('project_id', project.id);
 
         if (tasksError) {
-          return { ...project, progress: 0, total_tasks: 0, done_tasks: 0 };
+          return {
+            ...project,
+            priority_title: project.monthly_priorities?.title || null,
+            priority_status: project.monthly_priorities?.status || null,
+            monthly_priorities: undefined,
+            progress: 0,
+            total_tasks: 0,
+            done_tasks: 0,
+          };
         }
 
         const totalCount = tasks?.length || 0;
@@ -32,6 +40,9 @@ export async function GET(request: NextRequest) {
 
         return {
           ...project,
+          priority_title: project.monthly_priorities?.title || null,
+          priority_status: project.monthly_priorities?.status || null,
+          monthly_priorities: undefined,
           progress,
           total_tasks: totalCount,
           done_tasks: doneCount,
@@ -48,7 +59,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, workflow_type, start_date, workflow_template_id } = body;
+    const { name, workflow_type, start_date, workflow_template_id, priority_id, launch_date, revenue_goal, enrollment_goal } = body;
 
     if (!name || !workflow_type || !start_date || !workflow_template_id) {
       return NextResponse.json(
@@ -67,12 +78,24 @@ export async function POST(request: NextRequest) {
         workflow_template_id,
         current_week: 1,
         status: 'active',
+        priority_id: priority_id || null,
+        launch_date: launch_date || null,
+        revenue_goal: revenue_goal || null,
+        enrollment_goal: enrollment_goal || null,
       })
       .select()
       .single();
 
     if (projectError) {
       return NextResponse.json({ error: projectError.message }, { status: 500 });
+    }
+
+    // Two-way link: update the priority's project_id if priority_id was provided
+    if (priority_id) {
+      await supabase
+        .from('monthly_priorities')
+        .update({ project_id: project.id })
+        .eq('id', priority_id);
     }
 
     // Fetch template tasks for this workflow template

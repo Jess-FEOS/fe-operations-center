@@ -19,6 +19,58 @@ const SEED_DATA = [
   { month: '2026-05', title: 'Do groundwork for June AI Accelerator launch', status: 'not_started', goal: '100 paying students', target_date: null, sort_order: 3 },
 ];
 
+async function enrichPrioritiesWithProjects(priorities: any[]) {
+  if (!priorities || priorities.length === 0) return priorities;
+
+  // Get project IDs linked to these priorities
+  const projectIds = priorities
+    .map((p) => p.project_id)
+    .filter(Boolean);
+
+  if (projectIds.length === 0) {
+    return priorities.map((p) => ({
+      ...p,
+      project_name: null,
+      project_status: null,
+      project_progress: null,
+    }));
+  }
+
+  // Fetch linked projects
+  const { data: linkedProjects } = await supabase
+    .from('projects')
+    .select('id, name, status')
+    .in('id', projectIds);
+
+  // Fetch task counts for progress calculation
+  const { data: allTasks } = await supabase
+    .from('project_tasks')
+    .select('project_id, status')
+    .in('project_id', projectIds);
+
+  const projectMap = new Map<string, any>();
+  for (const proj of linkedProjects || []) {
+    const tasks = (allTasks || []).filter((t) => t.project_id === proj.id);
+    const total = tasks.length;
+    const done = tasks.filter((t) => t.status === 'done').length;
+    projectMap.set(proj.id, {
+      name: proj.name,
+      status: proj.status,
+      progress: total > 0 ? Math.round((done / total) * 100) : 0,
+    });
+  }
+
+  return priorities.map((p) => {
+    const proj = p.project_id ? projectMap.get(p.project_id) : null;
+    return {
+      ...p,
+      project_name: proj?.name || null,
+      project_status: proj?.status || null,
+      project_progress: proj?.progress ?? null,
+    };
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -50,13 +102,14 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: seedError.message }, { status: 500 });
       }
 
+      let result = seeded || [];
       if (month) {
-        return NextResponse.json((seeded || []).filter((p: any) => p.month === month));
+        result = result.filter((p: any) => p.month === month);
       }
-      return NextResponse.json(seeded || []);
+      return NextResponse.json(await enrichPrioritiesWithProjects(result));
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(await enrichPrioritiesWithProjects(data));
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

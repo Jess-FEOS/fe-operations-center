@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('project_tasks')
-      .select('*, projects(name, workflow_type)')
+      .select('*, projects(name, workflow_type), campaigns(name)')
       .gte('due_date', mondayStr)
       .lte('due_date', sundayStr);
 
@@ -31,12 +31,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Flatten the projects join into project_name and workflow_type
+    // Flatten the joins into top-level fields
     const flattened = (data || []).map((task: any) => ({
       ...task,
       project_name: task.projects?.name || '',
       workflow_type: task.projects?.workflow_type || '',
+      campaign_name: task.campaigns?.name || null,
       projects: undefined,
+      campaigns: undefined,
     }));
 
     return NextResponse.json(flattened);
