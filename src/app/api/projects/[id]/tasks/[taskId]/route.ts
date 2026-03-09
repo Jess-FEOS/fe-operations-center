@@ -43,6 +43,48 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // --- Sync: recalculate project progress when task status changes ---
+    if (body.status !== undefined) {
+      const { data: allTasks } = await supabase
+        .from('project_tasks')
+        .select('status')
+        .eq('project_id', id);
+
+      const total = allTasks?.length || 0;
+      const doneTasks = allTasks?.filter((t: { status: string }) => t.status === 'done').length || 0;
+      const progress = total > 0 ? Math.round((doneTasks / total) * 100) : 0;
+      const allDone = total > 0 && doneTasks === total;
+
+      const projectUpdates: Record<string, unknown> = {
+        progress,
+        done_tasks: doneTasks,
+      };
+      if (allDone) {
+        projectUpdates.status = 'completed';
+      }
+
+      await supabase
+        .from('projects')
+        .update(projectUpdates)
+        .eq('id', id);
+
+      // If project just became completed and has a priority_id, mark priority done
+      if (allDone) {
+        const { data: project } = await supabase
+          .from('projects')
+          .select('priority_id')
+          .eq('id', id)
+          .single();
+
+        if (project?.priority_id) {
+          await supabase
+            .from('monthly_priorities')
+            .update({ status: 'done' })
+            .eq('id', project.priority_id);
+        }
+      }
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

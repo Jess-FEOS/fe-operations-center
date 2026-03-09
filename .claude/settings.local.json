@@ -12,7 +12,8 @@
       "Bash(node:*)",
       "Bash(./node_modules/.bin/next:*)",
       "Bash(curl:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

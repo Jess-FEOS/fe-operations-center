@@ -77,6 +77,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // --- Sync: push metric value to linked campaign or priority ---
+    if (campaign_id) {
+      // Update campaign's actual_metric if metric_name matches the campaign's goal_metric
+      const { data: campaign } = await supabase
+        .from('campaigns')
+        .select('goal_metric')
+        .eq('id', campaign_id)
+        .single();
+
+      if (campaign && campaign.goal_metric === metric_name) {
+        await supabase
+          .from('campaigns')
+          .update({ actual_metric: metric_value })
+          .eq('id', campaign_id);
+      }
+    }
+
+    if (priority_id) {
+      await supabase
+        .from('monthly_priorities')
+        .update({ actual_metric: metric_value })
+        .eq('id', priority_id);
+    }
+
     return NextResponse.json(data, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

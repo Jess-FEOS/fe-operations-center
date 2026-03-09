@@ -71,6 +71,7 @@ export async function PATCH(
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.start_date !== undefined) updates.start_date = body.start_date;
+    if (body.status !== undefined) updates.status = body.status;
     if (body.notes !== undefined) updates.notes = body.notes;
     if (body.workflow_type !== undefined) updates.workflow_type = body.workflow_type;
     if (body.workflow_template_id !== undefined) updates.workflow_template_id = body.workflow_template_id;
@@ -155,6 +156,34 @@ export async function PATCH(
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // --- Sync: when project status changes, cascade to priority and campaigns ---
+    if (body.status !== undefined) {
+      // Sync priority status if project has a priority_id
+      const priorityId = data.priority_id;
+      if (priorityId) {
+        const statusMap: Record<string, string> = {
+          active: 'in_progress',
+          completed: 'done',
+          paused: 'not_started',
+        };
+        const mappedStatus = statusMap[body.status];
+        if (mappedStatus) {
+          await supabase
+            .from('monthly_priorities')
+            .update({ status: mappedStatus })
+            .eq('id', priorityId);
+        }
+      }
+
+      // If project completed, mark all linked campaigns as done
+      if (body.status === 'completed') {
+        await supabase
+          .from('campaigns')
+          .update({ status: 'done' })
+          .eq('project_id', id);
+      }
     }
 
     // Return tasks alongside project when workflow changed
