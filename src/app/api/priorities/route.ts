@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, month, status, goal, target_date } = body;
+    const { title, month, status, goal, target_date, project_id } = body;
 
     if (!title || !month) {
       return NextResponse.json({ error: 'Missing required fields: title, month' }, { status: 400 });
@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
         goal: goal || null,
         target_date: target_date || null,
         sort_order: nextOrder,
+        project_id: project_id || null,
       })
       .select()
       .single();

@@ -318,19 +318,6 @@ export default function NewProjectPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Link to Monthly Priority</label>
-              <select
-                value={selectedPriority}
-                onChange={e => setSelectedPriority(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
-              >
-                <option value="">None (no priority linked)</option>
-                {priorities.map(p => (
-                  <option key={p.id} value={p.id}>{p.title} ({p.month})</option>
-                ))}
-              </select>
-            </div>
-            <div>
               <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Launch Date <span className="font-normal text-fe-blue-gray">(optional)</span></label>
               <input
                 type="date"

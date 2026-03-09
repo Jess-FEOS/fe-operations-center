@@ -73,6 +73,10 @@ export async function PATCH(
     if (body.start_date !== undefined) updates.start_date = body.start_date;
     if (body.status !== undefined) updates.status = body.status;
     if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.launch_date !== undefined) updates.launch_date = body.launch_date;
+    if (body.revenue_goal !== undefined) updates.revenue_goal = body.revenue_goal;
+    if (body.enrollment_goal !== undefined) updates.enrollment_goal = body.enrollment_goal;
+    if (body.priority_id !== undefined) updates.priority_id = body.priority_id;
     if (body.workflow_type !== undefined) updates.workflow_type = body.workflow_type;
     if (body.workflow_template_id !== undefined) updates.workflow_template_id = body.workflow_template_id;
 

@@ -107,6 +107,10 @@ export default function ProjectDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDate, setEditDate] = useState('')
+  const [editLaunchDate, setEditLaunchDate] = useState('')
+  const [editWorkflowType, setEditWorkflowType] = useState('')
+  const [editRevenueGoal, setEditRevenueGoal] = useState('')
+  const [editEnrollmentGoal, setEditEnrollmentGoal] = useState('')
   const [showDuplicate, setShowDuplicate] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -186,6 +190,10 @@ export default function ProjectDetailPage() {
       setDependencies(projectData.dependencies || [])
       setEditName(projectData.project?.name || '')
       setEditDate(projectData.project?.start_date || '')
+      setEditLaunchDate(projectData.project?.launch_date || '')
+      setEditWorkflowType(projectData.project?.workflow_type || '')
+      setEditRevenueGoal(projectData.project?.revenue_goal != null ? String(projectData.project.revenue_goal) : '')
+      setEditEnrollmentGoal(projectData.project?.enrollment_goal != null ? String(projectData.project.enrollment_goal) : '')
       const initialNotes = projectData.project?.notes || ''
       setNotes(initialNotes)
       notesRef.current = initialNotes
@@ -403,12 +411,24 @@ export default function ProjectDetailPage() {
   }
 
   const saveEdits = async () => {
-    await fetch(`/api/projects/${params.id}`, {
+    const updates: Record<string, unknown> = {
+      name: editName,
+      start_date: editDate,
+      launch_date: editLaunchDate || null,
+      workflow_type: editWorkflowType,
+      revenue_goal: editRevenueGoal ? parseFloat(editRevenueGoal) : null,
+      enrollment_goal: editEnrollmentGoal ? parseInt(editEnrollmentGoal) : null,
+    }
+    const res = await fetch(`/api/projects/${params.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName, start_date: editDate }),
+      body: JSON.stringify(updates),
     })
-    setProject(prev => prev ? { ...prev, name: editName, start_date: editDate } : prev)
+    if (res.ok) {
+      const data = await res.json()
+      const updated = data.project || data
+      setProject(prev => prev ? { ...prev, ...updated } : prev)
+    }
     setEditing(false)
   }
 
@@ -474,6 +494,20 @@ export default function ProjectDetailPage() {
           <div className="flex-1">
             {editing ? (
               <div className="space-y-3">
+                <div className="flex gap-2 mb-2">
+                  <button
+                    onClick={saveEdits}
+                    className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setEditName(project.name); setEditDate(project.start_date); setEditLaunchDate(project.launch_date || ''); setEditWorkflowType(project.workflow_type); setEditRevenueGoal(project.revenue_goal != null ? String(project.revenue_goal) : ''); setEditEnrollmentGoal(project.enrollment_goal != null ? String(project.enrollment_goal) : ''); }}
+                    className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
                 <div>
                   <label className="block text-xs text-fe-blue-gray font-fira mb-1">Project Name</label>
                   <input
@@ -484,27 +518,62 @@ export default function ProjectDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-fe-blue-gray font-fira mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={editDate}
-                    onChange={e => setEditDate(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-                  />
+                  <label className="block text-xs text-fe-blue-gray font-fira mb-1">Workflow Type</label>
+                  <select
+                    value={editWorkflowType}
+                    onChange={e => setEditWorkflowType(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                  >
+                    <option value="course-launch">Course Launch</option>
+                    <option value="podcast">Podcast</option>
+                    <option value="newsletter">Newsletter</option>
+                    <option value="subscription">Subscription Buildout</option>
+                  </select>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={saveEdits}
-                    className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => { setEditing(false); setEditName(project.name); setEditDate(project.start_date) }}
-                    className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200"
-                  >
-                    Cancel
-                  </button>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={e => setEditDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Launch Date</label>
+                    <input
+                      type="date"
+                      value={editLaunchDate}
+                      onChange={e => setEditLaunchDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Revenue Goal</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-fira text-fe-blue-gray">$</span>
+                      <input
+                        type="number"
+                        value={editRevenueGoal}
+                        onChange={e => setEditRevenueGoal(e.target.value)}
+                        placeholder="e.g. 50000"
+                        className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Enrollment Goal</label>
+                    <input
+                      type="number"
+                      value={editEnrollmentGoal}
+                      onChange={e => setEditEnrollmentGoal(e.target.value)}
+                      placeholder="e.g. 100"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    />
+                  </div>
                 </div>
               </div>
             ) : (

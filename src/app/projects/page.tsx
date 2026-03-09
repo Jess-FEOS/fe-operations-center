@@ -19,6 +19,7 @@ interface Project {
   progress: number
   owner_ids?: string[]
   workflow_template_id: string
+  launch_date?: string | null
 }
 
 interface TeamMember {
@@ -117,7 +118,14 @@ export default function ProjectsPage() {
                 Week {project.current_week} of {TOTAL_WEEKS[project.workflow_type] || '?'}
               </p>
               <ProgressBar percent={project.progress} />
-              <p className="text-xs text-fe-blue-gray font-fira mt-2">
+              <p className="text-xs font-fira mt-2 mb-1">
+                {project.launch_date ? (
+                  <span className="text-fe-anthracite">📅 Launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                ) : (
+                  <span className="text-gray-400">📅 No launch date</span>
+                )}
+              </p>
+              <p className="text-xs text-fe-blue-gray font-fira">
                 {project.done_tasks} of {project.total_tasks} tasks complete
               </p>
             </Link>

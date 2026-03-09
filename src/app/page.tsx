@@ -23,6 +23,15 @@ interface Project {
   priority_status?: string | null;
 }
 
+function sortProjectsByLaunchDate(projs: Project[]): Project[] {
+  return [...projs].sort((a, b) => {
+    if (a.launch_date && b.launch_date) return a.launch_date.localeCompare(b.launch_date);
+    if (a.launch_date && !b.launch_date) return -1;
+    if (!a.launch_date && b.launch_date) return 1;
+    return 0;
+  });
+}
+
 interface TeamMember {
   id: string;
   name: string;
@@ -123,7 +132,7 @@ const WORKFLOW_TOTAL_WEEKS: Record<string, number> = {
 };
 
 export default function Dashboard() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsRaw, setProjectsRaw] = useState<Project[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<OverdueTask[]>([]);
@@ -145,12 +154,15 @@ export default function Dashboard() {
   const [newStatus, setNewStatus] = useState<TaskStatus>('not_started');
   const [newGoal, setNewGoal] = useState('');
   const [newTargetDate, setNewTargetDate] = useState('');
+  const [newMonth, setNewMonth] = useState('');
+  const [newProjectId, setNewProjectId] = useState('');
+  const [allProjectsList, setAllProjectsList] = useState<{ id: string; name: string; workflow_type: string }[]>([]);
   const [addingPriority, setAddingPriority] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [dashboardRes, teamRes, prioritiesRes, tasksRes, overdueRes, unassignedRes, rolesRes] = await Promise.all([
+        const [dashboardRes, teamRes, prioritiesRes, tasksRes, overdueRes, unassignedRes, rolesRes, projectsListRes] = await Promise.all([
           fetch('/api/dashboard'),
           fetch('/api/team'),
           fetch('/api/priorities'),
@@ -158,6 +170,7 @@ export default function Dashboard() {
           fetch('/api/tasks/overdue').catch(() => null),
           fetch('/api/tasks/unassigned').catch(() => null),
           fetch('/api/roles').catch(() => null),
+          fetch('/api/projects').catch(() => null),
         ]);
 
         const dashboardData = await dashboardRes.json();
@@ -167,14 +180,16 @@ export default function Dashboard() {
         const overdueData = overdueRes ? await overdueRes.json() : [];
         const unassignedData = unassignedRes ? await unassignedRes.json() : [];
         const rolesData = rolesRes ? await rolesRes.json() : [];
+        const projectsListData = projectsListRes ? await projectsListRes.json() : [];
 
         // Use dashboard active_projects as primary project source
-        setProjects(Array.isArray(dashboardData.active_projects) ? dashboardData.active_projects : []);
+        setProjectsRaw(Array.isArray(dashboardData.active_projects) ? dashboardData.active_projects : []);
         setTeam(Array.isArray(teamData) ? teamData : []);
         setTasks(Array.isArray(tasksData) ? tasksData : []);
         setOverdueTasks(Array.isArray(overdueData) ? overdueData : []);
         setUnassignedTasks(Array.isArray(unassignedData) ? unassignedData : []);
         setRoles(Array.isArray(rolesData) ? rolesData : []);
+        setAllProjectsList(Array.isArray(projectsListData) ? projectsListData : []);
         setCampaigns(Array.isArray(dashboardData.active_campaigns) ? dashboardData.active_campaigns : []);
         setUpcomingLaunches(Array.isArray(dashboardData.upcoming_launches) ? dashboardData.upcoming_launches : []);
 
@@ -198,6 +213,7 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  const projects = sortProjectsByLaunchDate(projectsRaw);
   const activeProjectCount = projects.filter((p) => p.status === 'active').length || projects.length;
   const dueThisWeekCount = tasks.length;
   const overdueCount = overdueTasks.length;
@@ -274,6 +290,7 @@ export default function Dashboard() {
 
   const handleAddPriority = async () => {
     if (!newTitle.trim()) return;
+    const monthToUse = newMonth || selectedMonth;
     setAddingPriority(true);
     try {
       const res = await fetch('/api/priorities', {
@@ -281,20 +298,33 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newTitle.trim(),
-          month: selectedMonth,
+          month: monthToUse,
           status: newStatus,
           goal: newGoal.trim() || null,
           target_date: newTargetDate || null,
+          project_id: newProjectId || null,
         }),
       });
       if (res.ok) {
         const created = await res.json();
+        // If project_id was selected, also PATCH the project to set its priority_id
+        if (newProjectId && created.id) {
+          await fetch(`/api/projects/${newProjectId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority_id: created.id }),
+          });
+        }
         setAllPriorities(prev => [...prev, created]);
-        setPriorities(prev => [...prev, created]);
+        if (monthToUse === selectedMonth) {
+          setPriorities(prev => [...prev, created]);
+        }
         setNewTitle('');
         setNewStatus('not_started');
         setNewGoal('');
         setNewTargetDate('');
+        setNewMonth('');
+        setNewProjectId('');
         setShowAddForm(false);
       }
     } catch (err) {
@@ -654,6 +684,7 @@ export default function Dashboard() {
           <div className="mb-4 p-4 rounded-lg border border-blue-100 bg-blue-50/30">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div className="md:col-span-2">
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Title <span className="text-red-400">*</span></label>
                 <input
                   type="text"
                   placeholder="Priority name..."
@@ -663,6 +694,18 @@ export default function Dashboard() {
                   onKeyDown={e => { if (e.key === 'Enter' && newTitle.trim()) handleAddPriority(); }}
                   autoFocus
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Month</label>
+                <select
+                  value={newMonth || selectedMonth}
+                  onChange={e => setNewMonth(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white"
+                >
+                  {MONTH_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-fira text-fe-blue-gray mb-1">Status</label>
@@ -680,7 +723,7 @@ export default function Dashboard() {
                 <label className="block text-xs font-fira text-fe-blue-gray mb-1">Goal (optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. 50+ sold"
+                  placeholder="e.g. 50 enrollments"
                   value={newGoal}
                   onChange={e => setNewGoal(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
@@ -695,6 +738,19 @@ export default function Dashboard() {
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
                 />
               </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Link to Project (optional)</label>
+                <select
+                  value={newProjectId}
+                  onChange={e => setNewProjectId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white"
+                >
+                  <option value="">None</option>
+                  {allProjectsList.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.workflow_type === 'course-launch' ? 'Course Launch' : p.workflow_type === 'podcast' ? 'Podcast' : p.workflow_type === 'newsletter' ? 'Newsletter' : 'Subscription'})</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -705,14 +761,11 @@ export default function Dashboard() {
                 {addingPriority ? 'Adding...' : 'Add'}
               </button>
               <button
-                onClick={() => { setShowAddForm(false); setNewTitle(''); setNewGoal(''); setNewTargetDate(''); setNewStatus('not_started'); }}
+                onClick={() => { setShowAddForm(false); setNewTitle(''); setNewGoal(''); setNewTargetDate(''); setNewStatus('not_started'); setNewMonth(''); setNewProjectId(''); }}
                 className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
-              <span className="text-xs font-fira text-fe-blue-gray ml-2">
-                Adding to {MONTH_OPTIONS.find(m => m.value === selectedMonth)?.label}
-              </span>
             </div>
           </div>
         )}
@@ -923,7 +976,20 @@ export default function Dashboard() {
 
                 <ProgressBar percent={project.progress} size="sm" />
 
-                <p className="text-sm text-fe-anthracite mt-2 mb-3">
+                <div className="mt-2 mb-1 space-y-0.5">
+                  <p className="text-xs font-fira text-fe-anthracite">
+                    📅 Started: {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  <p className="text-xs font-fira">
+                    {project.launch_date ? (
+                      <span className="text-fe-anthracite">🚀 Launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    ) : (
+                      <span className="text-gray-400">🚀 No launch date set</span>
+                    )}
+                  </p>
+                </div>
+
+                <p className="text-sm text-fe-anthracite mt-1 mb-3">
                   {project.done_tasks} of {project.total_tasks} tasks complete
                 </p>
 
