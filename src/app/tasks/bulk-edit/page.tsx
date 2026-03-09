@@ -56,6 +56,13 @@ interface Toast {
   visible: boolean
 }
 
+interface RoleGroup {
+  role_id: string | null
+  role_name: string
+  role_color: string
+  tasks: BulkTask[]
+}
+
 export default function BulkEditPage() {
   const [mode, setMode] = useState<Mode>('active')
   const [roles, setRoles] = useState<Role[]>([])
@@ -69,6 +76,7 @@ export default function BulkEditPage() {
   const [filterProject, setFilterProject] = useState('')
   const [filterTemplate, setFilterTemplate] = useState('')
   const [filterKeyword, setFilterKeyword] = useState('')
+  const [filterUnassignedOnly, setFilterUnassignedOnly] = useState(true)
 
   // Results - active
   const [tasks, setTasks] = useState<BulkTask[]>([])
@@ -86,10 +94,17 @@ export default function BulkEditPage() {
   const [bulkOwner, setBulkOwner] = useState('')
   const [applying, setApplying] = useState(false)
 
+  // Quick assign by role
+  const [quickAssignMap, setQuickAssignMap] = useState<Record<string, string>>({})
+  const [quickAssigning, setQuickAssigning] = useState<string | null>(null)
+
   // Sync prompt
   const [showSyncPrompt, setShowSyncPrompt] = useState(false)
   const [pendingSyncPayload, setPendingSyncPayload] = useState<{ task_ids: string[]; role_id: string } | null>(null)
   const [syncing, setSyncing] = useState(false)
+
+  // Collapsed role groups
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   // Toast
   const [toast, setToast] = useState<Toast>({ message: '', visible: false })
@@ -114,6 +129,14 @@ export default function BulkEditPage() {
     })
   }, [])
 
+  // Auto-search on first load for active mode with unassigned filter
+  useEffect(() => {
+    if (!loading && !searched) {
+      findTasks()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
+
   const teamById = team.reduce<Record<string, TeamMember>>((acc, m) => {
     acc[m.id] = m
     return acc
@@ -123,6 +146,35 @@ export default function BulkEditPage() {
     acc[r.id] = r
     return acc
   }, {})
+
+  // Get visible tasks (with unassigned filter applied client-side)
+  const visibleTasks = filterUnassignedOnly && mode === 'active'
+    ? tasks.filter(t => !t.owner_ids || t.owner_ids.length === 0)
+    : tasks
+
+  // Group tasks by role
+  const roleGroups: RoleGroup[] = (() => {
+    const groupMap = new Map<string, RoleGroup>()
+    for (const task of visibleTasks) {
+      const key = task.role_id || '__none__'
+      if (!groupMap.has(key)) {
+        const role = task.role_id ? roleById[task.role_id] : null
+        groupMap.set(key, {
+          role_id: task.role_id,
+          role_name: role?.name || 'No Role Assigned',
+          role_color: role?.color || '#9CA3AF',
+          tasks: [],
+        })
+      }
+      groupMap.get(key)!.tasks.push(task)
+    }
+    // Sort groups by role name
+    return Array.from(groupMap.values()).sort((a, b) => {
+      if (a.role_id === null) return 1
+      if (b.role_id === null) return -1
+      return a.role_name.localeCompare(b.role_name)
+    })
+  })()
 
   function switchMode(newMode: Mode) {
     setMode(newMode)
@@ -138,9 +190,10 @@ export default function BulkEditPage() {
     setFilterKeyword('')
     setShowSyncPrompt(false)
     setPendingSyncPayload(null)
+    setCollapsedGroups(new Set())
   }
 
-  const currentItems = mode === 'active' ? tasks : templateTasks
+  const currentItems = mode === 'active' ? visibleTasks : templateTasks
 
   async function findTasks() {
     setSearching(true)
@@ -149,6 +202,7 @@ export default function BulkEditPage() {
     setBulkOwner('')
     setShowSyncPrompt(false)
     setPendingSyncPayload(null)
+    setCollapsedGroups(new Set())
 
     const params = new URLSearchParams()
 
@@ -183,11 +237,34 @@ export default function BulkEditPage() {
     }
   }
 
+  function toggleGroupAll(group: RoleGroup) {
+    const groupIds = group.tasks.map(t => t.id)
+    const allSelected = groupIds.every(id => selected.has(id))
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (allSelected) {
+        groupIds.forEach(id => next.delete(id))
+      } else {
+        groupIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }
+
   function toggleTask(id: string) {
     setSelected(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      return next
+    })
+  }
+
+  function toggleGroupCollapse(key: string) {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -216,7 +293,6 @@ export default function BulkEditPage() {
 
       if (result.updated) {
         showToast(`Updated ${result.updated} template task${result.updated !== 1 ? 's' : ''}`)
-        // Show sync prompt
         setPendingSyncPayload({ task_ids: Array.from(selected), role_id: bulkRole })
         setShowSyncPrompt(true)
         await findTasks()
@@ -228,33 +304,80 @@ export default function BulkEditPage() {
       return
     }
 
-    // Active mode
-    if (!bulkRole && !bulkOwner) return
+    // Active mode — assign person
+    if (!bulkOwner) return
 
     setApplying(true)
 
-    const payload: Record<string, unknown> = {
-      task_ids: Array.from(selected),
+    const selectedTasks = visibleTasks.filter(t => selected.has(t.id))
+    const assigneeName = teamById[bulkOwner]?.name || 'team member'
+
+    // Group by project_id and PATCH each
+    const byProject = selectedTasks.reduce<Record<string, string[]>>((acc, t) => {
+      if (!acc[t.project_id]) acc[t.project_id] = []
+      acc[t.project_id].push(t.id)
+      return acc
+    }, {})
+
+    let totalUpdated = 0
+
+    for (const [projectId, taskIds] of Object.entries(byProject)) {
+      await Promise.all(taskIds.map(taskId =>
+        fetch(`/api/projects/${projectId}/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ owner_ids: [bulkOwner] }),
+        })
+      ))
+      totalUpdated += taskIds.length
     }
-    if (bulkRole) payload.role_id = bulkRole
-    if (bulkOwner) payload.owner_id = bulkOwner
 
-    const res = await fetch('/api/tasks/bulk-edit', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-
-    const result = await res.json()
-
-    if (result.updated) {
-      showToast(`Updated ${result.updated} task${result.updated !== 1 ? 's' : ''} successfully`)
-      await findTasks()
-    } else if (result.error) {
-      showToast(`Error: ${result.error}`)
-    }
-
+    showToast(`${totalUpdated} tasks assigned to ${assigneeName}`)
+    await findTasks()
     setApplying(false)
+  }
+
+  async function quickAssignRole(roleId: string) {
+    const memberId = quickAssignMap[roleId]
+    if (!memberId) return
+
+    setQuickAssigning(roleId)
+
+    // Find all unassigned tasks for this role across all projects
+    const unassignedForRole = tasks.filter(t =>
+      t.role_id === roleId && (!t.owner_ids || t.owner_ids.length === 0)
+    )
+
+    if (unassignedForRole.length === 0) {
+      showToast('No unassigned tasks for this role')
+      setQuickAssigning(null)
+      return
+    }
+
+    const byProject = unassignedForRole.reduce<Record<string, string[]>>((acc, t) => {
+      if (!acc[t.project_id]) acc[t.project_id] = []
+      acc[t.project_id].push(t.id)
+      return acc
+    }, {})
+
+    let totalUpdated = 0
+
+    for (const [projectId, taskIds] of Object.entries(byProject)) {
+      await Promise.all(taskIds.map(taskId =>
+        fetch(`/api/projects/${projectId}/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ owner_ids: [memberId] }),
+        })
+      ))
+      totalUpdated += taskIds.length
+    }
+
+    const memberName = teamById[memberId]?.name || 'team member'
+    const roleName = roleById[roleId]?.name || 'role'
+    showToast(`${totalUpdated} ${roleName} tasks assigned to ${memberName}`)
+    await findTasks()
+    setQuickAssigning(null)
   }
 
   async function handleSync() {
@@ -289,6 +412,18 @@ export default function BulkEditPage() {
     setPendingSyncPayload(null)
   }
 
+  // Count unassigned tasks per role (from full tasks list, not filtered)
+  const unassignedByRole = tasks.reduce<Record<string, number>>((acc, t) => {
+    if (!t.owner_ids || t.owner_ids.length === 0) {
+      const key = t.role_id || '__none__'
+      acc[key] = (acc[key] || 0) + 1
+    }
+    return acc
+  }, {})
+
+  // Roles that have unassigned tasks (for quick assign section)
+  const rolesWithUnassigned = roles.filter(r => (unassignedByRole[r.id] || 0) > 0)
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -298,7 +433,7 @@ export default function BulkEditPage() {
   }
 
   return (
-    <div className="font-fira">
+    <div className="font-fira pb-24">
       {/* Toast */}
       {toast.visible && (
         <div className="fixed top-6 right-6 z-[60] animate-in slide-in-from-top-2">
@@ -338,6 +473,54 @@ export default function BulkEditPage() {
           Templates
         </button>
       </div>
+
+      {/* Quick Assign by Role — only in active mode when we have data */}
+      {mode === 'active' && searched && rolesWithUnassigned.length > 0 && (
+        <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
+          <h2 className="font-barlow font-bold text-sm text-fe-navy mb-3">Quick Assign by Role</h2>
+          <p className="text-xs font-fira text-fe-blue-gray mb-4">Assign all unassigned tasks for a role to one person in one click.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {rolesWithUnassigned.map(role => {
+              const count = unassignedByRole[role.id] || 0
+              return (
+                <div key={role.id} className="flex items-center gap-2 p-3 rounded-lg border border-gray-100">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-fira font-bold text-fe-navy truncate">{role.name}</p>
+                    <p className="text-xs font-fira text-fe-blue-gray">{count} unassigned</p>
+                  </div>
+                  <select
+                    value={quickAssignMap[role.id] || ''}
+                    onChange={e => setQuickAssignMap(prev => ({ ...prev, [role.id]: e.target.value }))}
+                    className="px-2 py-1 border border-gray-200 rounded text-xs font-fira bg-white focus:outline-none focus:ring-1 focus:ring-fe-blue min-w-[120px]"
+                  >
+                    <option value="">Pick person...</option>
+                    {/* Show matching role members first, then others */}
+                    {team
+                      .sort((a, b) => {
+                        const aMatch = a.role_data?.id === role.id ? 0 : 1
+                        const bMatch = b.role_data?.id === role.id ? 0 : 1
+                        return aMatch - bMatch
+                      })
+                      .map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.role_data?.id === role.id ? `★ ${m.name}` : m.name}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    onClick={() => quickAssignRole(role.id)}
+                    disabled={!quickAssignMap[role.id] || quickAssigning === role.id}
+                    className="px-3 py-1 bg-fe-blue text-white rounded text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  >
+                    {quickAssigning === role.id ? '...' : 'Assign All'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
@@ -406,6 +589,26 @@ export default function BulkEditPage() {
             {searching ? 'Searching...' : 'Find Tasks'}
           </button>
         </div>
+
+        {/* Unassigned Only Toggle */}
+        {mode === 'active' && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filterUnassignedOnly}
+                onChange={e => { setFilterUnassignedOnly(e.target.checked); setSelected(new Set()) }}
+                className="w-4 h-4 rounded border-gray-300 text-fe-blue focus:ring-fe-blue"
+              />
+              <span className="text-sm font-fira text-fe-navy font-bold">Show unassigned only</span>
+              {searched && (
+                <span className="text-xs font-fira text-fe-blue-gray">
+                  ({visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''})
+                </span>
+              )}
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Sync Prompt */}
@@ -433,146 +636,132 @@ export default function BulkEditPage() {
         </div>
       )}
 
-      {/* Bulk Action Bar */}
-      {selected.size > 0 && (
-        <div className="bg-fe-navy text-white rounded-xl px-5 py-4 mb-4 flex items-center gap-4 flex-wrap">
-          <span className="text-sm font-fira font-bold shrink-0">
-            {selected.size} task{selected.size !== 1 ? 's' : ''} selected
-          </span>
-
-          <div className="h-5 w-px bg-white/20" />
-
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-fira text-white/70">Assign to Role:</label>
-            <select
-              value={bulkRole}
-              onChange={e => setBulkRole(e.target.value)}
-              className="px-3 py-1.5 border border-white/20 rounded-lg text-xs font-fira bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-fe-blue"
-            >
-              <option value="">--</option>
-              {roles.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {mode === 'active' && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-fira text-white/70">Assign to Person:</label>
-              <select
-                value={bulkOwner}
-                onChange={e => setBulkOwner(e.target.value)}
-                className="px-3 py-1.5 border border-white/20 rounded-lg text-xs font-fira bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-fe-blue"
-              >
-                <option value="">--</option>
-                {team.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.role_data ? `${m.role_data.name} · ${m.name}` : m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {/* Selected count + master select all */}
+      {searched && mode === 'active' && visibleTasks.length > 0 && (
+        <div className="flex items-center gap-4 mb-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selected.size === visibleTasks.length && visibleTasks.length > 0}
+              onChange={toggleAll}
+              className="w-4 h-4 rounded border-gray-300 text-fe-blue focus:ring-fe-blue"
+            />
+            <span className="text-sm font-fira font-bold text-fe-navy">Select All</span>
+          </label>
+          {selected.size > 0 && (
+            <span className="text-sm font-fira text-fe-blue-gray">
+              {selected.size} task{selected.size !== 1 ? 's' : ''} selected
+            </span>
           )}
-
-          <button
-            onClick={applyBulk}
-            disabled={applying || (mode === 'template' ? !bulkRole : (!bulkRole && !bulkOwner))}
-            className="ml-auto px-5 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-          >
-            {applying ? 'Applying...' : `Apply to ${selected.size} task${selected.size !== 1 ? 's' : ''}`}
-          </button>
         </div>
       )}
 
-      {/* Results Table - Active Mode */}
+      {/* Results - Active Mode (Grouped by Role) */}
       {searched && mode === 'active' && (
-        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          {tasks.length === 0 ? (
-            <div className="text-center py-12 text-fe-blue-gray text-sm font-fira">
-              No tasks match your filters. Try adjusting the criteria.
+        <>
+          {visibleTasks.length === 0 ? (
+            <div className="bg-white border border-gray-100 rounded-xl text-center py-12 text-fe-blue-gray text-sm font-fira">
+              {filterUnassignedOnly ? 'No unassigned tasks found. All tasks have owners!' : 'No tasks match your filters. Try adjusting the criteria.'}
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="w-10 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selected.size === tasks.length && tasks.length > 0}
-                      onChange={toggleAll}
-                      className="w-4 h-4 rounded border-gray-300 text-fe-blue focus:ring-fe-blue"
-                    />
-                  </th>
-                  <th className="text-left py-3 px-3 text-xs font-fira font-bold text-fe-navy">Task Name</th>
-                  <th className="text-left py-3 px-3 text-xs font-fira font-bold text-fe-navy">Project</th>
-                  <th className="text-left py-3 px-3 text-xs font-fira font-bold text-fe-navy">Role</th>
-                  <th className="text-left py-3 px-3 text-xs font-fira font-bold text-fe-navy">Assignee</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map(task => {
-                  const role = task.role_id ? roleById[task.role_id] : null
-                  const owners = (task.owner_ids || []).map(oid => teamById[oid]).filter(Boolean)
-                  const isSelected = selected.has(task.id)
+            <div className="space-y-3">
+              {roleGroups.map(group => {
+                const groupKey = group.role_id || '__none__'
+                const isCollapsed = collapsedGroups.has(groupKey)
+                const groupAllSelected = group.tasks.every(t => selected.has(t.id))
+                const groupSomeSelected = group.tasks.some(t => selected.has(t.id))
+                const unassignedCount = group.tasks.filter(t => !t.owner_ids || t.owner_ids.length === 0).length
 
-                  return (
-                    <tr
-                      key={task.id}
-                      className={`border-b border-gray-50 last:border-b-0 transition-colors ${
-                        isSelected ? 'bg-fe-blue/5' : 'hover:bg-gray-50/50'
-                      }`}
-                    >
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleTask(task.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-fe-blue focus:ring-fe-blue"
-                        />
-                      </td>
-                      <td className="px-3 py-3 font-fira text-fe-anthracite">
-                        {task.task_name}
-                      </td>
-                      <td className="px-3 py-3 font-fira text-fe-blue-gray">
-                        {task.project_name}
-                      </td>
-                      <td className="px-3 py-3">
-                        {role ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-fira font-bold" style={{ color: role.color }}>
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: role.color }} />
-                            {role.name}
-                          </span>
-                        ) : (
-                          <span className="text-xs font-fira text-gray-300">None</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3">
-                        {owners.length > 0 ? (
-                          <div className="flex items-center gap-2">
-                            {owners.map(m => (
-                              <div key={m.id} className="flex items-center gap-1">
-                                <Avatar initials={m.initials} color={m.color} size="sm" />
-                                <span className="text-xs font-fira text-fe-anthracite">{m.name.split(' ')[0]}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs font-fira text-gray-300">Unassigned</span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
+                return (
+                  <div key={groupKey} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                    {/* Group Header */}
+                    <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
+                      <input
+                        type="checkbox"
+                        checked={groupAllSelected}
+                        ref={el => { if (el) el.indeterminate = groupSomeSelected && !groupAllSelected }}
+                        onChange={() => toggleGroupAll(group)}
+                        className="w-4 h-4 rounded border-gray-300 text-fe-blue focus:ring-fe-blue"
+                      />
+                      <button
+                        onClick={() => toggleGroupCollapse(groupKey)}
+                        className="flex items-center gap-2 flex-1 text-left"
+                      >
+                        <svg
+                          className={`w-4 h-4 text-fe-blue-gray transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: group.role_color }} />
+                        <span className="text-sm font-fira font-bold text-fe-navy">{group.role_name}</span>
+                        <span className="text-xs font-fira text-fe-blue-gray">
+                          — {unassignedCount} unassigned of {group.tasks.length} total
+                        </span>
+                      </button>
+                    </div>
 
-          {tasks.length > 0 && (
-            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 text-xs font-fira text-fe-blue-gray">
-              {tasks.length} task{tasks.length !== 1 ? 's' : ''} found
+                    {/* Group Tasks */}
+                    {!isCollapsed && (
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {group.tasks.map(task => {
+                            const owners = (task.owner_ids || []).map(oid => teamById[oid]).filter(Boolean)
+                            const isSelected = selected.has(task.id)
+
+                            return (
+                              <tr
+                                key={task.id}
+                                className={`border-b border-gray-50 last:border-b-0 transition-colors ${
+                                  isSelected ? 'bg-fe-blue/5' : 'hover:bg-gray-50/50'
+                                }`}
+                              >
+                                <td className="w-10 px-4 py-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleTask(task.id)}
+                                    className="w-4 h-4 rounded border-gray-300 text-fe-blue focus:ring-fe-blue"
+                                  />
+                                </td>
+                                <td className="px-3 py-2.5 font-fira text-fe-anthracite">
+                                  {task.task_name}
+                                </td>
+                                <td className="px-3 py-2.5 font-fira text-fe-blue-gray text-xs">
+                                  {task.project_name}
+                                </td>
+                                <td className="px-3 py-2.5 w-40">
+                                  {owners.length > 0 ? (
+                                    <div className="flex items-center gap-1.5">
+                                      {owners.map(m => (
+                                        <div key={m.id} className="flex items-center gap-1">
+                                          <Avatar initials={m.initials} color={m.color} size="sm" />
+                                          <span className="text-xs font-fira text-fe-anthracite">{m.name.split(' ')[0]}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs font-fira text-gray-300">Unassigned</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
-        </div>
+
+          {visibleTasks.length > 0 && (
+            <div className="mt-3 text-xs font-fira text-fe-blue-gray">
+              {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''} across {roleGroups.length} role{roleGroups.length !== 1 ? 's' : ''}
+            </div>
+          )}
+        </>
       )}
 
       {/* Results Table - Template Mode */}
@@ -661,8 +850,63 @@ export default function BulkEditPage() {
       {!searched && (
         <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
           {mode === 'active'
-            ? 'Use the filters above and click \u201cFind Tasks\u201d to load tasks for bulk editing.'
+            ? 'Loading tasks...'
             : 'Use the filters above and click \u201cFind Tasks\u201d to load template tasks for bulk editing.'}
+        </div>
+      )}
+
+      {/* Sticky Bulk Action Bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50">
+          <div className="max-w-5xl mx-auto px-4 pb-4">
+            <div className="bg-fe-navy text-white rounded-xl px-5 py-4 flex items-center gap-4 flex-wrap shadow-2xl">
+              <span className="text-sm font-fira font-bold shrink-0">
+                {selected.size} task{selected.size !== 1 ? 's' : ''} selected
+              </span>
+
+              <div className="h-5 w-px bg-white/20" />
+
+              {mode === 'template' ? (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-fira text-white/70">Assign to Role:</label>
+                  <select
+                    value={bulkRole}
+                    onChange={e => setBulkRole(e.target.value)}
+                    className="px-3 py-1.5 border border-white/20 rounded-lg text-xs font-fira bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                  >
+                    <option value="">--</option>
+                    {roles.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-fira text-white/70">Assign to:</label>
+                  <select
+                    value={bulkOwner}
+                    onChange={e => setBulkOwner(e.target.value)}
+                    className="px-3 py-1.5 border border-white/20 rounded-lg text-xs font-fira bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                  >
+                    <option value="">Pick a person...</option>
+                    {team.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.role_data ? `${m.role_data.name} · ${m.name}` : m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <button
+                onClick={applyBulk}
+                disabled={applying || (mode === 'template' ? !bulkRole : !bulkOwner)}
+                className="ml-auto px-5 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              >
+                {applying ? 'Assigning...' : `Assign ${selected.size} task${selected.size !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
