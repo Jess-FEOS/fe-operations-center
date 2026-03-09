@@ -176,11 +176,15 @@ export default function Dashboard() {
         setRoles(Array.isArray(rolesData) ? rolesData : []);
         setCampaigns(Array.isArray(dashboardData.active_campaigns) ? dashboardData.active_campaigns : []);
 
-        // Use /api/priorities for allPriorities (includes project enrichment from the API)
-        const allP = Array.isArray(allPrioritiesData) ? allPrioritiesData : [];
+        // Use /api/priorities as the SOLE source for priorities — deduplicate by ID
+        const rawP = Array.isArray(allPrioritiesData) ? allPrioritiesData : [];
+        const seen = new Set<string>();
+        const allP = rawP.filter((p: Priority) => {
+          if (seen.has(p.id)) return false;
+          seen.add(p.id);
+          return true;
+        });
         setAllPriorities(allP);
-
-        // Filter priorities by the selected month — consistent with handleMonthChange
         setPriorities(allP.filter((p: Priority) => p.month === '2026-03'));
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
