@@ -8,7 +8,7 @@ const navItems = [
   { href: '/this-week', label: 'This Week', icon: CalendarIcon },
   { href: '/calendar', label: 'Calendar', icon: MonthCalendarIcon },
   { href: '/projects', label: 'Projects', icon: FolderIcon },
-  { href: '/tasks/bulk-edit', label: 'Bulk Edit', icon: BulkEditIcon },
+  { href: '/tasks/bulk-edit', label: 'Bulk Editor', icon: BulkEditIcon },
   { href: '/team', label: 'Team', icon: TeamIcon },
   { href: '/performance', label: 'Performance', icon: PerformanceIcon },
 ]

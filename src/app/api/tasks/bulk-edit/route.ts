@@ -3,13 +3,57 @@ import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// GET: Search/filter project tasks
+// GET: Search/filter project tasks or template tasks
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const mode = searchParams.get('mode') || 'active';
     const roleId = searchParams.get('role_id');
-    const projectId = searchParams.get('project_id');
     const keyword = searchParams.get('keyword');
+
+    if (mode === 'template') {
+      const templateId = searchParams.get('template_id');
+
+      let query = supabase
+        .from('project_template_tasks')
+        .select('id, title, template_id, owner, week_number, order_index, role_id')
+        .order('order_index', { ascending: true });
+
+      if (templateId) query = query.eq('template_id', templateId);
+      if (roleId) query = query.eq('role_id', roleId);
+
+      const { data: tasks, error } = await query;
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      let filtered = tasks || [];
+      if (keyword) {
+        const kw = keyword.toLowerCase();
+        filtered = filtered.filter((t: any) => t.title.toLowerCase().includes(kw));
+      }
+
+      // Fetch template names
+      const templateIds = [...new Set(filtered.map((t: any) => t.template_id))];
+      let templateMap: Record<string, string> = {};
+      if (templateIds.length > 0) {
+        const { data: templates } = await supabase
+          .from('project_templates')
+          .select('id, name')
+          .in('id', templateIds);
+        (templates || []).forEach((t: any) => { templateMap[t.id] = t.name; });
+      }
+
+      const enriched = filtered.map((t: any) => ({
+        ...t,
+        template_name: templateMap[t.template_id] || 'Unknown',
+      }));
+
+      return NextResponse.json(enriched);
+    }
+
+    // Active project tasks mode
+    const projectId = searchParams.get('project_id');
 
     let query = supabase
       .from('project_tasks')
@@ -27,7 +71,6 @@ export async function GET(request: NextRequest) {
 
     let filtered = tasks || [];
 
-    // Client-side keyword filter (Supabase ilike on task_name)
     if (keyword) {
       const kw = keyword.toLowerCase();
       filtered = filtered.filter((t: any) => t.task_name.toLowerCase().includes(kw));
@@ -55,23 +98,109 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH: Bulk update tasks
+// PATCH: Bulk update tasks (active or template)
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { task_ids, role_id, owner_id } = body;
+    const { task_ids, role_id, owner_id, mode, sync_to_projects } = body;
 
     if (!task_ids || !Array.isArray(task_ids) || task_ids.length === 0) {
       return NextResponse.json({ error: 'No task IDs provided' }, { status: 400 });
     }
 
+    // Template mode
+    if (mode === 'template') {
+      if (role_id === undefined) {
+        return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
+      }
+
+      if (!role_id) {
+        return NextResponse.json({ error: 'Cannot remove role from template tasks.' }, { status: 400 });
+      }
+
+      const { error } = await supabase
+        .from('project_template_tasks')
+        .update({ role_id })
+        .in('id', task_ids);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      let syncedCount = 0;
+
+      // Sync role changes to active project tasks using these templates
+      if (sync_to_projects) {
+        // Get the template tasks we just updated to find their titles and template_ids
+        const { data: updatedTemplateTasks } = await supabase
+          .from('project_template_tasks')
+          .select('id, title, template_id')
+          .in('id', task_ids);
+
+        if (updatedTemplateTasks && updatedTemplateTasks.length > 0) {
+          // Find template_ids involved
+          const templateIds = [...new Set(updatedTemplateTasks.map(t => t.template_id))];
+
+          // Find templates to get their types
+          const { data: templates } = await supabase
+            .from('project_templates')
+            .select('id, type')
+            .in('id', templateIds);
+
+          const templateTypeMap: Record<string, string> = {};
+          (templates || []).forEach((t: any) => { templateTypeMap[t.id] = t.type; });
+
+          // For each template, find active projects using that workflow type
+          for (const tmplId of templateIds) {
+            const wfType = templateTypeMap[tmplId];
+            if (!wfType) continue;
+
+            const { data: projects } = await supabase
+              .from('projects')
+              .select('id')
+              .eq('workflow_type', wfType)
+              .eq('status', 'active');
+
+            if (!projects || projects.length === 0) continue;
+
+            const projectIds = projects.map(p => p.id);
+
+            // Get the task titles from this template that were updated
+            const taskTitles = updatedTemplateTasks
+              .filter(t => t.template_id === tmplId)
+              .map(t => t.title);
+
+            // Update matching project tasks by task_name
+            for (const title of taskTitles) {
+              const { data: matched } = await supabase
+                .from('project_tasks')
+                .select('id')
+                .in('project_id', projectIds)
+                .eq('task_name', title);
+
+              if (matched && matched.length > 0) {
+                const matchedIds = matched.map(m => m.id);
+                await supabase
+                  .from('project_tasks')
+                  .update({ role_id })
+                  .in('id', matchedIds);
+                syncedCount += matched.length;
+              }
+            }
+          }
+        }
+      }
+
+      return NextResponse.json({ updated: task_ids.length, synced: syncedCount });
+    }
+
+    // Active project tasks mode
     if (role_id === undefined && owner_id === undefined) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
     let updatedCount = 0;
 
-    // If assigning a role, bulk update role_id (cannot clear it)
     if (role_id !== undefined) {
       if (!role_id) {
         return NextResponse.json({ error: 'Cannot remove role from tasks. Every task must have a role.' }, { status: 400 });
@@ -87,7 +216,6 @@ export async function PATCH(request: NextRequest) {
       updatedCount = task_ids.length;
     }
 
-    // If assigning a person, replace owner_ids with [owner_id]
     if (owner_id !== undefined) {
       const newOwnerIds = owner_id ? [owner_id] : [];
       const { error } = await supabase
