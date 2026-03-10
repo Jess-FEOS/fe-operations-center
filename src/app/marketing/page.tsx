@@ -240,7 +240,7 @@ export default function MarketingPage() {
             }`}
           >
             {t.label}
-            {'count' in t && t.count > 0 && (
+            {'count' in t && (t.count ?? 0) > 0 && (
               <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-fe-blue text-white min-w-[20px]">
                 {t.count}
               </span>
