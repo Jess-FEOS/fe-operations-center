@@ -30,7 +30,6 @@ interface WeekRow {
   saturdayDate: string
   topic: string
   statuses: Record<ContentOutput, ChannelStatus>
-  owner: string
 }
 
 interface WeekTask {
@@ -78,20 +77,19 @@ function cycleChannelStatus(s: ChannelStatus): ChannelStatus {
 
 const CHANNEL_STATUS_COLORS: Record<ChannelStatus, string> = {
   not_started: '#9CA3AF',
-  in_progress: '#0762C8',
+  in_progress: '#EAB308',
   done: '#046A38',
 }
 
-const CHANNEL_STATUS_LABELS: Record<ChannelStatus, string> = {
-  not_started: 'Not Started',
-  in_progress: 'In Progress',
-  done: 'Done',
+const CHANNEL_STATUS_BG: Record<ChannelStatus, string> = {
+  not_started: 'bg-gray-100 text-gray-500',
+  in_progress: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  done: 'bg-green-50 text-green-700 border-green-200',
 }
 
 function generateWeekRows(): WeekRow[] {
   const now = new Date()
   const year = now.getFullYear()
-  // Find the Saturday of the current week (week starts Sunday)
   const dayOfWeek = now.getDay()
   const saturday = new Date(now)
   saturday.setDate(now.getDate() + (6 - dayOfWeek))
@@ -100,7 +98,6 @@ function generateWeekRows(): WeekRow[] {
   const rows: WeekRow[] = []
   const current = new Date(saturday)
 
-  // Calculate week number of the year for the starting Saturday
   const startOfYear = new Date(year, 0, 1)
   let weekNum = Math.ceil(((current.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24) + startOfYear.getDay() + 1) / 7)
 
@@ -113,7 +110,6 @@ function generateWeekRows(): WeekRow[] {
       saturdayDate: current.toISOString().split('T')[0],
       topic: '',
       statuses: defaultStatuses,
-      owner: 'Jess',
     })
 
     current.setDate(current.getDate() + 7)
@@ -121,6 +117,27 @@ function generateWeekRows(): WeekRow[] {
   }
 
   return rows
+}
+
+function isCurrentWeek(saturdayDate: string): boolean {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const sat = new Date(saturdayDate + 'T00:00:00')
+  const sun = new Date(sat)
+  sun.setDate(sat.getDate() - 6)
+  return now >= sun && now <= sat
+}
+
+function urgencyColor(days: number | null): string {
+  if (days === null) return '#9CA3AF'
+  if (days <= 30) return '#DC2626'
+  if (days <= 60) return '#EAB308'
+  return '#046A38'
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 // ----- Component -----
@@ -134,6 +151,7 @@ export default function MarketingPage() {
 
   // Weekly Content state
   const [weekRows, setWeekRows] = useState<WeekRow[]>(() => generateWeekRows())
+  const [showAllWeeks, setShowAllWeeks] = useState(false)
 
   // This Week state
   const [tasks, setTasks] = useState<WeekTask[]>([])
@@ -148,7 +166,6 @@ export default function MarketingPage() {
       .then((data) => {
         const active = (data || []).filter((p: any) => p.status === 'active')
         setProjects(active)
-        // Initialize channel statuses
         const statuses: Record<string, Record<Channel, ChannelStatus>> = {}
         for (const p of active) {
           statuses[p.id] = {} as Record<Channel, ChannelStatus>
@@ -183,16 +200,9 @@ export default function MarketingPage() {
     return acc
   }, {})
 
-  // Filter tasks for Marketing Director role
   const marketingTasks = marketingRoleId
     ? tasks.filter((t) => t.role_id === marketingRoleId)
     : []
-
-  const groupedTasks = marketingTasks.reduce<Record<string, WeekTask[]>>((acc, task) => {
-    if (!acc[task.project_name]) acc[task.project_name] = []
-    acc[task.project_name].push(task)
-    return acc
-  }, {})
 
   async function handleTaskStatusChange(task: WeekTask, newStatus: TaskStatus) {
     setTasks((prev) =>
@@ -214,18 +224,27 @@ export default function MarketingPage() {
         {([
           { key: 'launch' as Tab, label: 'Launch Tracker' },
           { key: 'content' as Tab, label: 'Weekly Content' },
-          { key: 'thisweek' as Tab, label: 'This Week' },
+          {
+            key: 'thisweek' as Tab,
+            label: 'This Week',
+            count: marketingTasks.length,
+          },
         ]).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-fira ${
+            className={`px-4 py-2 text-sm font-fira flex items-center gap-2 ${
               tab === t.key
                 ? 'border-b-2 border-fe-blue text-fe-blue font-bold'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             {t.label}
+            {'count' in t && t.count > 0 && (
+              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-fe-blue text-white min-w-[20px]">
+                {t.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -239,11 +258,16 @@ export default function MarketingPage() {
         />
       )}
       {tab === 'content' && (
-        <WeeklyContent weekRows={weekRows} setWeekRows={setWeekRows} />
+        <WeeklyContent
+          weekRows={weekRows}
+          setWeekRows={setWeekRows}
+          showAll={showAllWeeks}
+          onShowMore={() => setShowAllWeeks(true)}
+        />
       )}
       {tab === 'thisweek' && (
         <ThisWeekMarketing
-          groupedTasks={groupedTasks}
+          tasks={marketingTasks}
           teamById={teamById}
           roles={roles}
           onStatusChange={handleTaskStatusChange}
@@ -274,14 +298,21 @@ function LaunchTracker({
     }))
   }
 
-  function getProgress(projectId: string): number {
+  function getReadyCount(projectId: string): number {
     const statuses = channelStatuses[projectId]
     if (!statuses) return 0
-    const done = CHANNELS.filter((ch) => statuses[ch] === 'done').length
-    return Math.round((done / CHANNELS.length) * 100)
+    return CHANNELS.filter((ch) => statuses[ch] === 'done').length
   }
 
-  if (projects.length === 0) {
+  // Sort by launch date ascending (soonest first), no-date projects at the end
+  const sorted = [...projects].sort((a, b) => {
+    if (!a.launch_date && !b.launch_date) return 0
+    if (!a.launch_date) return 1
+    if (!b.launch_date) return -1
+    return new Date(a.launch_date).getTime() - new Date(b.launch_date).getTime()
+  })
+
+  if (sorted.length === 0) {
     return (
       <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
         No active projects found.
@@ -291,84 +322,105 @@ function LaunchTracker({
 
   return (
     <div className="space-y-4">
-      {projects.map((project) => {
-        const progress = getProgress(project.id)
+      {sorted.map((project) => {
         const days = project.launch_date ? daysUntil(project.launch_date) : null
+        const ready = getReadyCount(project.id)
+        const borderColor = urgencyColor(days)
+        const isUrgent = days !== null && days >= 0 && days <= 14
 
         return (
           <div
             key={project.id}
-            className="bg-white rounded-xl border border-gray-100 p-5 space-y-4"
+            className="bg-white rounded-xl border border-gray-100 overflow-hidden flex"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="font-barlow font-bold text-fe-navy">{project.name}</span>
-                <WorkflowBadge type={project.workflow_type} />
-              </div>
-              <div className="flex items-center gap-4 text-sm font-fira">
-                {project.launch_date && (
-                  <>
-                    <span className="text-fe-blue-gray">
-                      Launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </span>
-                    <span
-                      className={`font-bold ${
-                        days !== null && days < 0
-                          ? 'text-red-500'
-                          : days !== null && days <= 7
-                          ? 'text-amber-500'
-                          : 'text-fe-navy'
-                      }`}
-                    >
-                      {days !== null && days < 0
-                        ? `${Math.abs(days)}d overdue`
-                        : days !== null
-                        ? `${days}d until launch`
-                        : ''}
-                    </span>
-                  </>
-                )}
-                {!project.launch_date && (
-                  <span className="text-fe-blue-gray italic">No launch date</span>
-                )}
-              </div>
-            </div>
+            {/* Urgency left border */}
+            <div className="w-1.5 shrink-0" style={{ backgroundColor: borderColor }} />
 
-            {/* Channel statuses */}
-            <div className="flex items-center gap-6">
-              {CHANNELS.map((ch) => {
-                const status = channelStatuses[project.id]?.[ch] || 'not_started'
-                return (
-                  <button
-                    key={ch}
-                    onClick={() => toggleChannel(project.id, ch)}
-                    className="flex items-center gap-2 group"
-                    title={`${ch}: ${CHANNEL_STATUS_LABELS[status]} (click to cycle)`}
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-full transition-colors"
-                      style={{ backgroundColor: CHANNEL_STATUS_COLORS[status] }}
-                    />
-                    <span className="text-xs font-fira text-fe-blue-gray group-hover:text-fe-navy transition-colors">
-                      {ch}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Progress bar */}
-            <div className="space-y-1">
+            <div className="flex-1 p-5 space-y-4">
+              {/* Header row */}
               <div className="flex items-center justify-between">
-                <span className="text-xs font-fira text-fe-blue-gray">Marketing Progress</span>
-                <span className="text-xs font-fira font-bold text-fe-navy">{progress}%</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-barlow font-bold text-lg text-fe-navy">{project.name}</span>
+                  <WorkflowBadge type={project.workflow_type} />
+                  {isUrgent && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-fira font-bold bg-red-100 text-red-600 uppercase tracking-wide">
+                      Urgent
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs font-fira text-fe-blue-gray">
+                  {ready}/{CHANNELS.length} channels ready
+                </span>
               </div>
-              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-fe-blue rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
+
+              {/* Days countdown + launch date + channels */}
+              <div className="flex items-center gap-6">
+                {/* Big countdown */}
+                <div className="shrink-0 text-center min-w-[80px]">
+                  {days !== null ? (
+                    <>
+                      <p
+                        className="font-barlow font-extrabold text-3xl leading-none"
+                        style={{ color: borderColor }}
+                      >
+                        {days < 0 ? Math.abs(days) : days}
+                      </p>
+                      <p className="text-[10px] font-fira text-fe-blue-gray mt-1">
+                        {days < 0 ? 'days overdue' : 'days to launch'}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-barlow font-extrabold text-3xl leading-none text-gray-300">&mdash;</p>
+                      <p className="text-[10px] font-fira text-fe-blue-gray mt-1">no date set</p>
+                    </>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="w-px h-12 bg-gray-200 shrink-0" />
+
+                {/* Launch date */}
+                <div className="shrink-0">
+                  {project.launch_date ? (
+                    <p className="text-sm font-fira text-fe-blue-gray">
+                      {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  ) : (
+                    <p className="text-sm font-fira text-gray-400 italic">No launch date</p>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="w-px h-12 bg-gray-200 shrink-0" />
+
+                {/* Channel statuses — labeled icons */}
+                <div className="flex items-center gap-5 flex-1">
+                  {CHANNELS.map((ch) => {
+                    const status = channelStatuses[project.id]?.[ch] || 'not_started'
+                    return (
+                      <button
+                        key={ch}
+                        onClick={() => toggleChannel(project.id, ch)}
+                        className="flex flex-col items-center gap-1.5 group"
+                        title={`Click to cycle status`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full transition-colors ring-2 ring-offset-1 ring-transparent group-hover:ring-gray-300"
+                          style={{ backgroundColor: CHANNEL_STATUS_COLORS[status] }}
+                        />
+                        <span className="text-[10px] font-fira text-fe-blue-gray group-hover:text-fe-navy transition-colors leading-none">
+                          {ch}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -383,19 +435,19 @@ function LaunchTracker({
 function WeeklyContent({
   weekRows,
   setWeekRows,
+  showAll,
+  onShowMore,
 }: {
   weekRows: WeekRow[]
   setWeekRows: React.Dispatch<React.SetStateAction<WeekRow[]>>
+  showAll: boolean
+  onShowMore: () => void
 }) {
+  const visibleRows = showAll ? weekRows : weekRows.slice(0, 8)
+
   function updateTopic(idx: number, topic: string) {
     setWeekRows((prev) =>
       prev.map((row, i) => (i === idx ? { ...row, topic } : row))
-    )
-  }
-
-  function updateOwner(idx: number, owner: string) {
-    setWeekRows((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, owner } : row))
     )
   }
 
@@ -415,71 +467,87 @@ function WeeklyContent({
     )
   }
 
-  function formatDate(dateStr: string): string {
-    const d = new Date(dateStr + 'T00:00:00')
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  function doneCount(row: WeekRow): number {
+    return CONTENT_OUTPUTS.filter((o) => row.statuses[o] === 'done').length
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200">
-            <th className="text-left py-3 px-2 font-fira font-bold text-fe-navy text-xs">Week</th>
-            <th className="text-left py-3 px-2 font-fira font-bold text-fe-navy text-xs">Date</th>
-            <th className="text-left py-3 px-2 font-fira font-bold text-fe-navy text-xs min-w-[200px]">Topic</th>
-            {CONTENT_OUTPUTS.map((output) => (
-              <th key={output} className="text-center py-3 px-2 font-fira font-bold text-fe-navy text-xs whitespace-nowrap">
-                {output}
-              </th>
-            ))}
-            <th className="text-left py-3 px-2 font-fira font-bold text-fe-navy text-xs">Owner</th>
-          </tr>
-        </thead>
-        <tbody>
-          {weekRows.map((row, idx) => (
-            <tr key={row.weekNum} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="py-2 px-2 font-fira text-fe-blue-gray text-xs whitespace-nowrap">
-                Wk {row.weekNum}
-              </td>
-              <td className="py-2 px-2 font-fira text-fe-blue-gray text-xs whitespace-nowrap">
-                {formatDate(row.saturdayDate)}
-              </td>
-              <td className="py-2 px-2">
-                <input
-                  type="text"
-                  value={row.topic}
-                  onChange={(e) => updateTopic(idx, e.target.value)}
-                  placeholder="Enter topic..."
-                  className="w-full px-2 py-1 text-xs font-fira border border-gray-200 rounded focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
-                />
-              </td>
-              {CONTENT_OUTPUTS.map((output) => (
-                <td key={output} className="py-2 px-2 text-center">
+    <div className="space-y-3">
+      {visibleRows.map((row, idx) => {
+        const isCurrent = isCurrentWeek(row.saturdayDate)
+        const complete = doneCount(row)
+
+        return (
+          <div
+            key={row.weekNum}
+            className={`rounded-xl border p-4 space-y-3 ${
+              isCurrent
+                ? 'bg-blue-50/50 border-fe-blue/20'
+                : 'bg-white border-gray-100'
+            }`}
+          >
+            {/* Week header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="font-barlow font-bold text-sm text-fe-navy">
+                  Wk {row.weekNum}
+                </span>
+                <span className="text-xs font-fira text-fe-blue-gray">
+                  {formatDate(row.saturdayDate)}
+                </span>
+                {isCurrent && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-fira font-bold bg-fe-blue text-white uppercase tracking-wide">
+                    This Week
+                  </span>
+                )}
+              </div>
+              <span className="text-xs font-fira text-fe-blue-gray">
+                {complete}/{CONTENT_OUTPUTS.length} complete
+              </span>
+            </div>
+
+            {/* Topic input — prominent */}
+            <input
+              type="text"
+              value={row.topic}
+              onChange={(e) => updateTopic(idx, e.target.value)}
+              placeholder="What's the topic this week?"
+              className="w-full px-3 py-2.5 text-sm font-fira border border-gray-200 rounded-lg focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue placeholder:text-gray-400"
+            />
+
+            {/* Status pills */}
+            <div className="flex flex-wrap gap-2">
+              {CONTENT_OUTPUTS.map((output) => {
+                const status = row.statuses[output]
+                return (
                   <button
+                    key={output}
                     onClick={() => toggleOutputStatus(idx, output)}
-                    className="mx-auto flex items-center justify-center"
-                    title={`${output}: ${CHANNEL_STATUS_LABELS[row.statuses[output]]} (click to cycle)`}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-fira font-bold border transition-colors ${CHANNEL_STATUS_BG[status]}`}
+                    title="Click to cycle status"
                   >
                     <span
-                      className="w-3 h-3 rounded-full transition-colors"
-                      style={{ backgroundColor: CHANNEL_STATUS_COLORS[row.statuses[output]] }}
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: CHANNEL_STATUS_COLORS[status] }}
                     />
+                    {output}
                   </button>
-                </td>
-              ))}
-              <td className="py-2 px-2">
-                <input
-                  type="text"
-                  value={row.owner}
-                  onChange={(e) => updateOwner(idx, e.target.value)}
-                  className="w-20 px-2 py-1 text-xs font-fira border border-gray-200 rounded focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Show more */}
+      {!showAll && weekRows.length > 8 && (
+        <button
+          onClick={onShowMore}
+          className="w-full py-3 text-sm font-fira font-bold text-fe-blue hover:text-fe-blue/80 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+        >
+          Show {weekRows.length - 8} more weeks
+        </button>
+      )}
     </div>
   )
 }
@@ -487,17 +555,17 @@ function WeeklyContent({
 // ----- Tab 3: This Week (Marketing Director) -----
 
 function ThisWeekMarketing({
-  groupedTasks,
+  tasks,
   teamById,
   roles,
   onStatusChange,
 }: {
-  groupedTasks: Record<string, WeekTask[]>
+  tasks: WeekTask[]
   teamById: Record<string, TeamMember>
   roles: Role[]
   onStatusChange: (task: WeekTask, newStatus: TaskStatus) => void
 }) {
-  if (Object.keys(groupedTasks).length === 0) {
+  if (tasks.length === 0) {
     return (
       <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
         No Marketing Director tasks scheduled for this week.
@@ -505,29 +573,55 @@ function ThisWeekMarketing({
     )
   }
 
+  // Group by urgency
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const todayStr = now.toISOString().split('T')[0]
+
+  const overdue: WeekTask[] = []
+  const dueToday: WeekTask[] = []
+  const dueThisWeek: WeekTask[] = []
+
+  for (const task of tasks) {
+    if (task.due_date < todayStr) overdue.push(task)
+    else if (task.due_date === todayStr) dueToday.push(task)
+    else dueThisWeek.push(task)
+  }
+
+  const sections = [
+    { label: 'Overdue', tasks: overdue, color: 'text-red-600', dotColor: 'bg-red-500' },
+    { label: 'Due Today', tasks: dueToday, color: 'text-amber-600', dotColor: 'bg-amber-500' },
+    { label: 'Due This Week', tasks: dueThisWeek, color: 'text-fe-navy', dotColor: 'bg-fe-blue' },
+  ].filter((s) => s.tasks.length > 0)
+
   return (
     <div className="space-y-6">
-      {Object.entries(groupedTasks).map(([projectName, projectTasks]) => (
-        <div key={projectName} className="space-y-3">
+      {sections.map((section) => (
+        <div key={section.label} className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="font-barlow font-bold text-sm text-fe-navy">
-              {projectName}
+            <span className={`w-2 h-2 rounded-full ${section.dotColor}`} />
+            <span className={`font-barlow font-bold text-sm ${section.color}`}>
+              {section.label}
             </span>
-            <WorkflowBadge type={projectTasks[0].workflow_type} />
+            <span className="text-xs font-fira text-fe-blue-gray">
+              ({section.tasks.length})
+            </span>
           </div>
 
           <div className="space-y-2">
-            {projectTasks.map((task) => (
+            {section.tasks.map((task) => (
               <div
                 key={task.id}
                 className="bg-white rounded-xl border border-gray-100 p-4 flex items-start justify-between gap-4"
               >
                 <div className="min-w-0 flex-1 space-y-2">
                   <div>
-                    <p className="font-fira font-bold text-sm text-fe-navy">
+                    <p className="font-barlow font-bold text-sm text-fe-navy">
+                      {task.project_name}
+                    </p>
+                    <p className="font-fira font-bold text-sm text-fe-navy mt-0.5">
                       {task.task_name}
                     </p>
-                    <p className="text-fe-blue-gray text-xs">{task.project_name}</p>
                     <p className="text-xs text-gray-400">{task.phase}</p>
                   </div>
                   <div className="flex items-center gap-2">
