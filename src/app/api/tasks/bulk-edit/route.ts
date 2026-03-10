@@ -11,6 +11,37 @@ export async function GET(request: NextRequest) {
     const roleId = searchParams.get('role_id');
     const keyword = searchParams.get('keyword');
 
+    // Reschedule mode: fetch tasks for a project with due_date + week_number
+    if (mode === 'reschedule') {
+      const projectId = searchParams.get('project_id');
+      if (!projectId) {
+        return NextResponse.json({ error: 'project_id required for reschedule mode' }, { status: 400 });
+      }
+
+      // Get project start_date
+      const { data: project } = await supabase
+        .from('projects')
+        .select('id, name, start_date')
+        .eq('id', projectId)
+        .single();
+
+      const { data: tasks, error } = await supabase
+        .from('project_tasks')
+        .select('id, task_name, due_date, week_number, status, phase_order, task_order')
+        .eq('project_id', projectId)
+        .order('phase_order', { ascending: true })
+        .order('task_order', { ascending: true });
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        project: project || null,
+        tasks: tasks || [],
+      });
+    }
+
     if (mode === 'template') {
       const templateId = searchParams.get('template_id');
 
@@ -98,10 +129,32 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH: Bulk update tasks (active or template)
+// PATCH: Bulk update tasks (active or template) or reschedule
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // --- Reschedule action ---
+    if (body.action === 'reschedule') {
+      const { updates } = body;
+      if (!updates || !Array.isArray(updates) || updates.length === 0) {
+        return NextResponse.json({ error: 'No reschedule updates provided' }, { status: 400 });
+      }
+
+      let updatedCount = 0;
+      for (const item of updates) {
+        const { task_id, new_due_date } = item;
+        if (!task_id || !new_due_date) continue;
+        const { error } = await supabase
+          .from('project_tasks')
+          .update({ due_date: new_due_date })
+          .eq('id', task_id);
+        if (!error) updatedCount++;
+      }
+
+      return NextResponse.json({ updated: updatedCount });
+    }
+
     const { task_ids, role_id, owner_id, mode, sync_to_projects } = body;
 
     if (!task_ids || !Array.isArray(task_ids) || task_ids.length === 0) {

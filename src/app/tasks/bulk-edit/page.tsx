@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Avatar from '@/components/Avatar'
 
-type Mode = 'active' | 'template'
+type Mode = 'active' | 'template' | 'reschedule'
 
 interface Role {
   id: string
@@ -49,6 +49,21 @@ interface TemplateBulkTask {
   week_number: number
   order_index: number
   role_id: string | null
+}
+
+interface RescheduleTask {
+  id: string
+  task_name: string
+  due_date: string | null
+  week_number: number | null
+  status: string
+  new_due_date?: string
+}
+
+interface RescheduleProject {
+  id: string
+  name: string
+  start_date: string
 }
 
 interface Toast {
@@ -105,6 +120,18 @@ export default function BulkEditPage() {
 
   // Collapsed role groups
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+
+  // Reschedule state
+  const [rescheduleProjectId, setRescheduleProjectId] = useState('')
+  const [rescheduleProject, setRescheduleProject] = useState<RescheduleProject | null>(null)
+  const [rescheduleTasks, setRescheduleTasks] = useState<RescheduleTask[]>([])
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
+  const [rescheduleOption, setRescheduleOption] = useState<'start_date' | 'shift'>('start_date')
+  const [newStartDate, setNewStartDate] = useState('')
+  const [shiftDays, setShiftDays] = useState('')
+  const [reschedulePreview, setReschedulePreview] = useState<RescheduleTask[]>([])
+  const [rescheduleApplying, setRescheduleApplying] = useState(false)
+  const [rescheduleSuccess, setRescheduleSuccess] = useState('')
 
   // Toast
   const [toast, setToast] = useState<Toast>({ message: '', visible: false })
@@ -191,6 +218,14 @@ export default function BulkEditPage() {
     setShowSyncPrompt(false)
     setPendingSyncPayload(null)
     setCollapsedGroups(new Set())
+    // Reset reschedule state
+    setRescheduleProjectId('')
+    setRescheduleProject(null)
+    setRescheduleTasks([])
+    setReschedulePreview([])
+    setRescheduleSuccess('')
+    setNewStartDate('')
+    setShiftDays('')
   }
 
   const currentItems = mode === 'active' ? visibleTasks : templateTasks
@@ -412,6 +447,94 @@ export default function BulkEditPage() {
     setPendingSyncPayload(null)
   }
 
+  // --- Reschedule functions ---
+  async function loadRescheduleTasks(projectId: string) {
+    if (!projectId) {
+      setRescheduleTasks([])
+      setRescheduleProject(null)
+      setReschedulePreview([])
+      setRescheduleSuccess('')
+      return
+    }
+    setRescheduleLoading(true)
+    setReschedulePreview([])
+    setRescheduleSuccess('')
+    try {
+      const res = await fetch(`/api/tasks/bulk-edit?mode=reschedule&project_id=${projectId}`)
+      const data = await res.json()
+      setRescheduleProject(data.project || null)
+      setRescheduleTasks(Array.isArray(data.tasks) ? data.tasks : [])
+      if (data.project?.start_date) {
+        setNewStartDate(data.project.start_date)
+      }
+    } catch {
+      setRescheduleTasks([])
+    } finally {
+      setRescheduleLoading(false)
+    }
+  }
+
+  function computePreview() {
+    if (rescheduleOption === 'start_date' && newStartDate) {
+      const start = new Date(newStartDate + 'T00:00:00')
+      const preview = rescheduleTasks.map(t => {
+        const weekNum = t.week_number ?? 1
+        const newDate = new Date(start)
+        newDate.setDate(start.getDate() + weekNum * 7)
+        return { ...t, new_due_date: newDate.toISOString().split('T')[0] }
+      })
+      setReschedulePreview(preview)
+    } else if (rescheduleOption === 'shift' && shiftDays) {
+      const days = parseInt(shiftDays)
+      if (isNaN(days)) return
+      const preview = rescheduleTasks.map(t => {
+        if (!t.due_date) return { ...t, new_due_date: undefined }
+        const d = new Date(t.due_date + 'T00:00:00')
+        d.setDate(d.getDate() + days)
+        return { ...t, new_due_date: d.toISOString().split('T')[0] }
+      })
+      setReschedulePreview(preview)
+    }
+  }
+
+  async function applyReschedule() {
+    if (reschedulePreview.length === 0) return
+    setRescheduleApplying(true)
+    setRescheduleSuccess('')
+    try {
+      const updates = reschedulePreview
+        .filter(t => t.new_due_date)
+        .map(t => ({ task_id: t.id, new_due_date: t.new_due_date }))
+
+      const res = await fetch('/api/tasks/bulk-edit', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reschedule', updates }),
+      })
+
+      const result = await res.json()
+      if (result.updated) {
+        setRescheduleSuccess(`${result.updated} tasks rescheduled successfully`)
+        showToast(`${result.updated} tasks rescheduled`)
+        // Refresh tasks
+        await loadRescheduleTasks(rescheduleProjectId)
+      }
+    } catch {
+      showToast('Error rescheduling tasks')
+    } finally {
+      setRescheduleApplying(false)
+    }
+  }
+
+  // Group reschedule tasks by week_number
+  const rescheduleByWeek = rescheduleTasks.reduce<Record<number, RescheduleTask[]>>((acc, t) => {
+    const week = t.week_number ?? 0
+    if (!acc[week]) acc[week] = []
+    acc[week].push(t)
+    return acc
+  }, {})
+  const rescheduleWeeks = Object.keys(rescheduleByWeek).map(Number).sort((a, b) => a - b)
+
   // Count unassigned tasks per role (from full tasks list, not filtered)
   const unassignedByRole = tasks.reduce<Record<string, number>>((acc, t) => {
     if (!t.owner_ids || t.owner_ids.length === 0) {
@@ -472,6 +595,16 @@ export default function BulkEditPage() {
         >
           Templates
         </button>
+        <button
+          onClick={() => switchMode('reschedule')}
+          className={`px-4 py-2 rounded-md text-sm font-fira font-bold transition-colors ${
+            mode === 'reschedule'
+              ? 'bg-white text-fe-navy shadow-sm'
+              : 'text-fe-blue-gray hover:text-fe-navy'
+          }`}
+        >
+          Reschedule
+        </button>
       </div>
 
       {/* Quick Assign by Role — only in active mode when we have data */}
@@ -522,8 +655,8 @@ export default function BulkEditPage() {
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
+      {/* Filter Bar — hidden in reschedule mode */}
+      {mode !== 'reschedule' && <div className="bg-white border border-gray-100 rounded-xl p-5 mb-6">
         <div className="flex items-end gap-4 flex-wrap">
           {mode === 'template' ? (
             <div className="min-w-[200px]">
@@ -609,7 +742,7 @@ export default function BulkEditPage() {
             </label>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Sync Prompt */}
       {showSyncPrompt && (
@@ -847,7 +980,225 @@ export default function BulkEditPage() {
         </div>
       )}
 
-      {!searched && (
+      {/* Reschedule Tab */}
+      {mode === 'reschedule' && (
+        <div className="space-y-6">
+          {/* Project Selector */}
+          <div className="bg-white border border-gray-100 rounded-xl p-5">
+            <h2 className="font-barlow font-bold text-sm text-fe-navy mb-3">Select Project to Reschedule</h2>
+            <select
+              value={rescheduleProjectId}
+              onChange={e => { setRescheduleProjectId(e.target.value); loadRescheduleTasks(e.target.value) }}
+              className="w-full max-w-md px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+            >
+              <option value="">Choose a project...</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {rescheduleLoading && (
+            <div className="text-center py-8 text-fe-blue-gray text-sm font-fira">Loading tasks...</div>
+          )}
+
+          {!rescheduleLoading && rescheduleProjectId && rescheduleTasks.length > 0 && (
+            <>
+              {/* Current Tasks by Week */}
+              <div className="bg-white border border-gray-100 rounded-xl p-5">
+                <h2 className="font-barlow font-bold text-sm text-fe-navy mb-1">
+                  {rescheduleProject?.name} — {rescheduleTasks.length} tasks
+                </h2>
+                <p className="text-xs font-fira text-fe-blue-gray mb-4">
+                  Current start date: {rescheduleProject?.start_date ? new Date(rescheduleProject.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
+                </p>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {rescheduleWeeks.map(week => (
+                    <div key={week}>
+                      <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-1.5">
+                        {week > 0 ? `Week ${week}` : week === 0 ? 'Launch Week' : `Post-Launch Week ${Math.abs(week)}`}
+                        <span className="text-fe-blue-gray font-normal ml-2">({rescheduleByWeek[week].length} tasks)</span>
+                      </h3>
+                      <div className="space-y-1">
+                        {rescheduleByWeek[week].map(task => (
+                          <div key={task.id} className="flex items-center justify-between px-3 py-1.5 rounded border border-gray-50 bg-gray-50/50 text-xs font-fira">
+                            <span className="text-fe-anthracite truncate mr-3">{task.task_name}</span>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                task.status === 'done' ? 'bg-green-100 text-green-700' :
+                                task.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                task.status === 'blocked' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>{task.status === 'not_started' ? 'Not Started' : task.status === 'in_progress' ? 'In Progress' : task.status === 'done' ? 'Done' : 'Blocked'}</span>
+                              <span className="text-fe-blue-gray w-20 text-right">
+                                {task.due_date ? new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No date'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rescheduling Options */}
+              <div className="bg-white border border-gray-100 rounded-xl p-5">
+                <h2 className="font-barlow font-bold text-sm text-fe-navy mb-4">Reschedule Options</h2>
+                <div className="flex gap-3 mb-5">
+                  <button
+                    onClick={() => { setRescheduleOption('start_date'); setReschedulePreview([]); setRescheduleSuccess('') }}
+                    className={`px-4 py-2 rounded-lg text-sm font-fira font-bold transition-colors ${
+                      rescheduleOption === 'start_date'
+                        ? 'bg-fe-navy text-white'
+                        : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
+                    }`}
+                  >
+                    Shift from new start date
+                  </button>
+                  <button
+                    onClick={() => { setRescheduleOption('shift'); setReschedulePreview([]); setRescheduleSuccess('') }}
+                    className={`px-4 py-2 rounded-lg text-sm font-fira font-bold transition-colors ${
+                      rescheduleOption === 'shift'
+                        ? 'bg-fe-navy text-white'
+                        : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
+                    }`}
+                  >
+                    Shift all dates by N days
+                  </button>
+                </div>
+
+                {rescheduleOption === 'start_date' && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-fira text-fe-blue-gray">
+                      Pick a new project start date. All task due dates will be recalculated based on their week number relative to this date.
+                    </p>
+                    <div className="flex items-end gap-3">
+                      <div>
+                        <label className="block text-xs font-fira font-bold text-fe-navy mb-1">New Start Date</label>
+                        <input
+                          type="date"
+                          value={newStartDate}
+                          onChange={e => { setNewStartDate(e.target.value); setReschedulePreview([]); setRescheduleSuccess('') }}
+                          className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                        />
+                      </div>
+                      <button
+                        onClick={computePreview}
+                        disabled={!newStartDate}
+                        className="px-5 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+                      >
+                        Preview Changes
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {rescheduleOption === 'shift' && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-fira text-fe-blue-gray">
+                      Move all due dates forward (or backward) by a fixed number of days.
+                    </p>
+                    <div className="flex items-end gap-3">
+                      <div>
+                        <label className="block text-xs font-fira font-bold text-fe-navy mb-1">Days to Shift</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={shiftDays}
+                            onChange={e => { setShiftDays(e.target.value); setReschedulePreview([]); setRescheduleSuccess('') }}
+                            placeholder="e.g. 14"
+                            className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                          />
+                          <span className="text-xs font-fira text-fe-blue-gray">days forward (negative to shift back)</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={computePreview}
+                        disabled={!shiftDays || isNaN(parseInt(shiftDays))}
+                        className="px-5 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+                      >
+                        Preview Changes
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Table */}
+              {reschedulePreview.length > 0 && (
+                <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="font-barlow font-bold text-sm text-fe-navy">
+                      Preview — {reschedulePreview.length} tasks will be updated
+                    </h2>
+                    <button
+                      onClick={applyReschedule}
+                      disabled={rescheduleApplying}
+                      className="px-5 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-50"
+                    >
+                      {rescheduleApplying ? 'Applying...' : rescheduleOption === 'start_date' ? 'Apply to all tasks' : 'Apply shift'}
+                    </button>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <th className="text-left py-3 px-4 text-xs font-fira font-bold text-fe-navy">Task</th>
+                        <th className="text-left py-3 px-4 text-xs font-fira font-bold text-fe-navy w-20">Week</th>
+                        <th className="text-left py-3 px-4 text-xs font-fira font-bold text-fe-navy w-32">Current Due Date</th>
+                        <th className="text-left py-3 px-4 text-xs font-fira font-bold text-fe-navy w-8"></th>
+                        <th className="text-left py-3 px-4 text-xs font-fira font-bold text-fe-blue w-32">New Due Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reschedulePreview.map(task => {
+                        const changed = task.due_date !== task.new_due_date
+                        return (
+                          <tr key={task.id} className={`border-b border-gray-50 last:border-b-0 ${changed ? '' : 'opacity-50'}`}>
+                            <td className="px-4 py-2.5 font-fira text-fe-anthracite">{task.task_name}</td>
+                            <td className="px-4 py-2.5 font-fira text-fe-blue-gray text-xs">W{task.week_number}</td>
+                            <td className="px-4 py-2.5 font-fira text-fe-blue-gray text-xs">
+                              {task.due_date ? new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            </td>
+                            <td className="px-2 py-2.5 text-fe-blue-gray">&rarr;</td>
+                            <td className={`px-4 py-2.5 font-fira text-xs font-bold ${changed ? 'text-fe-blue' : 'text-fe-blue-gray'}`}>
+                              {task.new_due_date ? new Date(task.new_due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Success message */}
+              {rescheduleSuccess && (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-4 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm font-fira text-green-700 font-bold">{rescheduleSuccess}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {!rescheduleLoading && rescheduleProjectId && rescheduleTasks.length === 0 && (
+            <div className="text-center py-12 text-fe-blue-gray text-sm font-fira">
+              No tasks found for this project.
+            </div>
+          )}
+
+          {!rescheduleProjectId && (
+            <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
+              Select a project above to load its tasks for rescheduling.
+            </div>
+          )}
+        </div>
+      )}
+
+      {!searched && mode !== 'reschedule' && (
         <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
           {mode === 'active'
             ? 'Loading tasks...'
