@@ -38,6 +38,8 @@ interface ProjectTask {
   status: TaskStatus
   owner_ids: string[]
   role_id: string | null
+  on_hold?: boolean
+  follow_up_date?: string | null
 }
 
 interface TaskComment {
@@ -122,6 +124,11 @@ export default function ProjectDetailPage() {
   const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [editingTaskName, setEditingTaskName] = useState('')
+  const [editingTaskStatus, setEditingTaskStatus] = useState<TaskStatus>('not_started')
+  const [editingTaskDueDate, setEditingTaskDueDate] = useState('')
+  const [editingTaskOnHold, setEditingTaskOnHold] = useState(false)
+  const [editingTaskFollowUp, setEditingTaskFollowUp] = useState('')
+  const [savingTask, setSavingTask] = useState(false)
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null)
   const [addingToPhase, setAddingToPhase] = useState<string | null>(null)
   const [newTaskName, setNewTaskName] = useState('')
@@ -269,15 +276,44 @@ export default function ProjectDetailPage() {
     router.push('/projects')
   }
 
-  const renameTask = async (taskId: string) => {
+  const openEditPanel = (task: ProjectTask) => {
+    setEditingTaskId(task.id)
+    setEditingTaskName(task.task_name)
+    setEditingTaskStatus(task.status)
+    setEditingTaskDueDate(task.due_date || '')
+    setEditingTaskOnHold(task.on_hold || false)
+    setEditingTaskFollowUp(task.follow_up_date || '')
+    setSavingTask(false)
+  }
+
+  const saveTaskEdit = async (taskId: string) => {
     if (!editingTaskName.trim()) return
-    await fetch(`/api/projects/${params.id}/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_name: editingTaskName.trim() }),
-    })
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, task_name: editingTaskName.trim() } : t))
-    setEditingTaskId(null)
+    setSavingTask(true)
+    const body: Record<string, unknown> = {
+      task_name: editingTaskName.trim(),
+      status: editingTaskStatus,
+      due_date: editingTaskDueDate || undefined,
+      on_hold: editingTaskOnHold,
+      follow_up_date: editingTaskFollowUp || null,
+    }
+    try {
+      await fetch(`/api/projects/${params.id}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      setTasks(prev => prev.map(t => t.id === taskId ? {
+        ...t,
+        task_name: editingTaskName.trim(),
+        status: editingTaskStatus,
+        due_date: editingTaskDueDate || t.due_date,
+        on_hold: editingTaskOnHold,
+        follow_up_date: editingTaskFollowUp || null,
+      } : t))
+      setEditingTaskId(null)
+    } finally {
+      setSavingTask(false)
+    }
   }
 
   const deleteTask = async (taskId: string) => {
@@ -827,29 +863,96 @@ export default function ProjectDetailPage() {
                             </div>
                             <div className="min-w-0 flex-1">
                               {editingTaskId === task.id ? (
-                                <form
-                                  onSubmit={e => { e.preventDefault(); renameTask(task.id) }}
-                                  className="flex items-center gap-2"
-                                >
-                                  <input
-                                    type="text"
-                                    value={editingTaskName}
-                                    onChange={e => setEditingTaskName(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
-                                    autoFocus
-                                    onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }}
-                                  />
-                                  <button type="submit" className="text-fe-blue hover:text-fe-blue/80">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  </button>
-                                  <button type="button" onClick={() => setEditingTaskId(null)} className="text-gray-400 hover:text-gray-600">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  </button>
-                                </form>
+                                <div className="space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-3 -mx-1">
+                                  {/* Task name */}
+                                  <div>
+                                    <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Task Name</label>
+                                    <input
+                                      type="text"
+                                      value={editingTaskName}
+                                      onChange={e => setEditingTaskName(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
+                                      autoFocus
+                                      onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }}
+                                    />
+                                  </div>
+                                  {/* Status + Due Date row */}
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-1">
+                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Status</label>
+                                      <select
+                                        value={editingTaskStatus}
+                                        onChange={e => setEditingTaskStatus(e.target.value as TaskStatus)}
+                                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
+                                      >
+                                        <option value="not_started">Not Started</option>
+                                        <option value="in_progress">In Progress</option>
+                                        <option value="done">Done</option>
+                                        <option value="blocked">Blocked</option>
+                                      </select>
+                                    </div>
+                                    <div className="flex-1">
+                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Due Date</label>
+                                      <input
+                                        type="date"
+                                        value={editingTaskDueDate}
+                                        onChange={e => setEditingTaskDueDate(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
+                                      />
+                                    </div>
+                                  </div>
+                                  {/* On Hold + Follow-up Date row */}
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-1">
+                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">On Hold</label>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingTaskOnHold(!editingTaskOnHold)}
+                                        className={`flex items-center gap-2 w-full px-2.5 py-1.5 border rounded-lg text-sm font-fira transition-colors ${
+                                          editingTaskOnHold
+                                            ? 'bg-amber-50 border-amber-300 text-amber-700'
+                                            : 'bg-white border-gray-200 text-fe-anthracite'
+                                        }`}
+                                      >
+                                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                                          editingTaskOnHold ? 'bg-amber-500 border-amber-500' : 'border-gray-300'
+                                        }`}>
+                                          {editingTaskOnHold && (
+                                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                          )}
+                                        </div>
+                                        {editingTaskOnHold ? 'On Hold' : 'Not on hold'}
+                                      </button>
+                                    </div>
+                                    <div className="flex-1">
+                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Follow-up Date</label>
+                                      <input
+                                        type="date"
+                                        value={editingTaskFollowUp}
+                                        onChange={e => setEditingTaskFollowUp(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
+                                      />
+                                    </div>
+                                  </div>
+                                  {/* Save / Cancel buttons */}
+                                  <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                      onClick={() => saveTaskEdit(task.id)}
+                                      disabled={savingTask}
+                                      className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold rounded-lg hover:bg-fe-blue/90 transition-colors disabled:opacity-50"
+                                    >
+                                      {savingTask ? 'Saving...' : 'Save'}
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingTaskId(null)}
+                                      className="px-3 py-1.5 text-xs font-fira font-bold text-fe-blue-gray hover:text-fe-anthracite transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
                               ) : (
                                 <div className="flex items-center gap-1.5">
                                   <button
@@ -858,6 +961,16 @@ export default function ProjectDetailPage() {
                                   >
                                     {task.task_name}
                                   </button>
+                                  {task.on_hold && (
+                                    <span className="shrink-0 text-[9px] font-fira font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                                      On Hold
+                                    </span>
+                                  )}
+                                  {task.follow_up_date && (
+                                    <span className="shrink-0 text-[9px] font-fira text-fe-blue-gray" title={`Follow-up: ${task.follow_up_date}`}>
+                                      F/U {new Date(task.follow_up_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  )}
                                   <button
                                     onClick={() => toggleComments(task.id)}
                                     className={`shrink-0 transition-colors ${isCommentsOpen ? 'text-fe-blue' : 'text-gray-300 opacity-0 group-hover/task:opacity-100 hover:text-fe-blue'}`}
@@ -868,9 +981,9 @@ export default function ProjectDetailPage() {
                                     </svg>
                                   </button>
                                   <button
-                                    onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.task_name) }}
+                                    onClick={() => openEditPanel(task)}
                                     className="opacity-0 group-hover/task:opacity-100 text-gray-400 hover:text-fe-navy transition-opacity shrink-0"
-                                    title="Rename task"
+                                    title="Edit task"
                                   >
                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />

@@ -16,6 +16,8 @@ export async function PATCH(
     if (body.owner_ids !== undefined) updates.owner_ids = body.owner_ids;
     if (body.role_id !== undefined) updates.role_id = body.role_id;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
+    if (body.on_hold !== undefined) updates.on_hold = body.on_hold;
+    if (body.follow_up_date !== undefined) updates.follow_up_date = body.follow_up_date;
 
     // Prevent clearing role_id — tasks must always have a role
     if (body.role_id === null || body.role_id === '') {
