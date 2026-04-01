@@ -11,6 +11,7 @@ const navItems = [
   { href: '/tasks/bulk-edit', label: 'Bulk Editor', icon: BulkEditIcon },
   { href: '/marketing', label: 'Marketing', icon: MarketingIcon },
   { href: '/launch-timeline', label: 'Launch Timeline', icon: TimelineIcon },
+  { href: '/runway', label: 'Runway View', icon: RunwayIcon },
   { href: '/planning-board', label: 'Planning Board', icon: PlanningBoardIcon },
   { href: '/team', label: 'Team', icon: TeamIcon },
   { href: '/performance', label: 'Performance', icon: PerformanceIcon },
@@ -141,6 +142,14 @@ function TimelineIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 12h16M8 8v8m4-10v12m4-8v4" />
+    </svg>
+  )
+}
+
+function RunwayIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18M5 6h14M7 18h10" />
     </svg>
   )
 }
