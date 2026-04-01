@@ -827,6 +827,52 @@ export default function ProjectDetailPage() {
 
                     return (
                       <div key={task.id} className="border-b border-gray-50 last:border-b-0">
+                        {editingTaskId === task.id ? (
+                          /* ── Edit Panel (replaces entire row) ── */
+                          <div className="px-4 py-3">
+                            <div className="space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                              <div>
+                                <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Task Name</label>
+                                <input type="text" value={editingTaskName} onChange={e => setEditingTaskName(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" autoFocus onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }} />
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="flex-1">
+                                  <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Status</label>
+                                  <select value={editingTaskStatus} onChange={e => setEditingTaskStatus(e.target.value as TaskStatus)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white">
+                                    <option value="not_started">Not Started</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="done">Done</option>
+                                    <option value="blocked">Blocked</option>
+                                  </select>
+                                </div>
+                                <div className="flex-1">
+                                  <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Due Date</label>
+                                  <input type="date" value={editingTaskDueDate} onChange={e => setEditingTaskDueDate(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <div className="flex-1">
+                                  <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">On Hold</label>
+                                  <button type="button" onClick={() => setEditingTaskOnHold(!editingTaskOnHold)} className={`flex items-center gap-2 w-full px-2.5 py-1.5 border rounded-lg text-sm font-fira transition-colors ${editingTaskOnHold ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-fe-anthracite'}`}>
+                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${editingTaskOnHold ? 'bg-amber-500 border-amber-500' : 'border-gray-300'}`}>
+                                      {editingTaskOnHold && (<svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>)}
+                                    </div>
+                                    {editingTaskOnHold ? 'On Hold' : 'Not on hold'}
+                                  </button>
+                                </div>
+                                <div className="flex-1">
+                                  <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Follow-up Date</label>
+                                  <input type="date" value={editingTaskFollowUp} onChange={e => setEditingTaskFollowUp(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 pt-1">
+                                <button onClick={() => saveTaskEdit(task.id)} disabled={savingTask} className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold rounded-lg hover:bg-fe-blue/90 transition-colors disabled:opacity-50">{savingTask ? 'Saving...' : 'Save'}</button>
+                                <button onClick={() => setEditingTaskId(null)} className="px-3 py-1.5 text-xs font-fira font-bold text-fe-blue-gray hover:text-fe-anthracite transition-colors">Cancel</button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                        <>
                         <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 group/task">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -862,98 +908,6 @@ export default function ProjectDetailPage() {
                               ) : null}
                             </div>
                             <div className="min-w-0 flex-1">
-                              {editingTaskId === task.id ? (
-                                <div className="space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-3 -mx-1">
-                                  {/* Task name */}
-                                  <div>
-                                    <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Task Name</label>
-                                    <input
-                                      type="text"
-                                      value={editingTaskName}
-                                      onChange={e => setEditingTaskName(e.target.value)}
-                                      className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
-                                      autoFocus
-                                      onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }}
-                                    />
-                                  </div>
-                                  {/* Status + Due Date row */}
-                                  <div className="flex items-start gap-3">
-                                    <div className="flex-1">
-                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Status</label>
-                                      <select
-                                        value={editingTaskStatus}
-                                        onChange={e => setEditingTaskStatus(e.target.value as TaskStatus)}
-                                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
-                                      >
-                                        <option value="not_started">Not Started</option>
-                                        <option value="in_progress">In Progress</option>
-                                        <option value="done">Done</option>
-                                        <option value="blocked">Blocked</option>
-                                      </select>
-                                    </div>
-                                    <div className="flex-1">
-                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Due Date</label>
-                                      <input
-                                        type="date"
-                                        value={editingTaskDueDate}
-                                        onChange={e => setEditingTaskDueDate(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
-                                      />
-                                    </div>
-                                  </div>
-                                  {/* On Hold + Follow-up Date row */}
-                                  <div className="flex items-start gap-3">
-                                    <div className="flex-1">
-                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">On Hold</label>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingTaskOnHold(!editingTaskOnHold)}
-                                        className={`flex items-center gap-2 w-full px-2.5 py-1.5 border rounded-lg text-sm font-fira transition-colors ${
-                                          editingTaskOnHold
-                                            ? 'bg-amber-50 border-amber-300 text-amber-700'
-                                            : 'bg-white border-gray-200 text-fe-anthracite'
-                                        }`}
-                                      >
-                                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                                          editingTaskOnHold ? 'bg-amber-500 border-amber-500' : 'border-gray-300'
-                                        }`}>
-                                          {editingTaskOnHold && (
-                                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                          )}
-                                        </div>
-                                        {editingTaskOnHold ? 'On Hold' : 'Not on hold'}
-                                      </button>
-                                    </div>
-                                    <div className="flex-1">
-                                      <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Follow-up Date</label>
-                                      <input
-                                        type="date"
-                                        value={editingTaskFollowUp}
-                                        onChange={e => setEditingTaskFollowUp(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white"
-                                      />
-                                    </div>
-                                  </div>
-                                  {/* Save / Cancel buttons */}
-                                  <div className="flex items-center gap-2 pt-1">
-                                    <button
-                                      onClick={() => saveTaskEdit(task.id)}
-                                      disabled={savingTask}
-                                      className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold rounded-lg hover:bg-fe-blue/90 transition-colors disabled:opacity-50"
-                                    >
-                                      {savingTask ? 'Saving...' : 'Save'}
-                                    </button>
-                                    <button
-                                      onClick={() => setEditingTaskId(null)}
-                                      className="px-3 py-1.5 text-xs font-fira font-bold text-fe-blue-gray hover:text-fe-anthracite transition-colors"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => toggleComments(task.id)}
@@ -1013,9 +967,6 @@ export default function ProjectDetailPage() {
                                     </svg>
                                   </button>
                                 </div>
-                              )}
-                              {editingTaskId !== task.id && (
-                                <>
                                   <p className="text-xs text-gray-400 font-fira">
                                     Week {task.week_number} &middot; Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                   </p>
@@ -1161,11 +1112,8 @@ export default function ProjectDetailPage() {
                                       </button>
                                     </div>
                                   )}
-                                </>
-                              )}
                             </div>
                           </div>
-                          {editingTaskId !== task.id && (
                             <div className="flex items-center gap-2">
                               {isBlocked(task.id) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-red-50 text-red-600 border border-red-100">
@@ -1180,7 +1128,6 @@ export default function ProjectDetailPage() {
                                 onClick={(newStatus) => updateTaskStatus(task.id, newStatus)}
                               />
                             </div>
-                          )}
                         </div>
 
                         {isCommentsOpen && (
@@ -1281,6 +1228,8 @@ export default function ProjectDetailPage() {
                               </>
                             )}
                           </div>
+                        )}
+                        </>
                         )}
                       </div>
                     )
