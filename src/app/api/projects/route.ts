@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSimplifiedPhase } from '@/lib/phases';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
       (projects || []).map(async (project: any) => {
         const { data: tasks, error: tasksError } = await supabase
           .from('project_tasks')
-          .select('status')
+          .select('status, phase')
           .eq('project_id', project.id);
 
         if (tasksError) {
@@ -31,12 +32,25 @@ export async function GET(request: NextRequest) {
             progress: 0,
             total_tasks: 0,
             done_tasks: 0,
+            phase_breakdown: { Build: { total: 0, done: 0 }, Market: { total: 0, done: 0 }, 'Launch & Run': { total: 0, done: 0 } },
           };
         }
 
         const totalCount = tasks?.length || 0;
         const doneCount = tasks?.filter((t) => t.status === 'done').length || 0;
         const progress = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+
+        // Compute phase breakdown using simplified phases
+        const phase_breakdown: Record<string, { total: number; done: number }> = {
+          Build: { total: 0, done: 0 },
+          Market: { total: 0, done: 0 },
+          'Launch & Run': { total: 0, done: 0 },
+        };
+        for (const t of tasks || []) {
+          const sp = getSimplifiedPhase(t.phase);
+          phase_breakdown[sp].total++;
+          if (t.status === 'done') phase_breakdown[sp].done++;
+        }
 
         return {
           ...project,
@@ -46,6 +60,7 @@ export async function GET(request: NextRequest) {
           progress,
           total_tasks: totalCount,
           done_tasks: doneCount,
+          phase_breakdown,
         };
       })
     );

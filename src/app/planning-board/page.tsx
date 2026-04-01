@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, SimplifiedPhase } from '@/lib/phases'
 
 // ── Types ───────────────────────────────────────────────────────────────────
+interface PhaseStats { total: number; done: number }
+
 interface Project {
   id: string
   name: string
@@ -11,6 +14,7 @@ interface Project {
   progress: number
   total_tasks: number
   done_tasks: number
+  phase_breakdown: Record<SimplifiedPhase, PhaseStats>
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -237,18 +241,51 @@ export default function PlanningBoard() {
                         <span className={`inline-block text-[10px] font-fira font-bold text-white rounded px-1.5 py-0.5 mb-2 ${style.color}`}>
                           {style.label}
                         </span>
-                        {/* Progress bar */}
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-fe-green transition-all"
-                              style={{ width: `${project.progress}%` }}
-                            />
+                        {/* 3-phase progress bar */}
+                        {project.phase_breakdown && project.total_tasks > 0 && (
+                          <div className="group/phase relative">
+                            <div className="flex h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              {SIMPLIFIED_PHASE_ORDER.map(sp => {
+                                const stats = project.phase_breakdown[sp]
+                                if (!stats || stats.total === 0) return null
+                                const widthPct = (stats.total / project.total_tasks) * 100
+                                const donePct = stats.total > 0 ? (stats.done / stats.total) * 100 : 0
+                                return (
+                                  <div
+                                    key={sp}
+                                    className="relative h-full"
+                                    style={{ width: `${widthPct}%` }}
+                                  >
+                                    <div
+                                      className="absolute inset-0 opacity-20"
+                                      style={{ backgroundColor: SIMPLIFIED_PHASE_COLORS[sp] }}
+                                    />
+                                    <div
+                                      className="absolute left-0 top-0 bottom-0"
+                                      style={{
+                                        width: `${donePct}%`,
+                                        backgroundColor: SIMPLIFIED_PHASE_COLORS[sp],
+                                      }}
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            {/* Tooltip */}
+                            <div className="absolute -top-[52px] left-1/2 -translate-x-1/2 hidden group-hover/phase:block bg-fe-navy text-white text-[10px] font-fira rounded px-2 py-1.5 whitespace-nowrap z-20 shadow-lg">
+                              {SIMPLIFIED_PHASE_ORDER.map((sp, i) => {
+                                const stats = project.phase_breakdown[sp]
+                                if (!stats || stats.total === 0) return null
+                                return (
+                                  <span key={sp}>
+                                    {i > 0 && ' · '}
+                                    <span style={{ color: sp === 'Build' ? '#93B5E0' : sp === 'Market' ? '#6BB0F0' : '#5CD89A' }}>{sp}:</span> {stats.done}/{stats.total}
+                                  </span>
+                                )
+                              })}
+                            </div>
                           </div>
-                          <span className="text-[10px] font-fira text-fe-blue-gray whitespace-nowrap">
-                            {project.done_tasks}/{project.total_tasks}
-                          </span>
-                        </div>
+                        )}
                       </div>
                     )
                   })}

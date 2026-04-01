@@ -8,6 +8,7 @@ import StatusBadge from '@/components/StatusBadge'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
 import { TaskStatus, nextStatus, WORKFLOW_COLORS } from '@/lib/types'
+import { getSimplifiedPhase, SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, SimplifiedPhase } from '@/lib/phases'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
 
 interface WorkflowTemplate {
@@ -228,7 +229,7 @@ export default function ProjectDetailPage() {
   }
 
   const bulkUpdatePhase = async (phase: string, newStatus: TaskStatus) => {
-    const phaseTasks = tasks.filter(t => t.phase === phase)
+    const phaseTasks = tasks.filter(t => getSimplifiedPhase(t.phase) === phase)
     await Promise.all(
       phaseTasks.map(t =>
         fetch(`/api/projects/${params.id}/tasks/${t.id}`, {
@@ -444,20 +445,21 @@ export default function ProjectDetailPage() {
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
 
-  // Group tasks by phase (ordered by phase_order)
-  const phases = Array.from(
-    tasks.reduce((map, task) => {
-      if (!map.has(task.phase)) {
-        map.set(task.phase, { phase: task.phase, phase_order: task.phase_order, tasks: [] })
-      }
-      map.get(task.phase)!.tasks.push(task)
-      return map
-    }, new Map<string, { phase: string; phase_order: number; tasks: ProjectTask[] }>())
-  ).map(([, v]) => v)
-    .sort((a, b) => a.phase_order - b.phase_order)
+  // Group tasks by simplified phase (Build, Market, Launch & Run)
+  const phaseGroups: Record<SimplifiedPhase, ProjectTask[]> = {
+    'Build': [],
+    'Market': [],
+    'Launch & Run': [],
+  }
+  for (const task of tasks) {
+    phaseGroups[getSimplifiedPhase(task.phase)].push(task)
+  }
 
-  // Sort tasks within each phase
-  phases.forEach(p => p.tasks.sort((a, b) => a.task_order - b.task_order))
+  const phases = SIMPLIFIED_PHASE_ORDER.map(sp => ({
+    phase: sp,
+    phase_order: SIMPLIFIED_PHASE_ORDER.indexOf(sp),
+    tasks: phaseGroups[sp].sort((a, b) => a.phase_order - b.phase_order || a.task_order - b.task_order),
+  })).filter(p => p.tasks.length > 0)
 
   // Build dependency map: task_id → depends_on_task_ids[]
   const depsMap = new Map<string, string[]>()
@@ -712,6 +714,8 @@ export default function ProjectDetailPage() {
         {phases.map(phase => {
           const phaseDone = phase.tasks.filter(t => t.status === 'done').length
           const phaseTotal = phase.tasks.length
+          const phasePct = phaseTotal > 0 ? Math.round((phaseDone / phaseTotal) * 100) : 0
+          const phaseColor = SIMPLIFIED_PHASE_COLORS[phase.phase as SimplifiedPhase] ?? '#1B365D'
           const isExpanded = expandedPhases.has(phase.phase)
 
           return (
@@ -727,12 +731,18 @@ export default function ProjectDetailPage() {
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: phaseColor }} />
                   <h3 className="font-barlow font-bold text-sm text-fe-navy">{phase.phase}</h3>
                 </button>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-fe-blue-gray font-fira">
-                    {phaseDone}/{phaseTotal} complete
-                  </span>
+                  <div className="flex items-center gap-2 w-32">
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${phasePct}%`, backgroundColor: phaseColor }} />
+                    </div>
+                    <span className="text-xs text-fe-blue-gray font-fira whitespace-nowrap">
+                      {phaseDone}/{phaseTotal}
+                    </span>
+                  </div>
                   <div className="relative" ref={bulkMenuPhase === phase.phase ? bulkMenuRef : undefined}>
                     <button
                       onClick={(e) => {
