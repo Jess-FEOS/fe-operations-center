@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSimplifiedPhase } from '@/lib/phases';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export async function GET() {
       // All tasks for active projects
       supabase
         .from('project_tasks')
-        .select('id, project_id, status, due_date, owner_ids'),
+        .select('id, project_id, status, due_date, owner_ids, phase'),
 
       // This week's tasks
       supabase
@@ -82,6 +83,19 @@ export async function GET() {
       const tasks = allTasks.filter((t: any) => t.project_id === project.id);
       const total = tasks.length;
       const done = tasks.filter((t: any) => t.status === 'done').length;
+
+      // Compute phase breakdown
+      const phase_breakdown: Record<string, { total: number; done: number }> = {
+        Build: { total: 0, done: 0 },
+        Market: { total: 0, done: 0 },
+        'Launch & Run': { total: 0, done: 0 },
+      };
+      for (const t of tasks) {
+        const sp = getSimplifiedPhase(t.phase);
+        phase_breakdown[sp].total++;
+        if (t.status === 'done') phase_breakdown[sp].done++;
+      }
+
       return {
         id: project.id,
         name: project.name,
@@ -96,6 +110,7 @@ export async function GET() {
         progress: total > 0 ? Math.round((done / total) * 100) : 0,
         total_tasks: total,
         done_tasks: done,
+        phase_breakdown,
       };
     });
 
@@ -186,6 +201,62 @@ export async function GET() {
       })
       .map((p: any) => ({ id: p.id, name: p.name, launch_date: p.launch_date }));
 
+    // -- At Risk: launch within 60 days + 0% Market phase --
+    const sixtyDaysOut = new Date(now);
+    sixtyDaysOut.setDate(now.getDate() + 60);
+    const sixtyDaysStr = sixtyDaysOut.toISOString().split('T')[0];
+
+    const atRiskProjects = activeProjects
+      .filter((p: any) => {
+        if (!p.launch_date) return false;
+        if (p.launch_date < todayStr || p.launch_date > sixtyDaysStr) return false;
+        const market = p.phase_breakdown?.Market;
+        if (!market || market.total === 0) return true; // No market tasks at all = at risk
+        return market.done === 0; // 0% market completion
+      })
+      .map((p: any) => {
+        const launchDate = new Date(p.launch_date + 'T12:00:00');
+        const daysUntil = Math.ceil((launchDate.getTime() - now.getTime()) / 86_400_000);
+        const market = p.phase_breakdown?.Market || { total: 0, done: 0 };
+        const build = p.phase_breakdown?.Build || { total: 0, done: 0 };
+        let risk_reason = '';
+        if (market.total === 0) {
+          risk_reason = `No marketing tasks defined — launching in ${daysUntil} days`;
+        } else {
+          risk_reason = `0% marketing progress (${market.done}/${market.total} tasks) — launching in ${daysUntil} days`;
+        }
+        return {
+          id: p.id,
+          name: p.name,
+          launch_date: p.launch_date,
+          days_until_launch: daysUntil,
+          phase_breakdown: p.phase_breakdown,
+          total_tasks: p.total_tasks,
+          risk_reason,
+        };
+      });
+
+    // Also include stalled projects (0% total progress, launching within 30 days) that aren't already in atRisk
+    const atRiskIds = new Set(atRiskProjects.map((p: any) => p.id));
+    for (const p of stalled30Day) {
+      if (!atRiskIds.has(p.id)) {
+        const proj = activeProjects.find((ap: any) => ap.id === p.id);
+        if (proj) {
+          const launchDate = new Date(proj.launch_date + 'T12:00:00');
+          const daysUntil = Math.ceil((launchDate.getTime() - now.getTime()) / 86_400_000);
+          atRiskProjects.push({
+            id: proj.id,
+            name: proj.name,
+            launch_date: proj.launch_date,
+            days_until_launch: daysUntil,
+            phase_breakdown: proj.phase_breakdown,
+            total_tasks: proj.total_tasks,
+            risk_reason: `0% overall progress — launching in ${daysUntil} days`,
+          });
+        }
+      }
+    }
+
     // -- Active campaigns --
     const campaignsRaw2 = campaignsRes.data || [];
     const activeCampaigns = campaignsRaw2.map((c: any) => ({
@@ -203,6 +274,7 @@ export async function GET() {
       active_campaigns: activeCampaigns,
       next_launch: nextLaunch,
       enrollment_tracker: enrollmentTracker,
+      at_risk_projects: atRiskProjects,
       attention_needed: {
         overdue_count: overdueCount,
         no_priority_projects: noPriorityProjects,

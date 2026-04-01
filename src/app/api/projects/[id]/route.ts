@@ -185,6 +185,44 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // --- Activity log: launch_date change ---
+    if (
+      body.launch_date !== undefined &&
+      body.launch_date !== oldLaunchDate
+    ) {
+      const oldVal = oldLaunchDate || 'unset';
+      const newVal = body.launch_date || 'unset';
+      const desc = oldLaunchDate
+        ? `Launch date changed from ${oldVal} to ${newVal}`
+        : `Launch date set to ${newVal}`;
+      await supabase.from('activity_log').insert({
+        project_id: id,
+        action: 'launch_date_changed',
+        description: desc,
+        old_value: oldLaunchDate,
+        new_value: body.launch_date,
+      });
+    }
+
+    // --- Activity log: status change ---
+    if (body.status !== undefined) {
+      const { data: oldProject } = await supabase
+        .from('projects')
+        .select('status')
+        .eq('id', id)
+        .single();
+      const oldStatus = oldProject?.status;
+      if (oldStatus && oldStatus !== body.status) {
+        await supabase.from('activity_log').insert({
+          project_id: id,
+          action: 'status_changed',
+          description: `Status changed from ${oldStatus} to ${body.status}`,
+          old_value: oldStatus,
+          new_value: body.status,
+        });
+      }
+    }
+
     // --- Cascade: shift all task due_dates when launch_date changes ---
     if (
       body.launch_date !== undefined &&

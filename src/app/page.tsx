@@ -112,6 +112,27 @@ interface AttentionNeeded {
   stalled_launching_soon: { id: string; name: string; launch_date: string }[];
 }
 
+interface AtRiskProject {
+  id: string;
+  name: string;
+  launch_date: string;
+  days_until_launch: number;
+  phase_breakdown: Record<string, { total: number; done: number }>;
+  total_tasks: number;
+  risk_reason: string;
+}
+
+interface ActivityEntry {
+  id: string;
+  project_id: string;
+  project_name: string;
+  action: string;
+  description: string;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+}
+
 const MONTH_OPTIONS = [
   { value: '2026-03', label: 'March 2026' },
   { value: '2026-04', label: 'April 2026' },
@@ -164,6 +185,10 @@ export default function Dashboard() {
   const [enrollmentTracker, setEnrollmentTracker] = useState<EnrollmentRow[]>([]);
   const [attentionNeeded, setAttentionNeeded] = useState<AttentionNeeded>({ overdue_count: 0, no_priority_projects: [], stalled_launching_soon: [] });
 
+  // At Risk & Recent Changes
+  const [atRiskProjects, setAtRiskProjects] = useState<AtRiskProject[]>([]);
+  const [recentChanges, setRecentChanges] = useState<ActivityEntry[]>([]);
+
   // Metric logging modal
   const [logMetricProjectId, setLogMetricProjectId] = useState<string | null>(null);
   const [logMetricName, setLogMetricName] = useState('enrollments');
@@ -173,7 +198,7 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [dashboardRes, teamRes, prioritiesRes, tasksRes, overdueRes, unassignedRes, rolesRes, projectsListRes] = await Promise.all([
+        const [dashboardRes, teamRes, prioritiesRes, tasksRes, overdueRes, unassignedRes, rolesRes, projectsListRes, activityRes] = await Promise.all([
           fetch('/api/dashboard'),
           fetch('/api/team'),
           fetch('/api/priorities'),
@@ -182,6 +207,7 @@ export default function Dashboard() {
           fetch('/api/tasks/unassigned').catch(() => null),
           fetch('/api/roles').catch(() => null),
           fetch('/api/projects').catch(() => null),
+          fetch('/api/activity-log').catch(() => null),
         ]);
 
         const dashboardData = await dashboardRes.json();
@@ -192,6 +218,7 @@ export default function Dashboard() {
         const unassignedData = unassignedRes ? await unassignedRes.json() : [];
         const rolesData = rolesRes ? await rolesRes.json() : [];
         const projectsListData = projectsListRes ? await projectsListRes.json() : [];
+        const activityData = activityRes ? await activityRes.json() : [];
 
         setProjectsRaw(Array.isArray(dashboardData.active_projects) ? dashboardData.active_projects : []);
         setTeam(Array.isArray(teamData) ? teamData : []);
@@ -204,6 +231,8 @@ export default function Dashboard() {
         setNextLaunch(dashboardData.next_launch || null);
         setEnrollmentTracker(Array.isArray(dashboardData.enrollment_tracker) ? dashboardData.enrollment_tracker : []);
         setAttentionNeeded(dashboardData.attention_needed || { overdue_count: 0, no_priority_projects: [], stalled_launching_soon: [] });
+        setAtRiskProjects(Array.isArray(dashboardData.at_risk_projects) ? dashboardData.at_risk_projects : []);
+        setRecentChanges(Array.isArray(activityData) ? activityData : []);
 
         // Use /api/priorities as the SOLE source for priorities — deduplicate by ID
         const rawP = Array.isArray(allPrioritiesData) ? allPrioritiesData : [];
@@ -521,6 +550,21 @@ export default function Dashboard() {
   ];
 
   const hasAttentionItems = attentionNeeded.overdue_count > 0 || attentionNeeded.no_priority_projects.length > 0 || attentionNeeded.stalled_launching_soon.length > 0;
+
+  function getRelativeTime(dateStr: string): string {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay === 1) return 'yesterday';
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
 
   return (
     <div className="font-fira">
@@ -1167,6 +1211,102 @@ export default function Dashboard() {
                     </svg>
                     Set Priority
                   </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ===== AT RISK ===== */}
+      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">At Risk</h2>
+        <p className="text-xs font-fira text-fe-blue-gray mb-4">Programs that need attention before launch</p>
+        {atRiskProjects.length === 0 ? (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-green-50 border border-green-100">
+            <span className="text-green-500 text-sm font-bold">&#9989;</span>
+            <span className="text-sm font-fira text-green-700">All programs on track</span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {atRiskProjects.map(proj => {
+              const pb = proj.phase_breakdown;
+              const phases = ['Build', 'Market', 'Launch & Run'] as const;
+              return (
+                <div key={proj.id} className="border border-red-100 rounded-lg p-4 bg-red-50/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <Link href={`/projects/${proj.id}`} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">
+                      {proj.name}
+                    </Link>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-fira text-fe-blue-gray">
+                        {new Date(proj.launch_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="text-xs font-fira font-bold text-fe-red">
+                        {proj.days_until_launch}d away
+                      </span>
+                    </div>
+                  </div>
+                  {/* Phase breakdown bar */}
+                  {proj.total_tasks > 0 && (
+                    <div className="flex h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
+                      {phases.map(sp => {
+                        const stats = pb[sp];
+                        if (!stats || stats.total === 0) return null;
+                        const widthPct = (stats.total / proj.total_tasks) * 100;
+                        const donePct = stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
+                        const color = sp === 'Build' ? '#1B365D' : sp === 'Market' ? '#0762C8' : '#046A38';
+                        return (
+                          <div key={sp} className="relative h-full" style={{ width: `${widthPct}%` }}>
+                            <div className="absolute inset-0 opacity-20" style={{ backgroundColor: color }} />
+                            <div className="absolute left-0 top-0 bottom-0" style={{ width: `${donePct}%`, backgroundColor: color }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="text-xs font-fira text-red-600">{proj.risk_reason}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ===== RECENT CHANGES ===== */}
+      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Recent Changes</h2>
+        <p className="text-xs font-fira text-fe-blue-gray mb-4">Latest project activity</p>
+        {recentChanges.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No recent changes — activity will appear here as projects are updated.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentChanges.map(entry => {
+              const timeAgo = getRelativeTime(entry.created_at);
+              return (
+                <div key={entry.id} className="flex items-start gap-3 px-4 py-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+                  <div className="shrink-0 mt-0.5">
+                    {entry.action === 'created' ? (
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-600 text-xs font-bold">+</span>
+                    ) : entry.action === 'launch_date_changed' ? (
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-fe-blue text-xs font-bold">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Link href={`/projects/${entry.project_id}`} className="font-fira text-sm font-bold text-fe-navy hover:text-fe-blue transition-colors truncate">
+                        {entry.project_name}
+                      </Link>
+                      <span className="text-xs font-fira text-fe-blue-gray shrink-0">{timeAgo}</span>
+                    </div>
+                    <p className="text-xs font-fira text-fe-anthracite mt-0.5">{entry.description}</p>
+                  </div>
                 </div>
               );
             })}

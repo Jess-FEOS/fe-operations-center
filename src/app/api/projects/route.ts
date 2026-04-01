@@ -5,6 +5,13 @@ import { getSimplifiedPhase } from '@/lib/phases';
 
 export const dynamic = 'force-dynamic';
 
+const WORKFLOW_LABELS: Record<string, string> = {
+  'course-launch': 'Course Launch',
+  'podcast': 'Podcast',
+  'newsletter': 'Newsletter',
+  'subscription': 'Subscription',
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { data: projects, error: projectsError } = await supabase
@@ -104,6 +111,15 @@ export async function POST(request: NextRequest) {
     if (projectError) {
       return NextResponse.json({ error: projectError.message }, { status: 500 });
     }
+
+    // Log project creation to activity_log
+    await supabase.from('activity_log').insert({
+      project_id: project.id,
+      action: 'created',
+      description: `New ${WORKFLOW_LABELS[workflow_type] || workflow_type} project created`,
+      old_value: null,
+      new_value: name,
+    });
 
     // Two-way link: update the priority's project_id if priority_id was provided
     if (priority_id) {
