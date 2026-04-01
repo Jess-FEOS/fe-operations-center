@@ -1,24 +1,46 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const navItems = [
-  { href: '/', label: 'Dashboard', icon: DashboardIcon },
-  { href: '/this-week', label: 'This Week', icon: CalendarIcon },
-  { href: '/calendar', label: 'Calendar', icon: MonthCalendarIcon },
-  { href: '/projects', label: 'Projects', icon: FolderIcon },
-  { href: '/tasks/bulk-edit', label: 'Bulk Editor', icon: BulkEditIcon },
-  { href: '/marketing', label: 'Marketing', icon: MarketingIcon },
-  { href: '/launch-timeline', label: 'Launch Timeline', icon: TimelineIcon },
-  { href: '/runway', label: 'Runway View', icon: RunwayIcon },
-  { href: '/planning-board', label: 'Planning Board', icon: PlanningBoardIcon },
-  { href: '/team', label: 'Team', icon: TeamIcon },
-  { href: '/performance', label: 'Performance', icon: PerformanceIcon },
-]
+const PLANNING_ROUTES = ['/launch-timeline', '/runway', '/planning-board']
+const PROJECTS_ROUTES = ['/projects', '/tasks/bulk-edit']
 
 export default function Sidebar() {
   const pathname = usePathname()
+
+  const isPlanningActive = PLANNING_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))
+  const isProjectsActive = pathname === '/projects' || pathname.startsWith('/projects/') || pathname.startsWith('/tasks/bulk-edit')
+
+  const [planningOpen, setPlanningOpen] = useState(isPlanningActive)
+  const [projectsOpen, setProjectsOpen] = useState(isProjectsActive)
+
+  function isActive(href: string) {
+    if (href === '/') return pathname === '/'
+    return pathname === href || pathname.startsWith(href + '/')
+  }
+
+  const linkClass = (href: string) =>
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-fira transition-colors ${
+      isActive(href)
+        ? 'bg-fe-blue text-white'
+        : 'text-white/70 hover:text-white hover:bg-white/5'
+    }`
+
+  const subLinkClass = (href: string) =>
+    `flex items-center gap-2.5 pl-11 pr-3 py-2 rounded-lg text-[13px] font-fira transition-colors ${
+      isActive(href)
+        ? 'bg-fe-blue text-white'
+        : 'text-white/60 hover:text-white hover:bg-white/5'
+    }`
+
+  const groupHeaderClass = (active: boolean) =>
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-fira transition-colors w-full ${
+      active
+        ? 'text-white font-bold'
+        : 'text-white/70 hover:text-white hover:bg-white/5'
+    }`
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-fe-navy flex flex-col z-50">
@@ -34,25 +56,89 @@ export default function Sidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 py-4 px-3 space-y-1">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/' && pathname.startsWith(item.href))
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-fira transition-colors ${
-                isActive
-                  ? 'bg-fe-blue text-white'
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              {item.label}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+        {/* Dashboard */}
+        <Link href="/" className={linkClass('/')}>
+          <DashboardIcon className="w-5 h-5" />
+          Dashboard
+        </Link>
+
+        {/* This Week */}
+        <Link href="/this-week" className={linkClass('/this-week')}>
+          <CalendarIcon className="w-5 h-5" />
+          This Week
+        </Link>
+
+        {/* Calendar */}
+        <Link href="/calendar" className={linkClass('/calendar')}>
+          <MonthCalendarIcon className="w-5 h-5" />
+          Calendar
+        </Link>
+
+        {/* Projects (with Bulk Editor sub-item) */}
+        <div>
+          <button
+            onClick={() => setProjectsOpen(!projectsOpen)}
+            className={groupHeaderClass(isProjectsActive)}
+          >
+            <FolderIcon className="w-5 h-5" />
+            <span className="flex-1 text-left">Projects</span>
+            <ChevronIcon open={projectsOpen} />
+          </button>
+          {projectsOpen && (
+            <div className="mt-0.5 space-y-0.5">
+              <Link href="/projects" className={subLinkClass('/projects')}>
+                All Projects
+              </Link>
+              <Link href="/tasks/bulk-edit" className={subLinkClass('/tasks/bulk-edit')}>
+                Bulk Editor
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Marketing */}
+        <Link href="/marketing" className={linkClass('/marketing')}>
+          <MarketingIcon className="w-5 h-5" />
+          Marketing
+        </Link>
+
+        {/* Planning (collapsible group) */}
+        <div>
+          <button
+            onClick={() => setPlanningOpen(!planningOpen)}
+            className={groupHeaderClass(isPlanningActive)}
+          >
+            <PlanningIcon className="w-5 h-5" />
+            <span className="flex-1 text-left">Planning</span>
+            <ChevronIcon open={planningOpen} />
+          </button>
+          {planningOpen && (
+            <div className="mt-0.5 space-y-0.5">
+              <Link href="/launch-timeline" className={subLinkClass('/launch-timeline')}>
+                Launch Timeline
+              </Link>
+              <Link href="/runway" className={subLinkClass('/runway')}>
+                Runway View
+              </Link>
+              <Link href="/planning-board" className={subLinkClass('/planning-board')}>
+                Planning Board
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Team */}
+        <Link href="/team" className={linkClass('/team')}>
+          <TeamIcon className="w-5 h-5" />
+          Team
+        </Link>
+
+        {/* Performance */}
+        <Link href="/performance" className={linkClass('/performance')}>
+          <PerformanceIcon className="w-5 h-5" />
+          Performance
+        </Link>
       </nav>
 
       <div className="px-3 pb-4">
@@ -71,6 +157,19 @@ export default function Sidebar() {
         <p className="text-white/30 text-xs font-fira">Operations Center v1</p>
       </div>
     </aside>
+  )
+}
+
+// ── Icons ───────────────────────────────────────────────────────────────────
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`w-3.5 h-3.5 text-white/40 transition-transform ${open ? 'rotate-90' : ''}`}
+      fill="none" viewBox="0 0 24 24" stroke="currentColor"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
   )
 }
 
@@ -114,14 +213,6 @@ function TeamIcon({ className }: { className?: string }) {
   )
 }
 
-function BulkEditIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-    </svg>
-  )
-}
-
 function MarketingIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -138,26 +229,10 @@ function PerformanceIcon({ className }: { className?: string }) {
   )
 }
 
-function TimelineIcon({ className }: { className?: string }) {
+function PlanningIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 12h16M8 8v8m4-10v12m4-8v4" />
-    </svg>
-  )
-}
-
-function RunwayIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18M5 6h14M7 18h10" />
-    </svg>
-  )
-}
-
-function PlanningBoardIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 4h6m-6 0a2 2 0 00-2 2v14a2 2 0 002 2h6a2 2 0 002-2V6a2 2 0 00-2-2m-6 0H5a2 2 0 00-2 2v14a2 2 0 002 2h4m6-18h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   )
 }
