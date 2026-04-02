@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Avatar from '@/components/Avatar'
+import { getSimplifiedPhase, SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, SimplifiedPhase } from '@/lib/phases'
 
 type Mode = 'active' | 'template' | 'reschedule'
 
@@ -38,6 +39,7 @@ interface BulkTask {
   owner_ids: string[]
   role_id: string | null
   status: string
+  phase: string
 }
 
 interface TemplateBulkTask {
@@ -445,6 +447,22 @@ export default function BulkEditPage() {
   function dismissSync() {
     setShowSyncPrompt(false)
     setPendingSyncPayload(null)
+  }
+
+  async function updateTaskPhase(task: BulkTask, newPhase: SimplifiedPhase) {
+    const oldPhase = task.phase
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, phase: newPhase } : t))
+    const res = await fetch(`/api/projects/${task.project_id}/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phase: newPhase }),
+    })
+    if (!res.ok) {
+      // Revert on failure
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, phase: oldPhase } : t))
+      showToast('Failed to update phase')
+    }
   }
 
   // --- Reschedule functions ---
@@ -862,6 +880,18 @@ export default function BulkEditPage() {
                                 </td>
                                 <td className="px-3 py-2.5 font-fira text-fe-blue-gray text-xs">
                                   {task.project_name}
+                                </td>
+                                <td className="px-3 py-2.5 w-40">
+                                  <select
+                                    value={getSimplifiedPhase(task.phase)}
+                                    onChange={e => updateTaskPhase(task, e.target.value as SimplifiedPhase)}
+                                    className="px-2 py-1 border border-gray-200 rounded text-xs font-fira font-bold bg-white focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                                    style={{ color: SIMPLIFIED_PHASE_COLORS[getSimplifiedPhase(task.phase)] }}
+                                  >
+                                    {SIMPLIFIED_PHASE_ORDER.map(p => (
+                                      <option key={p} value={p} style={{ color: SIMPLIFIED_PHASE_COLORS[p] }}>{p}</option>
+                                    ))}
+                                  </select>
                                 </td>
                                 <td className="px-3 py-2.5 w-40">
                                   {owners.length > 0 ? (

@@ -49,6 +49,7 @@ interface OverdueTask {
   id: string;
   task_name: string;
   due_date: string;
+  status: string;
   project_id: string;
   project_name: string;
   owner_ids: string[];
@@ -150,10 +151,10 @@ export default function Dashboard() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [overdueExpanded, setOverdueExpanded] = useState(false);
+  const [overdueNotStartedExpanded, setOverdueNotStartedExpanded] = useState(false);
+  const [overdueInProgressExpanded, setOverdueInProgressExpanded] = useState(false);
   const [unassignedExpanded, setUnassignedExpanded] = useState(false);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
-  const [overdueThisWeekOnly, setOverdueThisWeekOnly] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [allPriorities, setAllPriorities] = useState<Priority[]>([]);
@@ -178,6 +179,7 @@ export default function Dashboard() {
   const [editPProjectId, setEditPProjectId] = useState('');
   const [savingPriority, setSavingPriority] = useState(false);
   const [deletingPriorityId, setDeletingPriorityId] = useState<string | null>(null);
+  const [collapsedPriorityGroups, setCollapsedPriorityGroups] = useState<Set<string>>(new Set());
   const manualFormRef = useRef<HTMLDivElement>(null);
 
   // New dashboard sections
@@ -266,19 +268,56 @@ export default function Dashboard() {
     return Math.floor((n.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  const filteredOverdue = overdueThisWeekOnly
-    ? overdueTasks.filter(t => daysOverdue(t.due_date) <= 7)
-    : overdueTasks;
+  // Split overdue tasks by status category
+  const overdueNotStarted = overdueTasks.filter(t => t.status === 'not_started');
+  const overdueInProgress = overdueTasks.filter(t => t.status === 'in_progress');
 
-  const overdueByProject = filteredOverdue.reduce<Record<string, { projectName: string; projectId: string; tasks: OverdueTask[] }>>((acc, task) => {
-    if (!acc[task.project_id]) {
-      acc[task.project_id] = { projectName: task.project_name, projectId: task.project_id, tasks: [] };
+  const groupByProject = (tasks: OverdueTask[]) => {
+    const byProject = tasks.reduce<Record<string, { projectName: string; projectId: string; tasks: OverdueTask[] }>>((acc, task) => {
+      if (!acc[task.project_id]) {
+        acc[task.project_id] = { projectName: task.project_name, projectId: task.project_id, tasks: [] };
+      }
+      acc[task.project_id].tasks.push(task);
+      return acc;
+    }, {});
+    return Object.values(byProject).sort((a, b) => b.tasks.length - a.tasks.length);
+  };
+  const notStartedGroups = groupByProject(overdueNotStarted);
+  const inProgressGroups = groupByProject(overdueInProgress);
+
+  // Group priorities by linked project
+  const priorityGroups = (() => {
+    const groups: { key: string; projectName: string; projectId: string | null; priorities: Priority[] }[] = [];
+    const groupMap = new Map<string, Priority[]>();
+    for (const p of priorities) {
+      const key = p.project_id || '__general__';
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key)!.push(p);
     }
-    acc[task.project_id].tasks.push(task);
-    return acc;
-  }, {});
+    // Named projects first, sorted alphabetically, then General last
+    const projectKeys = Array.from(groupMap.keys()).filter(k => k !== '__general__').sort((a, b) => {
+      const nameA = groupMap.get(a)![0].project_name || '';
+      const nameB = groupMap.get(b)![0].project_name || '';
+      return nameA.localeCompare(nameB);
+    });
+    for (const key of projectKeys) {
+      const items = groupMap.get(key)!;
+      groups.push({ key, projectName: items[0].project_name || 'Unknown', projectId: key, priorities: items });
+    }
+    if (groupMap.has('__general__')) {
+      groups.push({ key: '__general__', projectName: 'General', projectId: null, priorities: groupMap.get('__general__')! });
+    }
+    return groups;
+  })();
 
-  const overdueProjectGroups = Object.values(overdueByProject).sort((a, b) => b.tasks.length - a.tasks.length);
+  const togglePriorityGroup = (key: string) => {
+    setCollapsedPriorityGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const toggleProjectExpanded = (projectId: string) => {
     setExpandedProjects(prev => {
@@ -644,11 +683,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Overdue Tasks Banner */}
-      {overdueTasks.length > 0 && (
-        <div className="mb-8 bg-red-50 border border-red-200 rounded-xl overflow-hidden">
+      {/* Overdue: Not Started (Red) */}
+      {overdueNotStarted.length > 0 && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl overflow-hidden">
           <button
-            onClick={() => setOverdueExpanded(!overdueExpanded)}
+            onClick={() => setOverdueNotStartedExpanded(!overdueNotStartedExpanded)}
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-100/50 transition-colors"
           >
             <div className="flex items-center gap-2">
@@ -656,110 +695,120 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-2.99L13.73 4.01c-.77-1.33-2.69-1.33-3.46 0L3.34 16.01C2.57 17.33 3.53 19 5.07 19z" />
               </svg>
               <span className="font-barlow font-bold text-red-700 text-sm">
-                {overdueTasks.length} Overdue Task{overdueTasks.length !== 1 ? 's' : ''}
+                {overdueNotStarted.length} task{overdueNotStarted.length !== 1 ? 's' : ''} not started and overdue
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs font-fira text-red-600">
-              {overdueExpanded ? 'Collapse' : 'View All'}
-              <svg className={`w-4 h-4 transition-transform ${overdueExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              {overdueNotStartedExpanded ? 'Collapse' : 'View All'}
+              <svg className={`w-4 h-4 transition-transform ${overdueNotStartedExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
           </button>
-
-          {overdueExpanded && (
+          {overdueNotStartedExpanded && (
             <div className="px-4 pb-4">
-              <div className="flex items-center gap-3 mb-3 pt-1 border-t border-red-200">
-                <label className="flex items-center gap-1.5 cursor-pointer mt-3">
-                  <input
-                    type="checkbox"
-                    checked={overdueThisWeekOnly}
-                    onChange={e => setOverdueThisWeekOnly(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-red-300 text-red-500 focus:ring-red-400"
-                  />
-                  <span className="text-xs font-fira text-red-700">Show only last 7 days</span>
-                </label>
-                {overdueThisWeekOnly && filteredOverdue.length !== overdueTasks.length && (
-                  <span className="text-xs font-fira text-red-500 mt-3">
-                    Showing {filteredOverdue.length} of {overdueTasks.length}
-                  </span>
-                )}
-              </div>
-
-              {overdueProjectGroups.length === 0 && (
-                <p className="text-xs font-fira text-red-400 text-center py-2">No overdue tasks in the last 7 days.</p>
-              )}
-
-              <div className="space-y-3">
-                {overdueProjectGroups.map(group => {
-                  const showAll = expandedProjects.has(group.projectId);
-                  const visibleTasks = showAll ? group.tasks : group.tasks.slice(0, 5);
+              <div className="space-y-3 pt-2 border-t border-red-200">
+                {notStartedGroups.map(group => {
+                  const showAll = expandedProjects.has('ns-' + group.projectId);
+                  const visible = showAll ? group.tasks : group.tasks.slice(0, 5);
                   const hasMore = group.tasks.length > 5;
-
                   return (
                     <div key={group.projectId}>
-                      <Link
-                        href={`/projects/${group.projectId}`}
-                        className="flex items-center gap-2 mb-1.5 hover:opacity-80 transition-opacity"
-                      >
-                        <h3 className="text-xs font-barlow font-bold text-red-800">
-                          {group.projectName}
-                        </h3>
-                        <span className="text-xs font-fira text-red-500">
-                          ({group.tasks.length} overdue)
-                        </span>
+                      <Link href={`/projects/${group.projectId}`} className="flex items-center gap-2 mb-1.5 hover:opacity-80 transition-opacity">
+                        <h3 className="text-xs font-barlow font-bold text-red-800">{group.projectName}</h3>
+                        <span className="text-xs font-fira text-red-500">({group.tasks.length})</span>
                       </Link>
                       <div className="space-y-1">
-                        {visibleTasks.map(task => {
-                          const days = daysOverdue(task.due_date);
-                          return (
-                            <Link
-                              key={task.id}
-                              href={`/projects/${task.project_id}`}
-                              className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-red-100 hover:border-red-300 transition-colors group"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="flex -space-x-1 shrink-0">
-                                  {task.owner_ids?.map(oid => {
-                                    const member = teamMap.get(oid);
-                                    return member ? (
-                                      <Avatar key={oid} initials={member.initials} color={member.color} size="sm" />
-                                    ) : null;
-                                  })}
-                                  {(!task.owner_ids || task.owner_ids.length === 0) && (
-                                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
-                                      <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                      </svg>
-                                    </div>
-                                  )}
-                                </div>
-                                <span className="text-sm font-fira text-fe-anthracite truncate group-hover:text-fe-navy transition-colors">
-                                  {task.task_name}
-                                </span>
+                        {visible.map(task => (
+                          <Link key={task.id} href={`/projects/${task.project_id}`} className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-red-100 hover:border-red-300 transition-colors group">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex -space-x-1 shrink-0">
+                                {task.owner_ids?.map(oid => { const m = teamMap.get(oid); return m ? <Avatar key={oid} initials={m.initials} color={m.color} size="sm" /> : null; })}
+                                {(!task.owner_ids || task.owner_ids.length === 0) && (
+                                  <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                    <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                  </div>
+                                )}
                               </div>
-                              <span className="shrink-0 ml-2 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-red-100 text-red-600">
-                                {days}d
-                              </span>
-                            </Link>
-                          );
-                        })}
+                              <span className="text-sm font-fira text-fe-anthracite truncate group-hover:text-fe-navy transition-colors">{task.task_name}</span>
+                            </div>
+                            <span className="shrink-0 ml-2 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-red-100 text-red-600">{daysOverdue(task.due_date)}d</span>
+                          </Link>
+                        ))}
                       </div>
                       {hasMore && !showAll && (
-                        <button
-                          onClick={(e) => { e.preventDefault(); toggleProjectExpanded(group.projectId); }}
-                          className="mt-1 text-xs font-fira text-red-500 hover:text-red-700 transition-colors"
-                        >
-                          Show {group.tasks.length - 5} more...
-                        </button>
+                        <button onClick={() => toggleProjectExpanded('ns-' + group.projectId)} className="mt-1 text-xs font-fira text-red-500 hover:text-red-700 transition-colors">Show {group.tasks.length - 5} more...</button>
                       )}
                       {hasMore && showAll && (
-                        <button
-                          onClick={(e) => { e.preventDefault(); toggleProjectExpanded(group.projectId); }}
-                          className="mt-1 text-xs font-fira text-red-500 hover:text-red-700 transition-colors"
-                        >
-                          Show less
-                        </button>
+                        <button onClick={() => toggleProjectExpanded('ns-' + group.projectId)} className="mt-1 text-xs font-fira text-red-500 hover:text-red-700 transition-colors">Show less</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Overdue: In Progress (Amber) */}
+      {overdueInProgress.length > 0 && (
+        <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setOverdueInProgressExpanded(!overdueInProgressExpanded)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-barlow font-bold text-amber-700 text-sm">
+                {overdueInProgress.length} task{overdueInProgress.length !== 1 ? 's' : ''} in progress past due date
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-fira text-amber-600">
+              {overdueInProgressExpanded ? 'Collapse' : 'View All'}
+              <svg className={`w-4 h-4 transition-transform ${overdueInProgressExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
+          {overdueInProgressExpanded && (
+            <div className="px-4 pb-4">
+              <div className="space-y-3 pt-2 border-t border-amber-200">
+                {inProgressGroups.map(group => {
+                  const showAll = expandedProjects.has('ip-' + group.projectId);
+                  const visible = showAll ? group.tasks : group.tasks.slice(0, 5);
+                  const hasMore = group.tasks.length > 5;
+                  return (
+                    <div key={group.projectId}>
+                      <Link href={`/projects/${group.projectId}`} className="flex items-center gap-2 mb-1.5 hover:opacity-80 transition-opacity">
+                        <h3 className="text-xs font-barlow font-bold text-amber-800">{group.projectName}</h3>
+                        <span className="text-xs font-fira text-amber-500">({group.tasks.length})</span>
+                      </Link>
+                      <div className="space-y-1">
+                        {visible.map(task => (
+                          <Link key={task.id} href={`/projects/${task.project_id}`} className="flex items-center justify-between px-3 py-1.5 bg-white rounded-lg border border-amber-100 hover:border-amber-300 transition-colors group">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex -space-x-1 shrink-0">
+                                {task.owner_ids?.map(oid => { const m = teamMap.get(oid); return m ? <Avatar key={oid} initials={m.initials} color={m.color} size="sm" /> : null; })}
+                                {(!task.owner_ids || task.owner_ids.length === 0) && (
+                                  <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                    <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-sm font-fira text-fe-anthracite truncate group-hover:text-fe-navy transition-colors">{task.task_name}</span>
+                            </div>
+                            <span className="shrink-0 ml-2 px-2 py-0.5 rounded-full text-xs font-fira font-bold bg-amber-100 text-amber-600">{daysOverdue(task.due_date)}d</span>
+                          </Link>
+                        ))}
+                      </div>
+                      {hasMore && !showAll && (
+                        <button onClick={() => toggleProjectExpanded('ip-' + group.projectId)} className="mt-1 text-xs font-fira text-amber-500 hover:text-amber-700 transition-colors">Show {group.tasks.length - 5} more...</button>
+                      )}
+                      {hasMore && showAll && (
+                        <button onClick={() => toggleProjectExpanded('ip-' + group.projectId)} className="mt-1 text-xs font-fira text-amber-500 hover:text-amber-700 transition-colors">Show less</button>
                       )}
                     </div>
                   );
@@ -1045,8 +1094,40 @@ export default function Dashboard() {
         {priorities.length === 0 && !showAddForm ? (
           <p className="text-sm text-fe-anthracite">No priorities for this month.</p>
         ) : (
-          <div className="space-y-2">
-            {priorities.map(priority => {
+          <div className="space-y-3">
+            {priorityGroups.map(group => {
+              const isCollapsed = collapsedPriorityGroups.has(group.key);
+              const doneCount = group.priorities.filter(p => p.status === 'done').length;
+              return (
+                <div key={group.key} className="border border-gray-100 rounded-xl overflow-hidden">
+                  {/* Group Header */}
+                  <button
+                    onClick={() => togglePriorityGroup(group.key)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className={`w-4 h-4 text-fe-blue-gray transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      {group.projectId ? (
+                        <Link href={`/projects/${group.projectId}`} onClick={e => e.stopPropagation()} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">
+                          {group.projectName}
+                        </Link>
+                      ) : (
+                        <span className="font-barlow font-bold text-sm text-fe-blue-gray">{group.projectName}</span>
+                      )}
+                      <span className="text-xs font-fira text-fe-blue-gray">
+                        {doneCount}/{group.priorities.length} done
+                      </span>
+                    </div>
+                  </button>
+                  {/* Group Items */}
+                  {!isCollapsed && (
+                    <div className="space-y-2 p-3">
+                      {group.priorities.map(priority => {
               if (editingPriorityId === priority.id) {
                 return (
                   <div key={priority.id} className="p-4 rounded-lg border border-fe-blue/30 bg-blue-50/20">
@@ -1127,19 +1208,6 @@ export default function Dashboard() {
                       <span className={`text-sm font-fira font-bold ${priority.status === 'done' ? 'line-through text-gray-400' : 'text-fe-navy'}`}>
                         {priority.title}
                       </span>
-                      {priority.project_id && priority.project_name ? (
-                        <Link href={`/projects/${priority.project_id}`} className="flex items-center gap-1 mt-0.5 group/link">
-                          <svg className="w-3 h-3 text-fe-blue-gray shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
-                          </svg>
-                          <span className="text-xs font-fira text-fe-blue-gray group-hover/link:text-fe-blue transition-colors">&rarr; {priority.project_name}</span>
-                        </Link>
-                      ) : (
-                        <div className="mt-0.5">
-                          <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-yellow-100 text-yellow-700">No project linked</span>
-                        </div>
-                      )}
                       {priority.goal && (
                         <p className="text-xs font-fira text-fe-gold font-bold mt-1">
                           Success: {priority.goal}
@@ -1178,6 +1246,11 @@ export default function Dashboard() {
                       onClick={(newStatus) => handleStatusChange(priority.id, newStatus)}
                     />
                   </div>
+                </div>
+              );
+            })}
+                    </div>
+                  )}
                 </div>
               );
             })}

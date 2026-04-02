@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('project_tasks')
-      .select('id, task_name, project_id, owner_ids, role_id, status')
+      .select('id, task_name, project_id, owner_ids, role_id, status, phase')
       .order('task_order', { ascending: true });
 
     if (roleId) query = query.eq('role_id', roleId);

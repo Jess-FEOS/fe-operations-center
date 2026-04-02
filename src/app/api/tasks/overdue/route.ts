@@ -19,7 +19,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const flattened = (data || []).map((task: any) => ({
+    // Exclude on_hold tasks with a future follow_up_date
+    const filtered = (data || []).filter((task: any) => {
+      if (task.on_hold && task.follow_up_date && task.follow_up_date >= today) return false;
+      return true;
+    });
+
+    const flattened = filtered.map((task: any) => ({
       ...task,
       project_name: task.projects?.name || '',
       project_id: task.projects?.id || task.project_id,

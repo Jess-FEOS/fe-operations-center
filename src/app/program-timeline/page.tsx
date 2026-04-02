@@ -78,10 +78,17 @@ export default function ProgramTimeline() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragGhostLeft, setDragGhostLeft] = useState<number | null>(null)
   const [dragGhostWidth, setDragGhostWidth] = useState<number | null>(null)
+  const [dragDateLabel, setDragDateLabel] = useState<string | null>(null)
+  const [dragCursorX, setDragCursorX] = useState(0)
+  const [dragCursorY, setDragCursorY] = useState(0)
   const chartRef = useRef<HTMLDivElement>(null)
   const dragStartX = useRef(0)
+  const dragStartY = useRef(0)
   const dragBarOrigLeft = useRef(0)
   const dragBarOrigWidth = useRef(0)
+  const dragThresholdMet = useRef(false)
+  const pendingDragProjectId = useRef<string | null>(null)
+  const didDrag = useRef(false)
 
   // Toast state
   const [toast, setToast] = useState<string | null>(null)
@@ -217,6 +224,8 @@ export default function ProgramTimeline() {
   }, [marketWindows, pct])
 
   // ── Drag-to-reschedule handlers ───────────────────────────────────────────
+  const DRAG_THRESHOLD = 8
+
   function pctToDate(pctVal: number): Date {
     const days = Math.round((pctVal / 100) * totalDays)
     return addDays(timelineStart, days)
@@ -224,7 +233,6 @@ export default function ProgramTimeline() {
 
   function getChartAreaRect() {
     if (!chartRef.current) return null
-    // The chart area is the portion after LABEL_WIDTH
     const rect = chartRef.current.getBoundingClientRect()
     return {
       left: rect.left + LABEL_WIDTH,
@@ -238,56 +246,88 @@ export default function ProgramTimeline() {
     if (!project.launch_date) return
     e.preventDefault()
     e.stopPropagation()
-    setDraggingId(project.id)
+    // Don't enter drag mode yet — just record the start position
+    pendingDragProjectId.current = project.id
     dragStartX.current = e.clientX
+    dragStartY.current = e.clientY
     dragBarOrigLeft.current = barLeftPct
     dragBarOrigWidth.current = barWidthPct
-    setDragGhostLeft(barLeftPct)
-    setDragGhostWidth(barWidthPct)
+    dragThresholdMet.current = false
+    didDrag.current = false
   }
 
   useEffect(() => {
-    if (!draggingId) return
-
     function onMouseMove(e: MouseEvent) {
+      // Phase 1: haven't crossed threshold yet — check distance
+      if (pendingDragProjectId.current && !dragThresholdMet.current) {
+        const dx = e.clientX - dragStartX.current
+        const dy = e.clientY - dragStartY.current
+        if (Math.sqrt(dx * dx + dy * dy) >= DRAG_THRESHOLD) {
+          dragThresholdMet.current = true
+          didDrag.current = true
+          document.body.style.cursor = 'grabbing'
+          document.body.style.userSelect = 'none'
+          setDraggingId(pendingDragProjectId.current)
+          setDragGhostLeft(dragBarOrigLeft.current)
+          setDragGhostWidth(dragBarOrigWidth.current)
+        } else {
+          return
+        }
+      }
+
+      // Phase 2: actively dragging
+      if (!dragThresholdMet.current) return
       const area = getChartAreaRect()
       if (!area) return
+
       const dx = e.clientX - dragStartX.current
       const dPct = (dx / area.width) * 100
       const newLeft = Math.max(0, Math.min(100 - dragBarOrigWidth.current, dragBarOrigLeft.current + dPct))
       setDragGhostLeft(newLeft)
+
+      // Compute date label from the right edge of the ghost bar
+      const newBarRight = newLeft + dragBarOrigWidth.current
+      const newDate = pctToDate(newBarRight)
+      setDragDateLabel(newDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }))
+      setDragCursorX(e.clientX)
+      setDragCursorY(e.clientY)
     }
 
     async function onMouseUp(e: MouseEvent) {
+      const projectId = pendingDragProjectId.current
+      const wasDragging = dragThresholdMet.current
+
+      // Reset pending state and cursor
+      pendingDragProjectId.current = null
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+
+      if (!wasDragging) {
+        // Short click — navigation will be handled by the row onClick
+        return
+      }
+
+      // Was a real drag
       const area = getChartAreaRect()
-      if (!area || !draggingId) {
+      if (!area || !projectId) {
         setDraggingId(null)
         setDragGhostLeft(null)
         setDragGhostWidth(null)
+        setDragDateLabel(null)
+        return
+      }
+
+      const project = projects.find(p => p.id === projectId)
+      if (!project || !project.launch_date) {
+        setDraggingId(null)
+        setDragGhostLeft(null)
+        setDragGhostWidth(null)
+        setDragDateLabel(null)
         return
       }
 
       const dx = e.clientX - dragStartX.current
       const dPct = (dx / area.width) * 100
-
-      // If barely moved, treat as click — navigate
-      if (Math.abs(dPct) < 0.5) {
-        setDraggingId(null)
-        setDragGhostLeft(null)
-        setDragGhostWidth(null)
-        router.push(`/projects/${draggingId}`)
-        return
-      }
-
-      const project = projects.find(p => p.id === draggingId)
-      if (!project || !project.launch_date) {
-        setDraggingId(null)
-        setDragGhostLeft(null)
-        setDragGhostWidth(null)
-        return
-      }
-
-      // Calculate new launch date from the RIGHT edge of the ghost bar
       const newBarLeft = Math.max(0, Math.min(100 - dragBarOrigWidth.current, dragBarOrigLeft.current + dPct))
       const newBarRight = newBarLeft + dragBarOrigWidth.current
       const newLaunchDate = pctToDate(newBarRight)
@@ -296,15 +336,16 @@ export default function ProgramTimeline() {
       // Optimistic update
       const prevProjects = [...projects]
       setProjects(prev =>
-        prev.map(p => p.id === draggingId ? { ...p, launch_date: newLaunchStr } : p)
+        prev.map(p => p.id === projectId ? { ...p, launch_date: newLaunchStr } : p)
       )
 
       setDraggingId(null)
       setDragGhostLeft(null)
       setDragGhostWidth(null)
+      setDragDateLabel(null)
 
       try {
-        const res = await fetch(`/api/projects/${draggingId}`, {
+        const res = await fetch(`/api/projects/${projectId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ launch_date: newLaunchStr }),
@@ -324,7 +365,7 @@ export default function ProgramTimeline() {
       window.removeEventListener('mouseup', onMouseUp)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draggingId, projects, router, totalDays, timelineStart])
+  }, [projects, totalDays, timelineStart])
 
   // ── Loading ─────────────────────────────────────────────────────────────
   if (loading) {
@@ -425,7 +466,10 @@ export default function ProgramTimeline() {
                 style={{ height: ROW_HEIGHT + ROW_GAP }}
                 onMouseEnter={() => setHoveredId(project.id)}
                 onMouseLeave={() => setHoveredId(null)}
-                onClick={() => { if (!draggingId) router.push(`/projects/${project.id}`) }}
+                onClick={() => {
+                  if (didDrag.current) { didDrag.current = false; return }
+                  router.push(`/projects/${project.id}`)
+                }}
               >
                 {/* Label */}
                 <div className="shrink-0 flex flex-col justify-center px-4" style={{ width: LABEL_WIDTH }}>
@@ -444,9 +488,9 @@ export default function ProgramTimeline() {
                 <div className="flex-1 relative h-full group/row">
                   {/* Bar */}
                   <div
-                    className={`absolute top-2 bottom-2 rounded-md overflow-hidden flex ${
+                    className={`absolute top-2 bottom-2 rounded-md overflow-hidden flex transition-opacity ${
                       hasLaunch ? '' : 'border-2 border-dashed border-gray-300'
-                    } ${hasLaunch ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-70 ring-2 ring-fe-blue ring-offset-1' : ''}`}
+                    } ${isDragging ? 'opacity-60 ring-2 ring-fe-blue ring-offset-1 cursor-grabbing' : hasLaunch ? 'cursor-grab' : 'cursor-pointer'}`}
                     style={{ left: `${displayLeft}%`, width: `${displayWidth}%` }}
                     onMouseDown={e => onBarMouseDown(e, project, barLeft, barWidth)}
                   >
@@ -561,6 +605,16 @@ export default function ProgramTimeline() {
           </>
         )}
       </div>
+
+      {/* Drag date tooltip — follows cursor */}
+      {draggingId && dragDateLabel && (
+        <div
+          className="fixed z-50 bg-fe-navy text-white text-xs font-fira font-bold rounded-lg px-3 py-1.5 shadow-lg pointer-events-none -translate-x-1/2"
+          style={{ left: dragCursorX, top: dragCursorY - 40 }}
+        >
+          {dragDateLabel}
+        </div>
+      )}
 
       {/* Toast notification */}
       {toast && (

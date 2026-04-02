@@ -123,9 +123,17 @@ export async function GET() {
       total: weekTasks.length,
     };
 
-    // -- Overdue count --
-    const overdueCount = allTasks.filter(
-      (t: any) => t.due_date < todayStr && t.status !== 'done'
+    // -- Overdue counts (split by status, excluding on_hold with future follow_up) --
+    const overdueTasks = allTasks.filter(
+      (t: any) => t.due_date < todayStr && t.status !== 'done' &&
+        !(t.on_hold && t.follow_up_date && t.follow_up_date >= todayStr)
+    );
+    const overdueCount = overdueTasks.length;
+    const overdueNotStartedCount = overdueTasks.filter(
+      (t: any) => t.status === 'not_started'
+    ).length;
+    const overdueInProgressCount = overdueTasks.filter(
+      (t: any) => t.status === 'in_progress'
     ).length;
 
     // -- Unassigned count --
@@ -269,6 +277,8 @@ export async function GET() {
       active_projects: activeProjects,
       this_week_summary: thisWeekSummary,
       overdue_count: overdueCount,
+      overdue_not_started_count: overdueNotStartedCount,
+      overdue_in_progress_count: overdueInProgressCount,
       unassigned_count: unassignedCount,
       monthly_priorities: monthlyPriorities,
       active_campaigns: activeCampaigns,

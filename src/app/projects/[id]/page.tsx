@@ -128,6 +128,7 @@ export default function ProjectDetailPage() {
   const [editingTaskDueDate, setEditingTaskDueDate] = useState('')
   const [editingTaskOnHold, setEditingTaskOnHold] = useState(false)
   const [editingTaskFollowUp, setEditingTaskFollowUp] = useState('')
+  const [editingTaskRoleId, setEditingTaskRoleId] = useState<string | null>(null)
   const [savingTask, setSavingTask] = useState(false)
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null)
   const [addingToPhase, setAddingToPhase] = useState<string | null>(null)
@@ -283,6 +284,7 @@ export default function ProjectDetailPage() {
     setEditingTaskDueDate(task.due_date || '')
     setEditingTaskOnHold(task.on_hold || false)
     setEditingTaskFollowUp(task.follow_up_date || '')
+    setEditingTaskRoleId(task.role_id)
     setSavingTask(false)
   }
 
@@ -295,21 +297,94 @@ export default function ProjectDetailPage() {
       due_date: editingTaskDueDate || undefined,
       on_hold: editingTaskOnHold,
       follow_up_date: editingTaskFollowUp || null,
+      role_id: editingTaskRoleId || undefined,
     }
+
+    // Compute due date delta for cascading shift
+    const editedTask = tasks.find(t => t.id === taskId)
+    const originalDueDate = editedTask?.due_date || ''
+    const newDueDate = editingTaskDueDate || ''
+    let shiftDays = 0
+    if (originalDueDate && newDueDate && originalDueDate !== newDueDate) {
+      const orig = new Date(originalDueDate + 'T12:00:00')
+      const updated = new Date(newDueDate + 'T12:00:00')
+      shiftDays = Math.round((updated.getTime() - orig.getTime()) / (1000 * 60 * 60 * 24))
+    }
+
     try {
       await fetch(`/api/projects/${params.id}/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      setTasks(prev => prev.map(t => t.id === taskId ? {
-        ...t,
-        task_name: editingTaskName.trim(),
-        status: editingTaskStatus,
-        due_date: editingTaskDueDate || t.due_date,
-        on_hold: editingTaskOnHold,
-        follow_up_date: editingTaskFollowUp || null,
-      } : t))
+
+      // Cascade: shift all subsequent non-done tasks by the same delta
+      if (shiftDays !== 0 && originalDueDate) {
+        const subsequentTasks = tasks.filter(t =>
+          t.id !== taskId &&
+          t.status !== 'done' &&
+          t.due_date &&
+          t.due_date > originalDueDate
+        )
+
+        if (subsequentTasks.length > 0) {
+          const shiftedUpdates: { taskId: string; newDate: string }[] = []
+          for (const t of subsequentTasks) {
+            const d = new Date(t.due_date + 'T12:00:00')
+            d.setDate(d.getDate() + shiftDays)
+            shiftedUpdates.push({ taskId: t.id, newDate: d.toISOString().split('T')[0] })
+          }
+
+          // PATCH each shifted task
+          await Promise.all(shiftedUpdates.map(u =>
+            fetch(`/api/projects/${params.id}/tasks/${u.taskId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ due_date: u.newDate }),
+            })
+          ))
+
+          // Build a map for quick lookup of shifted dates
+          const shiftMap = new Map(shiftedUpdates.map(u => [u.taskId, u.newDate]))
+
+          setTasks(prev => prev.map(t => {
+            if (t.id === taskId) {
+              return {
+                ...t,
+                task_name: editingTaskName.trim(),
+                status: editingTaskStatus,
+                due_date: editingTaskDueDate || t.due_date,
+                on_hold: editingTaskOnHold,
+                follow_up_date: editingTaskFollowUp || null,
+                role_id: editingTaskRoleId,
+              }
+            }
+            const shifted = shiftMap.get(t.id)
+            if (shifted) return { ...t, due_date: shifted }
+            return t
+          }))
+        } else {
+          setTasks(prev => prev.map(t => t.id === taskId ? {
+            ...t,
+            task_name: editingTaskName.trim(),
+            status: editingTaskStatus,
+            due_date: editingTaskDueDate || t.due_date,
+            on_hold: editingTaskOnHold,
+            follow_up_date: editingTaskFollowUp || null,
+            role_id: editingTaskRoleId,
+          } : t))
+        }
+      } else {
+        setTasks(prev => prev.map(t => t.id === taskId ? {
+          ...t,
+          task_name: editingTaskName.trim(),
+          status: editingTaskStatus,
+          due_date: editingTaskDueDate || t.due_date,
+          on_hold: editingTaskOnHold,
+          follow_up_date: editingTaskFollowUp || null,
+          role_id: editingTaskRoleId,
+        } : t))
+      }
       setEditingTaskId(null)
     } finally {
       setSavingTask(false)
@@ -864,6 +939,15 @@ export default function ProjectDetailPage() {
                                   <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Follow-up Date</label>
                                   <input type="date" value={editingTaskFollowUp} onChange={e => setEditingTaskFollowUp(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
                                 </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Assigned Role</label>
+                                <select value={editingTaskRoleId || ''} onChange={e => setEditingTaskRoleId(e.target.value || null)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white">
+                                  <option value="">No Role</option>
+                                  {roles.map(r => (
+                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                  ))}
+                                </select>
                               </div>
                               <div className="flex items-center gap-2 pt-1">
                                 <button onClick={() => saveTaskEdit(task.id)} disabled={savingTask} className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold rounded-lg hover:bg-fe-blue/90 transition-colors disabled:opacity-50">{savingTask ? 'Saving...' : 'Save'}</button>
