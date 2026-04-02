@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { week_start, description, assigned_to } = body;
 
-    if (!week_start || !description) {
+    if (!week_start || description === undefined || description === null) {
       return NextResponse.json({ error: 'week_start and description are required' }, { status: 400 });
     }
 
