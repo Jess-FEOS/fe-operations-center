@@ -86,6 +86,7 @@ interface TeamMember {
   name: string
   initials: string
   color: string
+  role_id: string | null
   role_data: { id: string; name: string; color: string } | null
 }
 
@@ -237,18 +238,35 @@ export default function ProjectDetailPage() {
   }
 
   const bulkUpdatePhase = async (phase: string, newStatus: TaskStatus) => {
+    // Select every task in this simplified phase group (Build / Market / Launch & Run),
+    // regardless of which raw phase they map from or whether the phase is collapsed.
     const phaseTasks = tasks.filter(t => getSimplifiedPhase(t.phase) === phase)
-    await Promise.all(
+    const phaseTaskIds = new Set(phaseTasks.map(t => t.id))
+    setBulkMenuPhase(null)
+
+    const results = await Promise.all(
       phaseTasks.map(t =>
         fetch(`/api/projects/${params.id}/tasks/${t.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus }),
         })
+          .then(res => ({ id: t.id, ok: res.ok }))
+          .catch(() => ({ id: t.id, ok: false }))
       )
     )
-    setTasks(prev => prev.map(t => t.phase === phase ? { ...t, status: newStatus } : t))
-    setBulkMenuPhase(null)
+
+    // Flip the same set we sent (match by id, not by raw phase === simplified name)
+    // so the optimistic update reflects every successfully-updated task.
+    const succeeded = new Set(results.filter(r => r.ok).map(r => r.id))
+    setTasks(prev => prev.map(t =>
+      phaseTaskIds.has(t.id) && succeeded.has(t.id) ? { ...t, status: newStatus } : t
+    ))
+
+    const failed = results.filter(r => !r.ok).length
+    if (failed > 0) {
+      alert(`${failed} of ${phaseTasks.length} task(s) could not be updated. Please retry.`)
+    }
   }
 
   const confirmWorkflowSwitch = async () => {
@@ -976,6 +994,19 @@ export default function ProjectDetailPage() {
                                 <div className="flex items-center gap-1">
                                   {(() => {
                                     const role = roles.find(r => r.id === task.role_id)
+                                    const roleMember = team.find(m => m.role_id === task.role_id)
+                                    if (roleMember) {
+                                      return (
+                                        <div className="flex items-center gap-1" title={role ? `${role.name} · ${roleMember.name}` : roleMember.name}>
+                                          <Avatar initials={roleMember.initials} color={roleMember.color} size="sm" />
+                                          <span className="text-xs font-fira text-fe-blue-gray">
+                                            {role ? (
+                                              <><span className="font-bold" style={{ color: role.color }}>{role.name}</span> &middot; {roleMember.name.split(' ')[0]}</>
+                                            ) : roleMember.name.split(' ')[0]}
+                                          </span>
+                                        </div>
+                                      )
+                                    }
                                     return role ? (
                                       <>
                                         <div className="w-6 h-6 rounded-full border-2 border-dashed flex items-center justify-center" style={{ borderColor: role.color }}>

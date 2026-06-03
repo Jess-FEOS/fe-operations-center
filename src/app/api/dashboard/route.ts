@@ -35,6 +35,7 @@ export async function GET() {
       prioritiesRes,
       campaignsRes,
       latestMetricsRes,
+      teamMembersRes,
     ] = await Promise.all([
       // Active projects with linked priority + goals
       supabase
@@ -45,7 +46,7 @@ export async function GET() {
       // All tasks for active projects
       supabase
         .from('project_tasks')
-        .select('id, project_id, status, due_date, owner_ids, phase'),
+        .select('id, project_id, status, due_date, owner_ids, phase, role_id'),
 
       // This week's tasks
       supabase
@@ -73,6 +74,11 @@ export async function GET() {
         .select('project_id, metric_name, metric_value')
         .in('metric_name', ['enrollments', 'revenue'])
         .order('metric_date', { ascending: false }),
+
+      // Team members — to resolve which role_ids map to a current person
+      supabase
+        .from('team_members')
+        .select('role_id'),
     ]);
 
     // -- Active projects with progress + priority info --
@@ -137,9 +143,17 @@ export async function GET() {
     ).length;
 
     // -- Unassigned count --
-    const unassignedCount = allTasks.filter(
-      (t: any) => !t.owner_ids || t.owner_ids.length === 0
-    ).length;
+    // A task is assigned if it has a non-empty owner_ids OR a role_id that
+    // resolves to a current team member. "Unassigned" = empty owner_ids AND
+    // (no role_id, or a role_id that maps to no current member).
+    const memberRoleIds = new Set(
+      (teamMembersRes.data || []).map((m: any) => m.role_id).filter(Boolean)
+    );
+    const unassignedCount = allTasks.filter((t: any) => {
+      const hasOwner = t.owner_ids && t.owner_ids.length > 0;
+      if (hasOwner) return false;
+      return !t.role_id || !memberRoleIds.has(t.role_id);
+    }).length;
 
     // -- Monthly priorities with linked project info --
     const prioritiesRaw = prioritiesRes.data || [];

@@ -49,8 +49,13 @@ export default function ProjectsPage() {
       fetch('/api/projects').then(r => r.json()),
       fetch('/api/team').then(r => r.json()),
     ]).then(([proj, tm]) => {
-      setProjects(proj)
-      setTeam(tm)
+      if (Array.isArray(proj)) {
+        setProjects(proj)
+      } else {
+        console.error('Unexpected /api/projects response:', proj)
+        setProjects([])
+      }
+      setTeam(Array.isArray(tm) ? tm : [])
       setLoading(false)
     })
   }, [])
