@@ -134,11 +134,29 @@ interface ActivityEntry {
   created_at: string;
 }
 
-const MONTH_OPTIONS = [
-  { value: '2026-03', label: 'March 2026' },
-  { value: '2026-04', label: 'April 2026' },
-  { value: '2026-05', label: 'May 2026' },
-];
+// Number of months shown in the rolling "This Month's Focus" window
+// (current month plus the next MONTH_WINDOW - 1 months).
+const MONTH_WINDOW = 6;
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function buildMonthOptions(count: number): { value: string; label: string }[] {
+  const now = new Date();
+  const opts: { value: string; label: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    opts.push({
+      value: monthKey(d),
+      label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    });
+  }
+  return opts;
+}
+
+const MONTH_OPTIONS = buildMonthOptions(MONTH_WINDOW);
+const CURRENT_MONTH = MONTH_OPTIONS[0].value;
 
 const ALL_STATUSES: TaskStatus[] = ['not_started', 'in_progress', 'done', 'blocked'];
 
@@ -158,7 +176,7 @@ export default function Dashboard() {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [allPriorities, setAllPriorities] = useState<Priority[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState('2026-03');
+  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newStatus, setNewStatus] = useState<TaskStatus>('not_started');
@@ -245,7 +263,7 @@ export default function Dashboard() {
           return true;
         });
         setAllPriorities(allP);
-        setPriorities(allP.filter((p: Priority) => p.month === '2026-03'));
+        setPriorities(allP.filter((p: Priority) => p.month === CURRENT_MONTH));
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
@@ -334,6 +352,14 @@ export default function Dashboard() {
     setSelectedMonth(month);
     setPriorities(allPriorities.filter(p => p.month === month));
     setShowAddForm(false);
+  };
+
+  // Quick-add: select a month and open the add form pre-targeted to it.
+  const handleQuickAddToMonth = (month: string) => {
+    setSelectedMonth(month);
+    setPriorities(allPriorities.filter(p => p.month === month));
+    setNewMonth(month);
+    setShowAddForm(true);
   };
 
   const handleStatusChange = async (id: string, newStatus: TaskStatus) => {
@@ -941,20 +967,41 @@ export default function Dashboard() {
               Add Priority
             </button>
           </div>
-          <div className="flex gap-1">
-            {MONTH_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => handleMonthChange(opt.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-fira font-bold transition-colors ${
-                  selectedMonth === opt.value
-                    ? 'bg-fe-navy text-white'
-                    : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
-                }`}
-              >
-                {opt.label.split(' ')[0]}
-              </button>
-            ))}
+          <div className="flex gap-1.5 flex-wrap justify-end">
+            {MONTH_OPTIONS.map(opt => {
+              const isSelected = selectedMonth === opt.value;
+              const isCurrent = opt.value === CURRENT_MONTH;
+              return (
+                <div key={opt.value} className="flex items-stretch">
+                  <button
+                    onClick={() => handleMonthChange(opt.value)}
+                    title={isCurrent ? `${opt.label} (current month)` : opt.label}
+                    className={`px-3 py-1.5 rounded-l-lg text-xs font-fira font-bold transition-colors ${
+                      isSelected
+                        ? 'bg-fe-navy text-white'
+                        : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
+                    }`}
+                  >
+                    {opt.label.split(' ')[0]}
+                    {isCurrent && <span className={isSelected ? 'text-fe-blue ml-1' : 'text-fe-blue ml-1'}>•</span>}
+                  </button>
+                  <button
+                    onClick={() => handleQuickAddToMonth(opt.value)}
+                    title={`Add priority to ${opt.label}`}
+                    aria-label={`Add priority to ${opt.label}`}
+                    className={`px-1.5 rounded-r-lg border-l text-xs font-fira font-bold transition-colors ${
+                      isSelected
+                        ? 'bg-fe-navy text-white border-white/20 hover:bg-fe-navy/80'
+                        : 'bg-gray-100 text-fe-blue-gray border-white hover:bg-gray-200 hover:text-fe-blue'
+                    }`}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
