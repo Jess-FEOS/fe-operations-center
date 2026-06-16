@@ -16,6 +16,8 @@ interface ChecklistItem {
   description: string
   assigned_to: string | null
   is_done: boolean
+  is_priority: boolean
+  delivery_date: string | null
   created_at: string
 }
 
@@ -160,10 +162,21 @@ export default function WeeklyChecklistPage() {
   const isThisWeek = formatWeekStart(getMonday(new Date())) === weekStartStr
   const doneCount = items.filter(i => i.is_done).length
 
-  // Sorted view (derived, does not mutate state) so checking a box re-sorts live
-  // without a refetch: incomplete first (is_done asc), then add order (created_at asc).
+  // Three-tier sort (derived, does not mutate state) so it stays live on toggle:
+  //   Tier 0 — open + priority: by delivery_date asc (nulls last), then created_at asc
+  //   Tier 1 — open, not priority: created_at asc
+  //   Tier 2 — done (any priority): created_at asc
+  const tierOf = (i: ChecklistItem) => (i.is_done ? 2 : i.is_priority ? 0 : 1)
   const sortedItems = [...items].sort((a, b) => {
-    if (a.is_done !== b.is_done) return a.is_done ? 1 : -1
+    const ta = tierOf(a)
+    const tb = tierOf(b)
+    if (ta !== tb) return ta - tb
+    // Within tier 0, order by delivery_date ascending with no-date items last.
+    if (ta === 0 && a.delivery_date !== b.delivery_date) {
+      if (!a.delivery_date) return 1
+      if (!b.delivery_date) return -1
+      return a.delivery_date.localeCompare(b.delivery_date)
+    }
     return a.created_at.localeCompare(b.created_at)
   })
 
@@ -280,6 +293,27 @@ export default function WeeklyChecklistPage() {
                       )}
                     </button>
 
+                    {/* Priority star — filled+always-visible when flagged, outline-on-hover otherwise */}
+                    <button
+                      onClick={() => updateItem(item.id, { is_priority: !item.is_priority })}
+                      className={`shrink-0 p-0.5 rounded transition-all ${
+                        item.is_priority
+                          ? 'text-fe-gold'
+                          : 'text-gray-300 hover:text-fe-gold opacity-0 group-hover:opacity-100'
+                      }`}
+                      title={item.is_priority ? 'Remove priority' : 'Mark as priority'}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill={item.is_priority ? 'currentColor' : 'none'}
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                    </button>
+
                     {/* Description */}
                     <input
                       type="text"
@@ -288,6 +322,19 @@ export default function WeeklyChecklistPage() {
                       placeholder="What needs to be done?"
                       className={`flex-1 bg-transparent text-sm font-fira focus:outline-none placeholder:text-gray-300 ${
                         item.is_done ? 'line-through text-gray-400' : 'text-fe-anthracite'
+                      }`}
+                    />
+
+                    {/* Delivery date — quiet when empty, clears to null */}
+                    <input
+                      type="date"
+                      value={item.delivery_date || ''}
+                      onChange={e => updateItem(item.id, { delivery_date: e.target.value || null })}
+                      title="Delivery date"
+                      className={`shrink-0 text-xs font-fira bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer ${
+                        item.delivery_date
+                          ? 'text-fe-blue-gray'
+                          : 'text-gray-300 opacity-50 hover:opacity-100 focus:opacity-100'
                       }`}
                     />
 

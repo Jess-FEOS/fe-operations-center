@@ -14,6 +14,8 @@ export async function PATCH(
     if (body.assigned_to !== undefined) updates.assigned_to = body.assigned_to || null;
     if (body.is_done !== undefined) updates.is_done = body.is_done;
     if (body.week_start !== undefined) updates.week_start = body.week_start;
+    if (body.is_priority !== undefined) updates.is_priority = body.is_priority;
+    if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date ?? null;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
