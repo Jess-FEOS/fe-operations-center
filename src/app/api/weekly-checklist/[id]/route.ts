@@ -13,6 +13,7 @@ export async function PATCH(
     if (body.description !== undefined) updates.description = body.description;
     if (body.assigned_to !== undefined) updates.assigned_to = body.assigned_to || null;
     if (body.is_done !== undefined) updates.is_done = body.is_done;
+    if (body.week_start !== undefined) updates.week_start = body.week_start;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });

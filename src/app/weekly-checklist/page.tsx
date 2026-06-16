@@ -36,12 +36,22 @@ function formatWeekLabel(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
+// Given a 'YYYY-MM-DD' week_start (a Monday), return the next Monday as 'YYYY-MM-DD'.
+// Parsed from parts (not Date('YYYY-MM-DD'), which is UTC) to stay in local time, matching getMonday/formatWeekStart.
+function nextWeekStart(weekStartStr: string): string {
+  const [y, m, d] = weekStartStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + 7)
+  return formatWeekStart(getMonday(date))
+}
+
 export default function WeeklyChecklistPage() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
   const [items, setItems] = useState<ChecklistItem[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const weekStartStr = formatWeekStart(weekStart)
@@ -129,8 +139,33 @@ export default function WeeklyChecklistPage() {
     patchItem(id, updates)
   }
 
+  // Push an item to next week. Awaited (NOT fire-and-forget): only remove from the
+  // current view on success; on failure surface an error and leave the item in place.
+  const pushToNextWeek = async (item: ChecklistItem) => {
+    const newWeekStart = nextWeekStart(item.week_start)
+    try {
+      const res = await fetch(`/api/weekly-checklist/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ week_start: newWeekStart }),
+      })
+      if (!res.ok) throw new Error('Request failed')
+      setItems(prev => prev.filter(i => i.id !== item.id))
+      setError(null)
+    } catch {
+      setError('Could not move item to next week. Please try again.')
+    }
+  }
+
   const isThisWeek = formatWeekStart(getMonday(new Date())) === weekStartStr
   const doneCount = items.filter(i => i.is_done).length
+
+  // Sorted view (derived, does not mutate state) so checking a box re-sorts live
+  // without a refetch: incomplete first (is_done asc), then add order (created_at asc).
+  const sortedItems = [...items].sort((a, b) => {
+    if (a.is_done !== b.is_done) return a.is_done ? 1 : -1
+    return a.created_at.localeCompare(b.created_at)
+  })
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -179,6 +214,22 @@ export default function WeeklyChecklistPage() {
         </button>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-100">
+          <span className="text-sm font-fira text-red-600">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600 transition-colors shrink-0"
+            title="Dismiss"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Checklist */}
       <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
         {loading ? (
@@ -204,7 +255,7 @@ export default function WeeklyChecklistPage() {
             )}
 
             <div>
-              {items.map(item => {
+              {sortedItems.map(item => {
                 const assignee = item.assigned_to ? teamMap.get(item.assigned_to) : null
                 return (
                   <div
@@ -256,6 +307,17 @@ export default function WeeklyChecklistPage() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Push to next week (only for incomplete items) */}
+                    {!item.is_done && (
+                      <button
+                        onClick={() => pushToNextWeek(item)}
+                        className="opacity-0 group-hover:opacity-100 px-1.5 py-1 rounded text-xs font-fira text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-all shrink-0 whitespace-nowrap"
+                        title="Move to next week"
+                      >
+                        → Next week
+                      </button>
+                    )}
 
                     {/* Delete */}
                     <button
