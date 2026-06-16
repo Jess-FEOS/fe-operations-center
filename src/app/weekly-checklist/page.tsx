@@ -47,6 +47,14 @@ function nextWeekStart(weekStartStr: string): string {
   return formatWeekStart(getMonday(date))
 }
 
+// Mirror of nextWeekStart: previous Monday. Same local-time parsing and Monday-snap, -7 instead of +7.
+function prevWeekStart(weekStartStr: string): string {
+  const [y, m, d] = weekStartStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() - 7)
+  return formatWeekStart(getMonday(date))
+}
+
 export default function WeeklyChecklistPage() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
   const [items, setItems] = useState<ChecklistItem[]>([])
@@ -163,10 +171,9 @@ export default function WeeklyChecklistPage() {
     patchItem(id, updates)
   }
 
-  // Push an item to next week. Awaited (NOT fire-and-forget): only remove from the
+  // Move an item to a different week. Awaited (NOT fire-and-forget): only remove from the
   // current view on success; on failure surface an error and leave the item in place.
-  const pushToNextWeek = async (item: ChecklistItem) => {
-    const newWeekStart = nextWeekStart(item.week_start)
+  const moveItemToWeek = async (item: ChecklistItem, newWeekStart: string, failMsg: string) => {
     try {
       const res = await fetch(`/api/weekly-checklist/${item.id}`, {
         method: 'PATCH',
@@ -177,9 +184,15 @@ export default function WeeklyChecklistPage() {
       setItems(prev => prev.filter(i => i.id !== item.id))
       setError(null)
     } catch {
-      setError('Could not move item to next week. Please try again.')
+      setError(failMsg)
     }
   }
+
+  const pushToNextWeek = (item: ChecklistItem) =>
+    moveItemToWeek(item, nextWeekStart(item.week_start), 'Could not move item to next week. Please try again.')
+
+  const pushToPrevWeek = (item: ChecklistItem) =>
+    moveItemToWeek(item, prevWeekStart(item.week_start), 'Could not move item to previous week. Please try again.')
 
   const isThisWeek = formatWeekStart(getMonday(new Date())) === weekStartStr
   const doneCount = items.filter(i => i.is_done).length
@@ -430,15 +443,28 @@ export default function WeeklyChecklistPage() {
                       )}
                     </div>
 
-                    {/* Push to next week (only for incomplete items) */}
+                    {/* Move week — back / forward (only for incomplete items) */}
                     {!item.is_done && (
-                      <button
-                        onClick={() => pushToNextWeek(item)}
-                        className="opacity-0 group-hover:opacity-100 px-1.5 py-1 rounded text-xs font-fira text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-all shrink-0 whitespace-nowrap"
-                        title="Move to next week"
-                      >
-                        → Next week
-                      </button>
+                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                        <button
+                          onClick={() => pushToPrevWeek(item)}
+                          className="p-1 rounded text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                          title="Move to previous week"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => pushToNextWeek(item)}
+                          className="p-1 rounded text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                          title="Move to next week"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
                     )}
 
                     {/* Delete */}
