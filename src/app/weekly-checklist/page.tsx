@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Avatar from '@/components/Avatar'
 
 interface TeamMember {
   id: string
@@ -53,6 +54,9 @@ export default function WeeklyChecklistPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Assignee picker: id of the item whose popover is open (only one at a time), plus its anchor position.
+  const [openPicker, setOpenPicker] = useState<string | null>(null)
+  const [pickerPos, setPickerPos] = useState<{ top: number; left: number } | null>(null)
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const weekStartStr = formatWeekStart(weekStart)
@@ -79,6 +83,25 @@ export default function WeeklyChecklistPage() {
   useEffect(() => {
     fetchItems(weekStartStr)
   }, [weekStartStr, fetchItems])
+
+  // Close the assignee picker on outside-click (ignoring the trigger + popover) and on Escape.
+  useEffect(() => {
+    if (!openPicker) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t.closest('[data-assignee-popover]') || t.closest('[data-assignee-trigger]')) return
+      setOpenPicker(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenPicker(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [openPicker])
 
   const teamMap = new Map(team.map(m => [m.id, m]))
 
@@ -346,28 +369,65 @@ export default function WeeklyChecklistPage() {
                       }`}
                     />
 
-                    {/* Assignees — toggleable name pills (multi-select) */}
-                    <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end max-w-[220px]">
-                      {assignees.length === 0 && (
-                        <span className="text-xs font-fira text-gray-300 mr-0.5">Unassigned</span>
+                    {/* Assignees — collapsed avatar cell; click opens a picker popover */}
+                    <div className="relative shrink-0">
+                      <button
+                        data-assignee-trigger
+                        onClick={e => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                          setPickerPos({ top: rect.bottom + 4, left: rect.right })
+                          setOpenPicker(prev => (prev === item.id ? null : item.id))
+                        }}
+                        className="flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-gray-100 transition-colors"
+                        title="Edit assignees"
+                      >
+                        {assignees.length === 0 ? (
+                          <span className="text-xs font-fira text-fe-blue-gray">+ Assign</span>
+                        ) : (
+                          <div className="flex items-center">
+                            {assignees.map((m, idx) => (
+                              <div
+                                key={m.id}
+                                className={`rounded-full ring-2 ring-white ${idx > 0 ? '-ml-2' : ''}`}
+                              >
+                                <Avatar initials={m.initials} color={m.color} size="sm" title={m.name} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {openPicker === item.id && pickerPos && (
+                        <div
+                          data-assignee-popover
+                          style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left, transform: 'translateX(-100%)' }}
+                          className="z-50 w-56 max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1"
+                        >
+                          {team.map(m => {
+                            const selected = item.assigned_to_ids.includes(m.id)
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => toggleAssignee(m.id)}
+                                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors ${
+                                  selected ? 'bg-fe-blue/10' : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                <Avatar initials={m.initials} color={m.color} size="sm" title={m.name} />
+                                <span className="flex-1 text-sm font-fira text-fe-anthracite">{m.name}</span>
+                                {selected && (
+                                  <svg className="w-4 h-4 text-fe-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
                       )}
-                      {team.map(m => {
-                        const selected = item.assigned_to_ids.includes(m.id)
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => toggleAssignee(m.id)}
-                            title={m.name}
-                            className={`text-xs font-fira px-2 py-0.5 rounded-full border transition-colors ${
-                              selected
-                                ? 'bg-fe-blue border-fe-blue text-white'
-                                : 'bg-transparent border-gray-200 text-fe-blue-gray hover:border-fe-blue hover:text-fe-blue'
-                            }`}
-                          >
-                            {m.name.split(' ')[0]}
-                          </button>
-                        )
-                      })}
                     </div>
 
                     {/* Push to next week (only for incomplete items) */}

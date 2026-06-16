@@ -2,6 +2,7 @@ interface AvatarProps {
   initials: string
   color: string
   size?: 'sm' | 'md' | 'lg'
+  title?: string
 }
 
 const sizes = {
@@ -10,12 +11,12 @@ const sizes = {
   lg: 'w-12 h-12 text-sm',
 }
 
-export default function Avatar({ initials, color, size = 'md' }: AvatarProps) {
+export default function Avatar({ initials, color, size = 'md', title }: AvatarProps) {
   return (
     <div
       className={`${sizes[size]} rounded-full flex items-center justify-center text-white font-fira font-bold shrink-0`}
       style={{ backgroundColor: color }}
-      title={initials}
+      title={title ?? initials}
     >
       {initials}
     </div>
