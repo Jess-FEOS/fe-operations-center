@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Avatar from '@/components/Avatar'
 
 interface TeamMember {
   id: string
@@ -14,7 +13,7 @@ interface ChecklistItem {
   id: string
   week_start: string
   description: string
-  assigned_to: string | null
+  assigned_to_ids: string[]
   is_done: boolean
   is_priority: boolean
   delivery_date: string | null
@@ -269,7 +268,16 @@ export default function WeeklyChecklistPage() {
 
             <div>
               {sortedItems.map(item => {
-                const assignee = item.assigned_to ? teamMap.get(item.assigned_to) : null
+                // Resolve ids against the live team list so a deleted member's stale id just doesn't render.
+                const assignees = item.assigned_to_ids
+                  .map(id => teamMap.get(id))
+                  .filter((m): m is TeamMember => Boolean(m))
+                const toggleAssignee = (memberId: string) => {
+                  const next = item.assigned_to_ids.includes(memberId)
+                    ? item.assigned_to_ids.filter(id => id !== memberId)
+                    : [...item.assigned_to_ids, memberId]
+                  updateItem(item.id, { assigned_to_ids: next })
+                }
                 return (
                   <div
                     key={item.id}
@@ -338,21 +346,28 @@ export default function WeeklyChecklistPage() {
                       }`}
                     />
 
-                    {/* Assigned Person */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {assignee && (
-                        <Avatar initials={assignee.initials} color={assignee.color} size="sm" />
+                    {/* Assignees — toggleable name pills (multi-select) */}
+                    <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end max-w-[220px]">
+                      {assignees.length === 0 && (
+                        <span className="text-xs font-fira text-gray-300 mr-0.5">Unassigned</span>
                       )}
-                      <select
-                        value={item.assigned_to || ''}
-                        onChange={e => updateItem(item.id, { assigned_to: e.target.value || null })}
-                        className="text-xs font-fira bg-transparent border-0 text-fe-blue-gray focus:outline-none focus:ring-0 cursor-pointer pr-5 max-w-[110px]"
-                      >
-                        <option value="">Unassigned</option>
-                        {team.map(m => (
-                          <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>
-                        ))}
-                      </select>
+                      {team.map(m => {
+                        const selected = item.assigned_to_ids.includes(m.id)
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => toggleAssignee(m.id)}
+                            title={m.name}
+                            className={`text-xs font-fira px-2 py-0.5 rounded-full border transition-colors ${
+                              selected
+                                ? 'bg-fe-blue border-fe-blue text-white'
+                                : 'bg-transparent border-gray-200 text-fe-blue-gray hover:border-fe-blue hover:text-fe-blue'
+                            }`}
+                          >
+                            {m.name.split(' ')[0]}
+                          </button>
+                        )
+                      })}
                     </div>
 
                     {/* Push to next week (only for incomplete items) */}

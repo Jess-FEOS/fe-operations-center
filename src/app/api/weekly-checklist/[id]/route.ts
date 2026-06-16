@@ -11,7 +11,7 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = {};
     if (body.description !== undefined) updates.description = body.description;
-    if (body.assigned_to !== undefined) updates.assigned_to = body.assigned_to || null;
+    if (Array.isArray(body.assigned_to_ids)) updates.assigned_to_ids = body.assigned_to_ids;
     if (body.is_done !== undefined) updates.is_done = body.is_done;
     if (body.week_start !== undefined) updates.week_start = body.week_start;
     if (body.is_priority !== undefined) updates.is_priority = body.is_priority;

@@ -31,18 +31,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { week_start, description, assigned_to } = body;
+    const { week_start, description } = body;
 
     if (!week_start || description === undefined || description === null) {
       return NextResponse.json({ error: 'week_start and description are required' }, { status: 400 });
     }
 
+    // New items start with no assignees; assigned_to_ids defaults to '{}' in the DB.
     const { data, error } = await supabase
       .from('weekly_checklist')
       .insert({
         week_start,
         description,
-        assigned_to: assigned_to || null,
         is_done: false,
       })
       .select()
