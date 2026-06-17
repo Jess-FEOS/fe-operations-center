@@ -37,6 +37,31 @@ const WORKFLOW_COLORS: Record<string, string> = {
   'subscription': '#046A38',
 }
 
+// Fallback color for unknown workflow types (the "Other" bucket). Matches the
+// chip fallback used below so toggling "Other" controls exactly those chips.
+const OTHER_COLOR = '#647692'
+
+// Category filter layers: the four known workflow types plus an "Other" catch-all,
+// so every task maps to exactly one toggleable category and nothing is unfilterable.
+const CATEGORIES = [...Object.keys(WORKFLOW_COLORS), 'other']
+
+const CATEGORY_LABELS: Record<string, string> = {
+  'course-launch': 'Course launch',
+  'podcast': 'Podcast',
+  'newsletter': 'Newsletter',
+  'subscription': 'Subscription',
+  'other': 'Other',
+}
+
+// A task's category = its workflow_type if known, else the "other" bucket.
+function categoryOf(workflowType: string): string {
+  return workflowType in WORKFLOW_COLORS ? workflowType : 'other'
+}
+
+function categoryColor(category: string): string {
+  return category === 'other' ? OTHER_COLOR : WORKFLOW_COLORS[category]
+}
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 // Format date as YYYY-MM-DD without UTC conversion
@@ -73,6 +98,8 @@ export default function CalendarPage() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set())
+  // Active category layers. Default: all on (Set holds every category).
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(() => new Set(CATEGORIES))
 
   const { calStart, calEnd, first } = getMonthRange(year, month)
 
@@ -100,9 +127,22 @@ export default function CalendarPage() {
     })
   }
 
-  const filteredTasks = selectedMembers.size === 0
-    ? tasks
-    : tasks.filter(t => t.owner_ids?.some(oid => selectedMembers.has(oid)))
+  const toggleCategory = (cat: string) => {
+    setActiveCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
+
+  // Compose category + team filters with AND: a task shows only if its category
+  // layer is active AND it passes the team filter (team filter inactive = all pass).
+  const filteredTasks = tasks.filter(t => {
+    const categoryOk = activeCategories.has(categoryOf(t.workflow_type))
+    const teamOk = selectedMembers.size === 0 || (t.owner_ids?.some(oid => selectedMembers.has(oid)) ?? false)
+    return categoryOk && teamOk
+  })
 
   // Group tasks by date, then by project within each date
   const groupsByDate = new Map<string, ProjectGroup[]>()
@@ -209,6 +249,31 @@ export default function CalendarPage() {
           )}
         </div>
       )}
+
+      {/* Category layer toggles (mirrors the team filter row above) */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <span className="text-xs text-fe-blue-gray font-fira mr-1">Categories:</span>
+        {CATEGORIES.map(cat => {
+          const isActive = activeCategories.has(cat)
+          const color = categoryColor(cat)
+          return (
+            <button
+              key={cat}
+              onClick={() => toggleCategory(cat)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 bg-white text-xs font-fira text-fe-anthracite transition-all ${
+                isActive ? 'ring-2 ring-fe-blue ring-offset-1' : 'opacity-50 hover:opacity-80'
+              }`}
+              title={CATEGORY_LABELS[cat]}
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: isActive ? color : '#cbd5e1' }}
+              />
+              {CATEGORY_LABELS[cat]}
+            </button>
+          )
+        })}
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
