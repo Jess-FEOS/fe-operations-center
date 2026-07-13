@@ -607,11 +607,11 @@ export default function Dashboard() {
     );
   }
 
-  const metrics = [
-    { label: 'Active Projects', value: activeProjectCount },
-    { label: 'Due This Week', value: dueThisWeekCount },
-    { label: 'Overdue', value: overdueCount },
-    { label: 'Completed This Week', value: completedThisWeekCount },
+  const metrics: { label: string; value: number; accent?: string }[] = [
+    { label: 'Active Projects', value: activeProjectCount, accent: '#1B365D' },
+    { label: 'Due This Week', value: dueThisWeekCount, accent: '#0762C8' },
+    { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? '#C8350D' : '#647692' },
+    { label: 'Completed This Week', value: completedThisWeekCount, accent: '#046A38' },
   ];
 
   const hasAttentionItems = attentionNeeded.overdue_count > 0 || attentionNeeded.no_priority_projects.length > 0 || attentionNeeded.stalled_launching_soon.length > 0;
@@ -633,26 +633,35 @@ export default function Dashboard() {
 
   return (
     <div className="font-fira">
-      <h1 className="font-barlow font-extrabold text-2xl text-fe-navy mb-6">
-        Dashboard
-      </h1>
+      {/* ===== PAGE HEADER BAND ===== */}
+      <div className="fe-pageband -mx-8 -mt-8 mb-8 px-8 pt-7 pb-6">
+        <p className="fe-eyebrow mb-1">Operations Center</p>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <h1 className="font-barlow font-extrabold text-2xl text-fe-navy leading-none">
+            Dashboard
+          </h1>
+          <p className="text-sm font-fira text-fe-blue-gray">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+        </div>
+      </div>
 
-      {/* Summary Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {metrics.map((metric) => (
-          <div
-            key={metric.label}
-            className="bg-white border border-gray-100 rounded-xl p-5"
-          >
-            <div
-              className="text-3xl font-barlow font-extrabold"
-              style={{ color: '#B29838' }}
-            >
-              {metric.value}
+      {/* ===== SUMMARY METRIC STRIP ===== */}
+      {/* One bordered strip with hairline dividers instead of 4 floating cards. */}
+      <div className="fe-panel mb-8 grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-[#E4E7EC]">
+        {metrics.map((metric) => {
+          const accent = metric.accent || '#1B365D';
+          return (
+            <div key={metric.label} className="px-5 py-5">
+              <div className="flex items-baseline gap-2">
+                <div className="text-3xl font-barlow font-extrabold leading-none" style={{ color: accent }}>
+                  {metric.value}
+                </div>
+              </div>
+              <div className="fe-eyebrow mt-2">{metric.label}</div>
             </div>
-            <div className="text-sm text-fe-anthracite mt-1">{metric.label}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ===== 1. NEXT LAUNCH COUNTDOWN ===== */}

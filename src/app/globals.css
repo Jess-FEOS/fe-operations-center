@@ -14,6 +14,65 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'Barlow', sans-serif;
 }
 
+/* ============================================================
+   EDITORIAL DESIGN SYSTEM (redesign)
+   Square corners, hairline borders, flat panels, clear hierarchy.
+   Reusable classes so pages share one consistent visual language.
+   ============================================================ */
+
+:root {
+  --fe-line: #E4E7EC;          /* hairline divider */
+  --fe-line-strong: #D0D5DD;   /* stronger divider */
+  --fe-surface: #FFFFFF;       /* panel surface */
+  --fe-canvas: #F4F5F7;        /* page canvas (slightly cooler than old F8F9FB) */
+  --fe-ink: #1B2430;           /* primary text */
+  --fe-ink-soft: #647692;      /* secondary text / labels */
+}
+
+body {
+  background-color: var(--fe-canvas);
+}
+
+/* Kill legacy soft, floating shadows app-wide. The editorial system uses
+   hairline borders for separation, not drop shadows. Elements that opt in
+   to a subtle lift use .fe-raise explicitly. */
+[class*="shadow-"] {
+  box-shadow: none !important;
+}
+.fe-raise { box-shadow: 0 1px 2px 0 rgba(16,24,40,0.06) !important; }
+
+/* Flat panel: the core surface unit. Hairline border, square, no shadow. */
+.fe-panel {
+  background: var(--fe-surface);
+  border: 1px solid var(--fe-line);
+}
+
+/* Panel header band: sits at the top of a panel, hairline underline. */
+.fe-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--fe-line);
+  background: #FCFCFD;
+}
+
+/* Section eyebrow: small, uppercase, tracked label above a group. */
+.fe-eyebrow {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fe-ink-soft);
+}
+
+/* Page header band that anchors the top of each screen. */
+.fe-pageband {
+  border-bottom: 1px solid var(--fe-line-strong);
+  background: var(--fe-surface);
+}
+
 option {
   color: #1f2937 !important;
   background-color: #ffffff !important;
