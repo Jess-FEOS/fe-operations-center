@@ -324,17 +324,18 @@ function LaunchTracker({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="fe-grid">
       {sorted.map((project) => {
         const days = project.launch_date ? daysUntil(project.launch_date) : null
         const ready = getReadyCount(project.id)
+        const readyPct = CHANNELS.length > 0 ? Math.round((ready / CHANNELS.length) * 100) : 0
         const borderColor = urgencyColor(days)
         const isUrgent = days !== null && days >= 0 && days <= 14
 
         return (
           <div
             key={project.id}
-            className="bg-white rounded-xl border border-gray-100 overflow-hidden flex"
+            className="fe-col-6 bg-white border border-gray-100 overflow-hidden flex"
           >
             {/* Urgency left border */}
             <div className="w-1.5 shrink-0" style={{ backgroundColor: borderColor }} />
@@ -351,13 +352,21 @@ function LaunchTracker({
                     </span>
                   )}
                 </div>
-                <span className="text-xs font-fira text-fe-blue-gray">
-                  {ready}/{CHANNELS.length} channels ready
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${readyPct}%`, backgroundColor: readyPct >= 80 ? '#22c55e' : readyPct >= 40 ? '#B29838' : '#ef4444' }}
+                    />
+                  </div>
+                  <span className="text-xs font-fira text-fe-blue-gray">
+                    {ready}/{CHANNELS.length} channels ready
+                  </span>
+                </div>
               </div>
 
               {/* Days countdown + launch date + channels */}
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-6 flex-wrap">
                 {/* Big countdown */}
                 <div className="shrink-0 text-center min-w-[80px]">
                   {days !== null ? (
@@ -483,7 +492,7 @@ function WeeklyContent({
         return (
           <div
             key={row.weekNum}
-            className={`rounded-xl border p-4 space-y-3 ${
+            className={`border p-4 space-y-3 ${
               isCurrent
                 ? 'bg-blue-50/50 border-fe-blue/20'
                 : 'bg-white border-gray-100'
@@ -546,7 +555,7 @@ function WeeklyContent({
       {!showAll && weekRows.length > 8 && (
         <button
           onClick={onShowMore}
-          className="w-full py-3 text-sm font-fira font-bold text-fe-blue hover:text-fe-blue/80 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+          className="w-full py-3 text-sm font-fira font-bold text-fe-blue hover:text-fe-blue/80 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
         >
           Show {weekRows.length - 8} more weeks
         </button>
@@ -615,7 +624,7 @@ function ThisWeekMarketing({
             {section.tasks.map((task) => (
               <div
                 key={task.id}
-                className="bg-white rounded-xl border border-gray-100 p-4 flex items-start justify-between gap-4"
+                className="bg-white border border-gray-100 p-4 flex items-start justify-between gap-4"
               >
                 <div className="min-w-0 flex-1 space-y-2">
                   <div>

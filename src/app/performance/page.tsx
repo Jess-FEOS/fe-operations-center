@@ -168,7 +168,7 @@ export default function PerformancePage() {
 
       {/* Log Metrics Form */}
       {showForm && (
-        <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+        <div className="bg-white border border-gray-100 p-6 mb-6">
           <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Log Metric</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -176,7 +176,7 @@ export default function PerformancePage() {
               <select
                 value={formProjectId}
                 onChange={e => setFormProjectId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
               >
                 <option value="">No project</option>
                 {allProjects.map(p => (
@@ -189,7 +189,7 @@ export default function PerformancePage() {
               <select
                 value={formCampaignId}
                 onChange={e => setFormCampaignId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
               >
                 <option value="">No campaign</option>
                 {filteredCampaigns.map(c => (
@@ -204,7 +204,7 @@ export default function PerformancePage() {
                 value={formMetricName}
                 onChange={e => setFormMetricName(e.target.value)}
                 placeholder="e.g., Enrollment Count, Revenue, CTR"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
               />
             </div>
             <div>
@@ -215,7 +215,7 @@ export default function PerformancePage() {
                 value={formMetricValue}
                 onChange={e => setFormMetricValue(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
               />
             </div>
             <div>
@@ -224,7 +224,7 @@ export default function PerformancePage() {
                 type="date"
                 value={formMetricDate}
                 onChange={e => setFormMetricDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
               />
             </div>
             <div>
@@ -234,7 +234,7 @@ export default function PerformancePage() {
                 onChange={e => setFormNotes(e.target.value)}
                 placeholder="Any additional notes..."
                 rows={1}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue resize-none"
+                className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue resize-none"
               />
             </div>
           </div>
@@ -242,13 +242,13 @@ export default function PerformancePage() {
             <button
               onClick={submitMetric}
               disabled={!formMetricName.trim() || !formMetricValue || !formMetricDate || saving}
-              className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {saving ? 'Saving...' : 'Save Metric'}
             </button>
             <button
               onClick={() => { resetForm(); setShowForm(false) }}
-              className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
             >
               Cancel
             </button>
@@ -259,7 +259,7 @@ export default function PerformancePage() {
       {/* General Metrics by Project */}
       <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Metrics</h2>
       {generalMetrics.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center mb-8">
+        <div className="bg-white border border-gray-100 p-8 text-center mb-8">
           <p className="text-fe-blue-gray font-fira">No metrics logged yet. Click &quot;Log Metrics&quot; to get started.</p>
         </div>
       ) : (
@@ -269,7 +269,7 @@ export default function PerformancePage() {
               <h3 className="font-barlow font-bold text-sm text-fe-navy mb-3">{projectName}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {projectMetrics.map(m => (
-                  <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                  <div key={m.id} className="bg-white border border-gray-100 p-4">
                     <div className="text-2xl font-barlow font-extrabold text-fe-navy">
                       {typeof m.metric_value === 'number' ? m.metric_value.toLocaleString() : m.metric_value}
                     </div>
@@ -294,7 +294,7 @@ export default function PerformancePage() {
           <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Course Launch Metrics</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
             {courseMetrics.map(m => (
-              <div key={m.id} className="bg-white rounded-xl border border-gray-100 p-5">
+              <div key={m.id} className="bg-white border border-gray-100 p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <Link
@@ -352,10 +352,11 @@ export default function PerformancePage() {
       {chartMetrics.length >= 2 && (
         <>
           <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">Trends</h2>
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
+          <div className="fe-grid">
+          <div className="fe-col-6 bg-white border border-gray-100 p-6">
             {/* Enrollment Chart */}
             <h3 className="text-sm font-fira font-bold text-fe-anthracite mb-3">Enrollment</h3>
-            <div className="flex items-end gap-3 h-40 mb-6">
+            <div className="flex items-end gap-3 h-40">
               {chartMetrics.map(m => {
                 const height = maxEnrollment > 0 ? (m.enrollment_count / maxEnrollment) * 100 : 0
                 return (
@@ -364,7 +365,7 @@ export default function PerformancePage() {
                       {m.enrollment_count.toLocaleString()}
                     </span>
                     <div
-                      className="w-full rounded-t-md transition-all"
+                      className="w-full transition-all"
                       style={{
                         height: `${Math.max(height, 4)}%`,
                         backgroundColor: '#0762C8',
@@ -378,7 +379,9 @@ export default function PerformancePage() {
                 )
               })}
             </div>
+          </div>
 
+          <div className="fe-col-6 bg-white border border-gray-100 p-6">
             {/* Revenue Chart */}
             <h3 className="text-sm font-fira font-bold text-fe-anthracite mb-3">Revenue</h3>
             <div className="flex items-end gap-3 h-40">
@@ -391,7 +394,7 @@ export default function PerformancePage() {
                       ${rev.toLocaleString()}
                     </span>
                     <div
-                      className="w-full rounded-t-md transition-all"
+                      className="w-full transition-all"
                       style={{
                         height: `${Math.max(height, 4)}%`,
                         backgroundColor: '#046A38',
@@ -405,6 +408,7 @@ export default function PerformancePage() {
                 )
               })}
             </div>
+          </div>
           </div>
         </>
       )}

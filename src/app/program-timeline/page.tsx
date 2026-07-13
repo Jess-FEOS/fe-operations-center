@@ -377,12 +377,38 @@ export default function ProgramTimeline() {
     )
   }
 
+  // Data-backed summary stats derived from the loaded projects
+  const totalPrograms = sorted.length
+  const scheduledPrograms = sorted.filter(p => !!p.launch_date).length
+  const totalTasksAll = sorted.reduce((n, p) => n + (p.total_tasks || 0), 0)
+  const doneTasksAll = sorted.reduce((n, p) => n + (p.done_tasks || 0), 0)
+
   return (
     <div className="font-fira">
       <PageHeader title="Program Timeline" eyebrow="Planning" />
 
+      {/* Summary stat strip (data-backed) */}
+      <div className="fe-panel mb-5 grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-[#E4E7EC]">
+        <div className="px-5 py-4">
+          <div className="text-2xl font-barlow font-extrabold leading-none text-fe-navy">{totalPrograms}</div>
+          <div className="fe-eyebrow mt-1.5">Programs</div>
+        </div>
+        <div className="px-5 py-4">
+          <div className="text-2xl font-barlow font-extrabold leading-none text-fe-blue">{scheduledPrograms}</div>
+          <div className="fe-eyebrow mt-1.5">With Launch Date</div>
+        </div>
+        <div className="px-5 py-4">
+          <div className="text-2xl font-barlow font-extrabold leading-none" style={{ color: '#046A38' }}>{doneTasksAll}</div>
+          <div className="fe-eyebrow mt-1.5">Tasks Done</div>
+        </div>
+        <div className="px-5 py-4">
+          <div className="text-2xl font-barlow font-extrabold leading-none text-fe-anthracite">{totalTasksAll}</div>
+          <div className="fe-eyebrow mt-1.5">Total Tasks</div>
+        </div>
+      </div>
+
       {/* Chart container */}
-      <div ref={chartRef} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-visible">
+      <div ref={chartRef} className="bg-white border border-gray-200 shadow-sm overflow-visible">
 
         {/* ── Marketing Load bar chart ─────────────────────────────────── */}
         <div className="px-5 pt-5 pb-3 border-b border-gray-100">
@@ -513,7 +539,7 @@ export default function ProgramTimeline() {
                   {/* Tooltip */}
                   {isHovered && !draggingId && (
                     <div
-                      className="absolute z-20 bg-fe-navy text-white text-[11px] font-fira rounded-lg px-3 py-2 shadow-lg pointer-events-none whitespace-nowrap"
+                      className="absolute z-20 bg-fe-navy text-white text-[11px] font-fira px-3 py-2 shadow-lg pointer-events-none whitespace-nowrap"
                       style={{ left: `${barLeft}%`, bottom: '100%', marginBottom: 4 }}
                     >
                       <div className="font-bold mb-0.5">
@@ -604,7 +630,7 @@ export default function ProgramTimeline() {
       {/* Drag date tooltip — follows cursor */}
       {draggingId && dragDateLabel && (
         <div
-          className="fixed z-50 bg-fe-navy text-white text-xs font-fira font-bold rounded-lg px-3 py-1.5 shadow-lg pointer-events-none -translate-x-1/2"
+          className="fixed z-50 bg-fe-navy text-white text-xs font-fira font-bold px-3 py-1.5 shadow-lg pointer-events-none -translate-x-1/2"
           style={{ left: dragCursorX, top: dragCursorY - 40 }}
         >
           {dragDateLabel}
@@ -613,7 +639,7 @@ export default function ProgramTimeline() {
 
       {/* Toast notification */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-fe-navy text-white text-sm font-fira rounded-lg px-4 py-3 shadow-xl animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 right-6 z-50 bg-fe-navy text-white text-sm font-fira px-4 py-3 shadow-xl animate-in fade-in slide-in-from-bottom-2">
           {toast}
         </div>
       )}

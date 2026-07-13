@@ -657,7 +657,7 @@ export default function Dashboard() {
 
       {/* ===== 1. NEXT LAUNCH COUNTDOWN ===== */}
       {nextLaunch ? (
-        <div className="mb-8 bg-gradient-to-r from-fe-navy to-fe-blue rounded-xl p-6 text-white">
+        <div className="mb-8 bg-gradient-to-r from-fe-navy to-fe-blue p-6 text-white">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-fira uppercase tracking-widest text-white/60 mb-1">Next Launch</p>
@@ -695,7 +695,7 @@ export default function Dashboard() {
               </Link>
             </div>
             {nextLaunch.launch_date && (
-              <div className="text-center px-6 py-4 bg-white/10 rounded-xl shrink-0">
+              <div className="text-center px-6 py-4 bg-white/10 shrink-0">
                 <div className="text-5xl font-barlow font-extrabold">{daysUntil(nextLaunch.launch_date)}</div>
                 <div className="text-sm font-fira text-white/70 mt-1">days until launch</div>
               </div>
@@ -703,7 +703,7 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <div className="mb-8 bg-white border border-gray-100 rounded-xl p-6">
+        <div className="mb-8 bg-white border border-gray-100 p-6">
           <p className="text-xs font-fira uppercase tracking-widest text-fe-blue-gray mb-1">Next Launch</p>
           <p className="text-sm text-fe-blue-gray font-fira">No upcoming launches scheduled. Set a launch date on a project to see the countdown.</p>
         </div>
@@ -711,7 +711,7 @@ export default function Dashboard() {
 
       {/* Overdue: Not Started (Red) */}
       {overdueNotStarted.length > 0 && (
-        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl overflow-hidden">
+        <div className="mb-4 bg-red-50 border border-red-200 overflow-hidden">
           <button
             onClick={() => setOverdueNotStartedExpanded(!overdueNotStartedExpanded)}
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-100/50 transition-colors"
@@ -779,7 +779,7 @@ export default function Dashboard() {
 
       {/* Overdue: In Progress (Amber) */}
       {overdueInProgress.length > 0 && (
-        <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+        <div className="mb-8 bg-amber-50 border border-amber-200 overflow-hidden">
           <button
             onClick={() => setOverdueInProgressExpanded(!overdueInProgressExpanded)}
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100/50 transition-colors"
@@ -847,7 +847,7 @@ export default function Dashboard() {
 
       {/* Unassigned Tasks Banner */}
       {unassignedTasks.length > 0 && (
-        <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+        <div className="mb-8 bg-amber-50 border border-amber-200 overflow-hidden">
           <button
             onClick={() => setUnassignedExpanded(!unassignedExpanded)}
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100/50 transition-colors"
@@ -950,8 +950,13 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ===== BENTO GRID: lower dashboard panels ===== */}
+      <div className="space-y-5">
+
+      {/* Row 1: This Month's Focus (wide) + At Risk (narrow) */}
+      <div className="fe-grid">
       {/* This Month's Focus */}
-      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+      <div className="fe-col-8 bg-white border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
@@ -1146,7 +1151,7 @@ export default function Dashboard() {
               const isCollapsed = collapsedPriorityGroups.has(group.key);
               const doneCount = group.priorities.filter(p => p.status === 'done').length;
               return (
-                <div key={group.key} className="border border-gray-100 rounded-xl overflow-hidden">
+                <div key={group.key} className="border border-gray-100 overflow-hidden">
                   {/* Group Header */}
                   <button
                     onClick={() => togglePriorityGroup(group.key)}
@@ -1339,7 +1344,7 @@ export default function Dashboard() {
       </div>
 
       {/* ===== AT RISK ===== */}
-      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+      <div className="fe-col-4 bg-white border border-gray-100 p-5">
         <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">At Risk</h2>
         <p className="text-xs font-fira text-fe-blue-gray mb-4">Programs that need attention before launch</p>
         {atRiskProjects.length === 0 ? (
@@ -1392,9 +1397,13 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      </div>
+      {/* /Row 1 */}
 
+      {/* Row 2: Recent Changes + Attention Needed */}
+      <div className="fe-grid">
       {/* ===== RECENT CHANGES ===== */}
-      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+      <div className="fe-col-6 bg-white border border-gray-100 p-5">
         <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Recent Changes</h2>
         <p className="text-xs font-fira text-fe-blue-gray mb-4">Latest project activity</p>
         {recentChanges.length === 0 ? (
@@ -1434,114 +1443,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ===== 2. ENROLLMENT & REVENUE TRACKER ===== */}
-      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
-        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Enrollment &amp; Revenue Tracker</h2>
-        <p className="text-xs font-fira text-fe-blue-gray mb-4">Course launches with enrollment or revenue goals</p>
-        {enrollmentTracker.length === 0 ? (
-          <p className="text-sm text-fe-blue-gray font-fira">No enrollment or revenue goals set — add them by editing a project.</p>
-        ) : (
-          <div className="space-y-3">
-            {enrollmentTracker.map(row => {
-              const enrollPct = row.enrollment_goal ? Math.min(100, Math.round((row.enrollment_actual / row.enrollment_goal) * 100)) : 0;
-              const revPct = row.revenue_goal ? Math.min(100, Math.round((row.revenue_actual / row.revenue_goal) * 100)) : 0;
-              return (
-                <div key={row.id} className="border border-gray-100 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Link href={`/projects/${row.id}`} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">{row.name}</Link>
-                    <button
-                      onClick={() => { setLogMetricProjectId(row.id); setLogMetricName('enrollments'); setLogMetricValue(''); }}
-                      className="px-2.5 py-1 rounded text-xs font-fira font-bold text-fe-blue border border-fe-blue/20 hover:bg-blue-50 transition-colors"
-                    >
-                      Log Result
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {row.enrollment_goal && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-fira text-fe-blue-gray">Enrollment</span>
-                          <span className="text-xs font-fira font-bold text-fe-anthracite">{row.enrollment_actual}/{row.enrollment_goal}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${enrollPct}%`, backgroundColor: enrollPct >= 75 ? '#22c55e' : enrollPct >= 40 ? '#B29838' : '#ef4444' }} />
-                        </div>
-                      </div>
-                    )}
-                    {row.revenue_goal && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-fira text-fe-blue-gray">Revenue</span>
-                          <span className="text-xs font-fira font-bold text-fe-anthracite">${row.revenue_actual.toLocaleString()}/${('$' + row.revenue_goal.toLocaleString())}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${revPct}%`, backgroundColor: revPct >= 75 ? '#22c55e' : revPct >= 40 ? '#B29838' : '#ef4444' }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Log Metric Modal */}
-      {logMetricProjectId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setLogMetricProjectId(null)}>
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-barlow font-bold text-lg text-fe-navy mb-4">Log Result</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Project</label>
-                <p className="text-sm font-fira text-fe-navy font-bold">{enrollmentTracker.find(r => r.id === logMetricProjectId)?.name}</p>
-              </div>
-              <div>
-                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Metric</label>
-                <select
-                  value={logMetricName}
-                  onChange={e => setLogMetricName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white"
-                >
-                  <option value="enrollments">Enrollments</option>
-                  <option value="revenue">Revenue ($)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Value</label>
-                <input
-                  type="number"
-                  value={logMetricValue}
-                  onChange={e => setLogMetricValue(e.target.value)}
-                  placeholder={logMetricName === 'revenue' ? 'e.g. 15000' : 'e.g. 30'}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
-                  autoFocus
-                />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={handleLogMetric}
-                disabled={!logMetricValue || logMetricSaving}
-                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-white bg-fe-blue hover:bg-fe-blue/90 transition-colors disabled:opacity-50"
-              >
-                {logMetricSaving ? 'Saving...' : 'Log'}
-              </button>
-              <button
-                onClick={() => setLogMetricProjectId(null)}
-                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ===== 3. ATTENTION NEEDED ===== */}
       {hasAttentionItems && (
-        <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+        <div className="fe-col-6 bg-white border border-gray-100 p-5">
           <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">Attention Needed</h2>
           <div className="space-y-3">
             {attentionNeeded.overdue_count > 0 && (
@@ -1604,18 +1508,74 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      </div>
+      {/* /Row 2 */}
 
+      {/* Row 3: Enrollment & Revenue Tracker (wide) + Active Campaigns */}
+      <div className="fe-grid">
+      {/* ===== 2. ENROLLMENT & REVENUE TRACKER ===== */}
+      <div className="fe-col-7 bg-white border border-gray-100 p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Enrollment &amp; Revenue Tracker</h2>
+        <p className="text-xs font-fira text-fe-blue-gray mb-4">Course launches with enrollment or revenue goals</p>
+        {enrollmentTracker.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No enrollment or revenue goals set — add them by editing a project.</p>
+        ) : (
+          <div className="space-y-3">
+            {enrollmentTracker.map(row => {
+              const enrollPct = row.enrollment_goal ? Math.min(100, Math.round((row.enrollment_actual / row.enrollment_goal) * 100)) : 0;
+              const revPct = row.revenue_goal ? Math.min(100, Math.round((row.revenue_actual / row.revenue_goal) * 100)) : 0;
+              return (
+                <div key={row.id} className="border border-gray-100 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Link href={`/projects/${row.id}`} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">{row.name}</Link>
+                    <button
+                      onClick={() => { setLogMetricProjectId(row.id); setLogMetricName('enrollments'); setLogMetricValue(''); }}
+                      className="px-2.5 py-1 rounded text-xs font-fira font-bold text-fe-blue border border-fe-blue/20 hover:bg-blue-50 transition-colors"
+                    >
+                      Log Result
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {row.enrollment_goal && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-fira text-fe-blue-gray">Enrollment</span>
+                          <span className="text-xs font-fira font-bold text-fe-anthracite">{row.enrollment_actual}/{row.enrollment_goal}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${enrollPct}%`, backgroundColor: enrollPct >= 75 ? '#22c55e' : enrollPct >= 40 ? '#B29838' : '#ef4444' }} />
+                        </div>
+                      </div>
+                    )}
+                    {row.revenue_goal && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-fira text-fe-blue-gray">Revenue</span>
+                          <span className="text-xs font-fira font-bold text-fe-anthracite">${row.revenue_actual.toLocaleString()}/${('$' + row.revenue_goal.toLocaleString())}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${revPct}%`, backgroundColor: revPct >= 75 ? '#22c55e' : revPct >= 40 ? '#B29838' : '#ef4444' }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
       {/* Active Campaigns */}
-      <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5">
+      <div className="fe-col-5 bg-white border border-gray-100 p-5">
         <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
           Active Campaigns
         </h2>
         {campaigns.length === 0 ? (
           <p className="text-sm text-fe-blue-gray font-fira">No active campaigns — add one from the Marketing page.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {campaigns.map(campaign => (
-              <div key={campaign.id} className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow">
+              <div key={campaign.id} className="border border-gray-100 p-4 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">{campaign.name}</h3>
                   <StatusBadge status={(campaign.status as TaskStatus) || 'not_started'} interactive={false} />
@@ -1634,6 +1594,63 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      </div>
+      {/* /Row 3 */}
+
+      </div>
+      {/* ===== /BENTO GRID ===== */}
+
+      {/* Log Metric Modal (top-level portal overlay) */}
+      {logMetricProjectId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setLogMetricProjectId(null)}>
+          <div className="bg-white p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-barlow font-bold text-lg text-fe-navy mb-4">Log Result</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Project</label>
+                <p className="text-sm font-fira text-fe-navy font-bold">{enrollmentTracker.find(r => r.id === logMetricProjectId)?.name}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Metric</label>
+                <select
+                  value={logMetricName}
+                  onChange={e => setLogMetricName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue bg-white"
+                >
+                  <option value="enrollments">Enrollments</option>
+                  <option value="revenue">Revenue ($)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-fira text-fe-blue-gray mb-1">Value</label>
+                <input
+                  type="number"
+                  value={logMetricValue}
+                  onChange={e => setLogMetricValue(e.target.value)}
+                  placeholder={logMetricName === 'revenue' ? 'e.g. 15000' : 'e.g. 30'}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={handleLogMetric}
+                disabled={!logMetricValue || logMetricSaving}
+                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-white bg-fe-blue hover:bg-fe-blue/90 transition-colors disabled:opacity-50"
+              >
+                {logMetricSaving ? 'Saving...' : 'Log'}
+              </button>
+              <button
+                onClick={() => setLogMetricProjectId(null)}
+                className="px-4 py-1.5 rounded-lg text-xs font-fira font-bold text-fe-anthracite bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -73,6 +73,62 @@ body {
   background: var(--fe-surface);
 }
 
+/* ============================================================
+   COLUMN / BENTO GRID SYSTEM
+   Turns stacked full-width panels into a dynamic multi-column
+   dashboard. Use .fe-grid as the container and .fe-col-N to set
+   how many of the 12 columns a panel spans on large screens.
+   Everything collapses to a single column on mobile.
+   ============================================================ */
+
+/* 12-column responsive grid. Gap matches the panel rhythm. */
+.fe-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Column spans on large screens (>=1024px). Below that, everything
+   stacks to a single column for a clean mobile read. */
+@media (min-width: 1024px) {
+  .fe-col-3  { grid-column: span 3 / span 3; }
+  .fe-col-4  { grid-column: span 4 / span 4; }
+  .fe-col-5  { grid-column: span 5 / span 5; }
+  .fe-col-6  { grid-column: span 6 / span 6; }
+  .fe-col-7  { grid-column: span 7 / span 7; }
+  .fe-col-8  { grid-column: span 8 / span 8; }
+  .fe-col-9  { grid-column: span 9 / span 9; }
+  .fe-col-12 { grid-column: span 12 / span 12; }
+}
+
+/* Intermediate breakpoint: 2-up on tablets for the smaller spans. */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .fe-col-3, .fe-col-4, .fe-col-5, .fe-col-6 { grid-column: span 6 / span 6; }
+  .fe-col-7, .fe-col-8, .fe-col-9 { grid-column: span 12 / span 12; }
+}
+
+/* A grid cell that itself stacks its children with panel rhythm,
+   so a single column can hold several panels one above another. */
+.fe-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+/* Standard panel body padding so panels placed in the grid read
+   consistently without per-page padding overrides. */
+.fe-panel-body { padding: 1.25rem; }
+
+/* Panel title used inside a panel header band. */
+.fe-panel-title {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--fe-ink);
+}
+
 option {
   color: #1f2937 !important;
   background-color: #ffffff !important;

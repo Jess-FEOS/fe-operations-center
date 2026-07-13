@@ -394,7 +394,7 @@ export default function TeamPage() {
           </button>
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-fe-navy text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-navy/90 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-fe-navy text-white text-sm font-fira font-bold hover:bg-fe-navy/90 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -414,7 +414,7 @@ export default function TeamPage() {
             if (memberTasks.length === 0) return null;
 
             return (
-              <div key={member.id} className="bg-white rounded-xl border border-gray-100 p-5">
+              <div key={member.id} className="bg-white border border-gray-100 p-5">
                 <div className="flex items-center gap-3 mb-4">
                   <Avatar initials={member.initials} color={member.color} size="md" />
                   <div>
@@ -483,7 +483,7 @@ export default function TeamPage() {
         {/* Toast */}
         {toast.visible && (
           <div className="fixed top-6 right-6 z-[60] animate-in slide-in-from-top-2">
-            <div className="bg-fe-navy text-white px-5 py-3 rounded-lg shadow-lg text-sm font-fira flex items-center gap-2">
+            <div className="bg-fe-navy text-white px-5 py-3 shadow-lg text-sm font-fira flex items-center gap-2">
               <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
@@ -510,7 +510,7 @@ export default function TeamPage() {
               setEditingRoleId(null);
               setRoleForm({ name: '', description: '', color: ROLE_COLORS[roles.length % ROLE_COLORS.length] });
             }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -524,7 +524,7 @@ export default function TeamPage() {
         {/* Add/Edit Role Modal */}
         {showAddRole && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="bg-white p-6 w-full max-w-md">
               <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">
                 {editingRoleId ? 'Edit Role' : 'Add Role'}
               </h2>
@@ -536,7 +536,7 @@ export default function TeamPage() {
                     value={roleForm.name}
                     onChange={e => setRoleForm(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="e.g., Marketing Lead"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                     autoFocus
                   />
                 </div>
@@ -547,7 +547,7 @@ export default function TeamPage() {
                     value={roleForm.description}
                     onChange={e => setRoleForm(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="Optional description"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                   />
                 </div>
                 <div>
@@ -569,14 +569,14 @@ export default function TeamPage() {
               <div className="flex gap-3 mt-5">
                 <button
                   onClick={() => { setShowAddRole(false); setEditingRoleId(null); }}
-                  className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                  className="px-4 py-2 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveRole}
                   disabled={!roleForm.name.trim()}
-                  className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+                  className="px-4 py-2 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
                 >
                   {editingRoleId ? 'Save Changes' : 'Add Role'}
                 </button>
@@ -593,7 +593,7 @@ export default function TeamPage() {
 
           return (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl p-6 w-full max-w-md">
+              <div className="bg-white p-6 w-full max-w-md">
                 <h2 className="font-barlow font-bold text-lg text-fe-navy mb-2">
                   Delete &ldquo;{deletingRole.name}&rdquo;?
                 </h2>
@@ -609,7 +609,7 @@ export default function TeamPage() {
                       <select
                         value={deleteRoleReassignTo}
                         onChange={e => setDeleteRoleReassignTo(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                        className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
                       >
                         <option value="">Select a role...</option>
                         {otherRoles.map(r => (
@@ -622,14 +622,14 @@ export default function TeamPage() {
                 <div className="flex gap-3 mt-4">
                   <button
                     onClick={() => { setDeletingRole(null); setDeleteRoleReassignTo(''); }}
-                    className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                    className="px-4 py-2 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleDeleteRole}
                     disabled={hasUsage && !deleteRoleReassignTo}
-                    className="px-4 py-2 bg-fe-red text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-fe-red text-white text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {hasUsage && deleteRoleReassignTo ? 'Reassign & Delete' : 'Delete Role'}
                   </button>
@@ -645,7 +645,7 @@ export default function TeamPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {roles.map(role => (
-              <div key={role.id} className="bg-white rounded-xl border border-gray-100 p-5 group relative">
+              <div key={role.id} className="bg-white border border-gray-100 p-5 group relative">
                 <div className="absolute top-3 right-3 hidden group-hover:flex items-center gap-1">
                   <button
                     onClick={() => {
@@ -653,7 +653,7 @@ export default function TeamPage() {
                       setRoleForm({ name: role.name, description: role.description || '', color: role.color });
                       setShowAddRole(true);
                     }}
-                    className="p-1.5 rounded-lg text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                    className="p-1.5 text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
                     title="Edit role"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -662,7 +662,7 @@ export default function TeamPage() {
                   </button>
                   <button
                     onClick={() => setDeletingRole(role)}
-                    className="p-1.5 rounded-lg text-fe-blue-gray hover:text-fe-red hover:bg-red-50 transition-colors"
+                    className="p-1.5 text-fe-blue-gray hover:text-fe-red hover:bg-red-50 transition-colors"
                     title="Delete role"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -716,7 +716,7 @@ export default function TeamPage() {
       {/* Toast */}
       {toast.visible && (
         <div className="fixed top-6 right-6 z-[60] animate-in slide-in-from-top-2">
-          <div className="bg-fe-navy text-white px-5 py-3 rounded-lg shadow-lg text-sm font-fira flex items-center gap-2">
+          <div className="bg-fe-navy text-white px-5 py-3 shadow-lg text-sm font-fira flex items-center gap-2">
             <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
@@ -768,7 +768,7 @@ export default function TeamPage() {
       {/* Add/Edit Member Modal */}
       {showAddMember && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white p-6 w-full max-w-md">
             <h2 className="font-barlow font-bold text-lg text-fe-navy mb-4">
               {editingMemberId ? 'Edit Team Member' : 'Add Team Member'}
             </h2>
@@ -789,7 +789,7 @@ export default function TeamPage() {
                     }));
                   }}
                   placeholder="Full name"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                  className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                 />
               </div>
               <div>
@@ -806,7 +806,7 @@ export default function TeamPage() {
                         role: selectedRole ? selectedRole.name : prev.role,
                       }));
                     }}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                    className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
                   >
                     <option value="">Select a role...</option>
                     {roles.map(r => (
@@ -819,7 +819,7 @@ export default function TeamPage() {
                     value={memberForm.role}
                     onChange={e => setMemberForm(prev => ({ ...prev, role: e.target.value }))}
                     placeholder="e.g., Operations Lead"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                   />
                 )}
               </div>
@@ -831,7 +831,7 @@ export default function TeamPage() {
                     value={memberForm.initials}
                     onChange={e => setMemberForm(prev => ({ ...prev, initials: e.target.value.toUpperCase().substring(0, 2) }))}
                     maxLength={2}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                   />
                 </div>
                 <div>
@@ -867,14 +867,14 @@ export default function TeamPage() {
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => { setShowAddMember(false); setEditingMemberId(null); }}
-                className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveMember}
                 disabled={!memberForm.name.trim() || (!memberForm.role.trim() && !memberForm.role_id)}
-                className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+                className="px-4 py-2 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
               >
                 {editingMemberId ? 'Save Changes' : 'Add Member'}
               </button>
@@ -886,7 +886,7 @@ export default function TeamPage() {
       {/* Reassignment Modal */}
       {deletingMember && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col">
+          <div className="bg-white p-6 w-full max-w-lg max-h-[85vh] flex flex-col">
             <div className="flex items-center gap-3 mb-4 shrink-0">
               <Avatar initials={deletingMember.initials} color={deletingMember.color} size="md" />
               <div>
@@ -905,7 +905,7 @@ export default function TeamPage() {
               <select
                 onChange={e => { if (e.target.value) handleBulkReassign(e.target.value); }}
                 defaultValue=""
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                className="px-3 py-1.5 border border-gray-200 text-xs font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
               >
                 <option value="">Choose...</option>
                 {otherMembers.map(m => (
@@ -923,7 +923,7 @@ export default function TeamPage() {
                   </h3>
                   <div className="space-y-1.5">
                     {projectAssignments.map(task => (
-                      <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-fe-offwhite gap-3">
+                      <div key={task.id} className="flex items-center justify-between px-3 py-2 bg-fe-offwhite gap-3">
                         <div className="min-w-0">
                           <div className="text-xs font-fira text-fe-anthracite truncate">{task.task_name}</div>
                           <div className="text-xs text-fe-blue-gray">{task.context_name}</div>
@@ -953,7 +953,7 @@ export default function TeamPage() {
                   </h3>
                   <div className="space-y-1.5">
                     {templateAssignments.map(task => (
-                      <div key={task.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-50/50 gap-3">
+                      <div key={task.id} className="flex items-center justify-between px-3 py-2 bg-amber-50/50 gap-3">
                         <div className="min-w-0">
                           <div className="text-xs font-fira text-fe-anthracite truncate">{task.task_name}</div>
                           <div className="text-xs text-fe-blue-gray">{task.context_name}</div>
@@ -990,14 +990,14 @@ export default function TeamPage() {
                   Create new member to assign to
                 </button>
               ) : (
-                <div className="bg-fe-offwhite rounded-lg p-3 space-y-2">
+                <div className="bg-fe-offwhite p-3 space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
                       value={inlineForm.name}
                       onChange={e => setInlineForm(prev => ({ ...prev, name: e.target.value, initials: autoInitials(e.target.value) }))}
                       placeholder="Name"
-                      className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue"
+                      className="px-2.5 py-1.5 border border-gray-200 text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue"
                     />
                     {roles.length > 0 ? (
                       <select
@@ -1011,7 +1011,7 @@ export default function TeamPage() {
                             role: selectedRole ? selectedRole.name : prev.role,
                           }));
                         }}
-                        className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue bg-white"
+                        className="px-2.5 py-1.5 border border-gray-200 text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue bg-white"
                       >
                         <option value="">Select role...</option>
                         {roles.map(r => (
@@ -1024,7 +1024,7 @@ export default function TeamPage() {
                         value={inlineForm.role}
                         onChange={e => setInlineForm(prev => ({ ...prev, role: e.target.value }))}
                         placeholder="Role"
-                        className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue"
+                        className="px-2.5 py-1.5 border border-gray-200 text-xs font-fira focus:outline-none focus:ring-1 focus:ring-fe-blue"
                       />
                     )}
                   </div>
@@ -1044,13 +1044,13 @@ export default function TeamPage() {
                     <button
                       onClick={handleInlineCreateMember}
                       disabled={!inlineForm.name.trim() || (!inlineForm.role.trim() && !inlineForm.role_id)}
-                      className="px-3 py-1.5 bg-fe-blue text-white rounded-lg text-xs font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+                      className="px-3 py-1.5 bg-fe-blue text-white text-xs font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
                     >
                       Create
                     </button>
                     <button
                       onClick={() => setShowInlineCreate(false)}
-                      className="px-3 py-1.5 bg-gray-100 text-fe-anthracite rounded-lg text-xs hover:bg-gray-200 transition-colors"
+                      className="px-3 py-1.5 bg-gray-100 text-fe-anthracite text-xs hover:bg-gray-200 transition-colors"
                     >
                       Cancel
                     </button>
@@ -1063,14 +1063,14 @@ export default function TeamPage() {
             <div className="flex gap-3 mt-4 shrink-0">
               <button
                 onClick={() => { setDeletingMember(null); setProjectAssignments([]); setTemplateAssignments([]); setReassignments({}); }}
-                className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={!allReassigned}
-                className="px-4 py-2 bg-fe-red text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-fe-red text-white text-sm font-fira font-bold hover:bg-fe-red/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Remove Member
               </button>
@@ -1094,13 +1094,13 @@ export default function TeamPage() {
           return (
             <div
               key={member.id}
-              className="bg-white rounded-xl border border-gray-100 p-6 group relative"
+              className="bg-white border border-gray-100 p-6 group relative"
             >
               {/* Edit/Delete buttons */}
               <div className="absolute top-3 right-3 hidden group-hover:flex items-center gap-1">
                 <button
                   onClick={() => startEdit(member)}
-                  className="p-1.5 rounded-lg text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
+                  className="p-1.5 text-fe-blue-gray hover:text-fe-blue hover:bg-fe-blue/10 transition-colors"
                   title="Edit member"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1109,7 +1109,7 @@ export default function TeamPage() {
                 </button>
                 <button
                   onClick={() => startDelete(member)}
-                  className="p-1.5 rounded-lg text-fe-blue-gray hover:text-fe-red hover:bg-red-50 transition-colors"
+                  className="p-1.5 text-fe-blue-gray hover:text-fe-red hover:bg-red-50 transition-colors"
                   title="Remove member"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1165,7 +1165,7 @@ export default function TeamPage() {
               </div>
 
               {totalThisWeek > 8 && (
-                <div className="bg-amber-50 text-amber-700 rounded-lg p-2 text-xs mt-4 text-center">
+                <div className="bg-amber-50 text-amber-700 p-2 text-xs mt-4 text-center">
                   Heavy workload this week
                 </div>
               )}

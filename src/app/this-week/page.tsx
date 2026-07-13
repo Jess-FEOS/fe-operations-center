@@ -121,9 +121,27 @@ export default function ThisWeekPage() {
           No tasks scheduled for this week.
         </div>
       ) : (
-        <div className="space-y-6">
+        <>
+        {/* Summary stat strip (data-backed counts) */}
+        <div className="fe-panel grid grid-cols-3 divide-x divide-[#E4E7EC]">
+          <div className="px-5 py-4">
+            <div className="text-2xl font-barlow font-extrabold leading-none text-fe-navy">{filteredTasks.length}</div>
+            <div className="fe-eyebrow mt-1.5">Tasks This Week</div>
+          </div>
+          <div className="px-5 py-4">
+            <div className="text-2xl font-barlow font-extrabold leading-none text-fe-blue">{Object.keys(grouped).length}</div>
+            <div className="fe-eyebrow mt-1.5">Projects</div>
+          </div>
+          <div className="px-5 py-4">
+            <div className="text-2xl font-barlow font-extrabold leading-none" style={{ color: '#046A38' }}>{filteredTasks.filter(t => t.status === 'done').length}</div>
+            <div className="fe-eyebrow mt-1.5">Completed</div>
+          </div>
+        </div>
+
+        {/* Project groups arranged 2-up so they sit side by side */}
+        <div className="fe-grid">
           {Object.entries(grouped).map(([projectName, projectTasks]) => (
-            <div key={projectName} className="space-y-3">
+            <div key={projectName} className="fe-col-6 space-y-3">
               <div className="flex items-center gap-2">
                 <span className="font-barlow font-bold text-sm text-fe-navy">
                   {projectName}
@@ -135,7 +153,7 @@ export default function ThisWeekPage() {
                 {projectTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="bg-white rounded-xl border border-gray-100 p-4 flex items-start justify-between gap-4"
+                    className="bg-white border border-gray-100 p-4 flex items-start justify-between gap-4"
                   >
                     <div className="min-w-0 flex-1 space-y-2">
                       <div>
@@ -196,6 +214,7 @@ export default function ThisWeekPage() {
             </div>
           ))}
         </div>
+        </>
       )}
       </div>
     </div>

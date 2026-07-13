@@ -620,7 +620,7 @@ export default function ProjectDetailPage() {
         Back
       </button>
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6 mb-6">
+      <div className="bg-white border border-gray-100 p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             {editing ? (
@@ -628,13 +628,13 @@ export default function ProjectDetailPage() {
                 <div className="flex gap-2 mb-2">
                   <button
                     onClick={saveEdits}
-                    className="px-4 py-2 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90"
+                    className="px-4 py-2 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90"
                   >
                     Save Changes
                   </button>
                   <button
                     onClick={() => { setEditing(false); setEditName(project.name); setEditDate(project.start_date); setEditLaunchDate(project.launch_date || ''); setEditWorkflowType(project.workflow_type); setEditRevenueGoal(project.revenue_goal != null ? String(project.revenue_goal) : ''); setEditEnrollmentGoal(project.enrollment_goal != null ? String(project.enrollment_goal) : ''); }}
-                    className="px-4 py-2 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200"
+                    className="px-4 py-2 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200"
                   >
                     Cancel
                   </button>
@@ -645,7 +645,7 @@ export default function ProjectDetailPage() {
                     type="text"
                     value={editName}
                     onChange={e => setEditName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                    className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                   />
                 </div>
                 <div>
@@ -653,7 +653,7 @@ export default function ProjectDetailPage() {
                   <select
                     value={editWorkflowType}
                     onChange={e => setEditWorkflowType(e.target.value)}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                    className="px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
                   >
                     <option value="course-launch">Course Launch</option>
                     <option value="podcast">Podcast</option>
@@ -668,7 +668,7 @@ export default function ProjectDetailPage() {
                       type="date"
                       value={editDate}
                       onChange={e => setEditDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                      className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                     />
                   </div>
                   <div>
@@ -677,7 +677,7 @@ export default function ProjectDetailPage() {
                       type="date"
                       value={editLaunchDate}
                       onChange={e => setEditLaunchDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                      className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                     />
                   </div>
                 </div>
@@ -691,7 +691,7 @@ export default function ProjectDetailPage() {
                         value={editRevenueGoal}
                         onChange={e => setEditRevenueGoal(e.target.value)}
                         placeholder="e.g. 50000"
-                        className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                        className="w-full pl-7 pr-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                       />
                     </div>
                   </div>
@@ -702,7 +702,7 @@ export default function ProjectDetailPage() {
                       value={editEnrollmentGoal}
                       onChange={e => setEditEnrollmentGoal(e.target.value)}
                       placeholder="e.g. 100"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                      className="w-full px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                     />
                   </div>
                 </div>
@@ -723,7 +723,7 @@ export default function ProjectDetailPage() {
                       </svg>
                     </button>
                     {showWorkflowDropdown && (
-                      <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[180px]">
+                      <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 shadow-lg z-10 py-1 min-w-[180px]">
                         {workflowTemplates.map(tmpl => (
                           <button
                             key={tmpl.id}
@@ -775,7 +775,7 @@ export default function ProjectDetailPage() {
                   onBlur={e => saveNotes(e.target.value)}
                   placeholder="Add project brief, goals, or links..."
                   rows={2}
-                  className="mt-3 w-full px-3 py-2 text-sm font-fira text-fe-anthracite bg-transparent border border-transparent rounded-lg hover:border-gray-200 focus:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fe-blue resize-y placeholder:text-gray-300 transition-colors"
+                  className="mt-3 w-full px-3 py-2 text-sm font-fira text-fe-anthracite bg-transparent border border-transparent hover:border-gray-200 focus:border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fe-blue resize-y placeholder:text-gray-300 transition-colors"
                 />
                 {/* Info row: launch_date, revenue_goal, enrollment_goal */}
                 {(project.launch_date || project.revenue_goal || project.enrollment_goal) && (
@@ -807,19 +807,19 @@ export default function ProjectDetailPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-3 py-1.5 text-sm text-red-400 hover:text-red-600 border border-gray-200 rounded-lg font-fira hover:bg-red-50 hover:border-red-200 transition-colors"
+                className="px-3 py-1.5 text-sm text-red-400 hover:text-red-600 border border-gray-200 font-fira hover:bg-red-50 hover:border-red-200 transition-colors"
               >
                 Delete
               </button>
               <button
                 onClick={() => setShowDuplicate(true)}
-                className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 rounded-lg font-fira hover:bg-gray-50 transition-colors"
+                className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 font-fira hover:bg-gray-50 transition-colors"
               >
                 Duplicate
               </button>
               <button
                 onClick={() => setEditing(true)}
-                className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 rounded-lg font-fira hover:bg-gray-50 transition-colors"
+                className="px-3 py-1.5 text-sm text-fe-blue-gray hover:text-fe-navy border border-gray-200 font-fira hover:bg-gray-50 transition-colors"
               >
                 Edit
               </button>
@@ -839,7 +839,9 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      {/* Two-column split: task phases (wide) + metrics sidebar (narrow) */}
+      <div className="fe-grid">
+      <div className="fe-col-8 space-y-3">
         {phases.map(phase => {
           const phaseDone = phase.tasks.filter(t => t.status === 'done').length
           const phaseTotal = phase.tasks.length
@@ -848,7 +850,7 @@ export default function ProjectDetailPage() {
           const isExpanded = expandedPhases.has(phase.phase)
 
           return (
-            <div key={phase.phase} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div key={phase.phase} className="bg-white border border-gray-100 overflow-hidden">
               <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
                 <button
                   onClick={() => togglePhase(phase.phase)}
@@ -878,12 +880,12 @@ export default function ProjectDetailPage() {
                         e.stopPropagation()
                         setBulkMenuPhase(bulkMenuPhase === phase.phase ? null : phase.phase)
                       }}
-                      className="px-2 py-1 text-xs font-fira text-fe-blue-gray border border-gray-200 rounded-md hover:bg-gray-100 hover:text-fe-navy transition-colors"
+                      className="px-2 py-1 text-xs font-fira text-fe-blue-gray border border-gray-200 hover:bg-gray-100 hover:text-fe-navy transition-colors"
                     >
                       Set All ▾
                     </button>
                     {bulkMenuPhase === phase.phase && (
-                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 shadow-lg z-10 py-1 min-w-[140px]">
                         <button
                           onClick={() => bulkUpdatePhase(phase.phase, 'done')}
                           className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-fe-anthracite flex items-center gap-2"
@@ -923,15 +925,15 @@ export default function ProjectDetailPage() {
                         {editingTaskId === task.id ? (
                           /* ── Edit Panel (replaces entire row) ── */
                           <div className="px-4 py-3">
-                            <div className="space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <div className="space-y-3 bg-gray-50 border border-gray-200 p-4">
                               <div>
                                 <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Task Name</label>
-                                <input type="text" value={editingTaskName} onChange={e => setEditingTaskName(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" autoFocus onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }} />
+                                <input type="text" value={editingTaskName} onChange={e => setEditingTaskName(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" autoFocus onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }} />
                               </div>
                               <div className="flex items-start gap-3">
                                 <div className="flex-1">
                                   <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Status</label>
-                                  <select value={editingTaskStatus} onChange={e => setEditingTaskStatus(e.target.value as TaskStatus)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white">
+                                  <select value={editingTaskStatus} onChange={e => setEditingTaskStatus(e.target.value as TaskStatus)} className="w-full px-2.5 py-1.5 border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white">
                                     <option value="not_started">Not Started</option>
                                     <option value="in_progress">In Progress</option>
                                     <option value="done">Done</option>
@@ -940,13 +942,13 @@ export default function ProjectDetailPage() {
                                 </div>
                                 <div className="flex-1">
                                   <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Due Date</label>
-                                  <input type="date" value={editingTaskDueDate} onChange={e => setEditingTaskDueDate(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
+                                  <input type="date" value={editingTaskDueDate} onChange={e => setEditingTaskDueDate(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
                                 </div>
                               </div>
                               <div className="flex items-start gap-3">
                                 <div className="flex-1">
                                   <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">On Hold</label>
-                                  <button type="button" onClick={() => setEditingTaskOnHold(!editingTaskOnHold)} className={`flex items-center gap-2 w-full px-2.5 py-1.5 border rounded-lg text-sm font-fira transition-colors ${editingTaskOnHold ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-fe-anthracite'}`}>
+                                  <button type="button" onClick={() => setEditingTaskOnHold(!editingTaskOnHold)} className={`flex items-center gap-2 w-full px-2.5 py-1.5 border text-sm font-fira transition-colors ${editingTaskOnHold ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-fe-anthracite'}`}>
                                     <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${editingTaskOnHold ? 'bg-amber-500 border-amber-500' : 'border-gray-300'}`}>
                                       {editingTaskOnHold && (<svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>)}
                                     </div>
@@ -955,12 +957,12 @@ export default function ProjectDetailPage() {
                                 </div>
                                 <div className="flex-1">
                                   <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Follow-up Date</label>
-                                  <input type="date" value={editingTaskFollowUp} onChange={e => setEditingTaskFollowUp(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
+                                  <input type="date" value={editingTaskFollowUp} onChange={e => setEditingTaskFollowUp(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" />
                                 </div>
                               </div>
                               <div>
                                 <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Assigned Role</label>
-                                <select value={editingTaskRoleId || ''} onChange={e => setEditingTaskRoleId(e.target.value || null)} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white">
+                                <select value={editingTaskRoleId || ''} onChange={e => setEditingTaskRoleId(e.target.value || null)} className="w-full px-2.5 py-1.5 border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white">
                                   <option value="">No Role</option>
                                   {roles.map(r => (
                                     <option key={r.id} value={r.id}>{r.name}</option>
@@ -968,7 +970,7 @@ export default function ProjectDetailPage() {
                                 </select>
                               </div>
                               <div className="flex items-center gap-2 pt-1">
-                                <button onClick={() => saveTaskEdit(task.id)} disabled={savingTask} className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold rounded-lg hover:bg-fe-blue/90 transition-colors disabled:opacity-50">{savingTask ? 'Saving...' : 'Save'}</button>
+                                <button onClick={() => saveTaskEdit(task.id)} disabled={savingTask} className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-50">{savingTask ? 'Saving...' : 'Save'}</button>
                                 <button onClick={() => setEditingTaskId(null)} className="px-3 py-1.5 text-xs font-fira font-bold text-fe-blue-gray hover:text-fe-anthracite transition-colors">Cancel</button>
                               </div>
                             </div>
@@ -1246,7 +1248,7 @@ export default function ProjectDetailPage() {
                         </div>
 
                         {isCommentsOpen && (
-                          <div className="bg-gray-50/80 px-4 py-3 ml-10 mr-4 mb-3 rounded-lg border border-gray-100">
+                          <div className="bg-gray-50/80 px-4 py-3 ml-10 mr-4 mb-3 border border-gray-100">
                             {loadingComments && commentsForTask.length === 0 ? (
                               <div className="flex items-center justify-center py-4">
                                 <div className="w-5 h-5 border-2 border-fe-blue border-t-transparent rounded-full animate-spin" />
@@ -1303,7 +1305,7 @@ export default function ProjectDetailPage() {
                                       )}
                                     </button>
                                     {showCommentAuthorDropdown && (
-                                      <div className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
+                                      <div className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 shadow-lg z-10 py-1 min-w-[160px]">
                                         {team.map(m => (
                                           <button
                                             key={m.id}
@@ -1327,7 +1329,7 @@ export default function ProjectDetailPage() {
                                     value={newComment}
                                     onChange={e => setNewComment(e.target.value)}
                                     placeholder={commentAuthor ? 'Add a comment...' : 'Select who you are, then comment...'}
-                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
+                                    className="flex-1 px-3 py-1.5 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white"
                                     onKeyDown={e => {
                                       if (e.key === 'Enter' && newComment.trim() && commentAuthor) submitComment(task.id)
                                     }}
@@ -1335,7 +1337,7 @@ export default function ProjectDetailPage() {
                                   <button
                                     onClick={() => submitComment(task.id)}
                                     disabled={!newComment.trim() || !commentAuthor}
-                                    className="shrink-0 px-3 py-1.5 bg-fe-blue text-white rounded-lg text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="shrink-0 px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     Send
                                   </button>
@@ -1358,7 +1360,7 @@ export default function ProjectDetailPage() {
                           value={newTaskName}
                           onChange={e => setNewTaskName(e.target.value)}
                           placeholder="Task name"
-                          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
+                          className="flex-1 px-3 py-2 border border-gray-200 text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue"
                           autoFocus
                           onKeyDown={e => {
                             if (e.key === 'Escape') { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner(''); setNewTaskRole('') }
@@ -1368,7 +1370,7 @@ export default function ProjectDetailPage() {
                         <select
                           value={newTaskRole}
                           onChange={e => setNewTaskRole(e.target.value)}
-                          className={`px-3 py-2 border rounded-lg text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white shrink-0 ${
+                          className={`px-3 py-2 border text-sm font-fira focus:outline-none focus:ring-2 focus:ring-fe-blue bg-white shrink-0 ${
                             newTaskRole ? 'border-gray-200' : 'border-amber-300 bg-amber-50'
                           }`}
                         >
@@ -1380,7 +1382,7 @@ export default function ProjectDetailPage() {
                         <div className="relative" ref={showOwnerDropdown ? ownerDropdownRef : undefined}>
                           <button
                             onClick={() => setShowOwnerDropdown(!showOwnerDropdown)}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-fira text-fe-blue-gray hover:bg-gray-100 transition-colors flex items-center gap-1 whitespace-nowrap"
+                            className="px-3 py-2 border border-gray-200 text-sm font-fira text-fe-blue-gray hover:bg-gray-100 transition-colors flex items-center gap-1 whitespace-nowrap"
                           >
                             {newTaskOwner ? (
                               <Avatar initials={teamMap.get(newTaskOwner)?.initials || '?'} color={teamMap.get(newTaskOwner)?.color || '#999'} size="sm" />
@@ -1390,7 +1392,7 @@ export default function ProjectDetailPage() {
                             </svg>
                           </button>
                           {showOwnerDropdown && (
-                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[160px]">
+                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 shadow-lg z-10 py-1 min-w-[160px]">
                               <button
                                 onClick={() => { setNewTaskOwner(''); setShowOwnerDropdown(false) }}
                                 className="w-full text-left px-3 py-2 text-xs font-fira hover:bg-gray-50 text-gray-400"
@@ -1423,13 +1425,13 @@ export default function ProjectDetailPage() {
                         <button
                           onClick={() => addTask(phase.phase, phase.phase_order)}
                           disabled={!newTaskName.trim() || !newTaskRole}
-                          className="px-3 py-1.5 bg-fe-blue text-white rounded-lg text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Add Task
                         </button>
                         <button
                           onClick={() => { setAddingToPhase(null); setNewTaskName(''); setNewTaskOwner(''); setNewTaskRole(''); setShowOwnerDropdown(false) }}
-                          className="px-3 py-1.5 bg-gray-100 text-fe-anthracite rounded-lg text-xs font-fira hover:bg-gray-200 transition-colors"
+                          className="px-3 py-1.5 bg-gray-100 text-fe-anthracite text-xs font-fira hover:bg-gray-200 transition-colors"
                         >
                           Cancel
                         </button>
@@ -1453,15 +1455,15 @@ export default function ProjectDetailPage() {
         })}
       </div>
 
-      {/* Metrics Section */}
-      <div className="mt-6 bg-white rounded-xl border border-gray-100 p-5">
+      {/* Metrics Section (sidebar column) */}
+      <div className="fe-col-4 bg-white border border-gray-100 p-5">
         <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-4">Metrics</h2>
         {projectMetrics.length === 0 ? (
           <p className="text-sm text-fe-blue-gray font-fira">No metrics logged yet.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {projectMetrics.map(metric => (
-              <div key={metric.id} className="border border-gray-100 rounded-lg p-4">
+              <div key={metric.id} className="border border-gray-100 p-4">
                 <div className="text-2xl font-barlow font-extrabold text-fe-navy">
                   {typeof metric.metric_value === 'number' ? metric.metric_value.toLocaleString() : metric.metric_value}
                 </div>
@@ -1477,6 +1479,8 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </div>
+      </div>
+      {/* /Two-column split */}
 
       {showDuplicate && project && (
         <DuplicateProjectModal
@@ -1494,7 +1498,7 @@ export default function ProjectDetailPage() {
       {showDeleteConfirm && project && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowDeleteConfirm(false)}>
           <div
-            className="bg-white rounded-xl border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6"
+            className="bg-white border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6"
             onClick={e => e.stopPropagation()}
           >
             <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Delete Project</h2>
@@ -1504,14 +1508,14 @@ export default function ProjectDetailPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={deleteProject}
                 disabled={deleting}
-                className="flex-1 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-fira font-bold hover:bg-red-700 transition-colors disabled:opacity-60"
+                className="flex-1 px-6 py-2.5 bg-red-600 text-white text-sm font-fira font-bold hover:bg-red-700 transition-colors disabled:opacity-60"
               >
                 {deleting ? 'Deleting...' : 'Delete Project'}
               </button>
@@ -1523,7 +1527,7 @@ export default function ProjectDetailPage() {
       {pendingWorkflow && project && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setPendingWorkflow(null)}>
           <div
-            className="bg-white rounded-xl border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6"
+            className="bg-white border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6"
             onClick={e => e.stopPropagation()}
           >
             <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Change Workflow Type</h2>
@@ -1536,14 +1540,14 @@ export default function ProjectDetailPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setPendingWorkflow(null)}
-                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmWorkflowSwitch}
                 disabled={switchingWorkflow}
-                className="flex-1 px-6 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-60"
+                className="flex-1 px-6 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-60"
               >
                 {switchingWorkflow ? 'Switching...' : 'Switch Workflow'}
               </button>
@@ -1555,7 +1559,7 @@ export default function ProjectDetailPage() {
       {deletingTaskId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setDeletingTaskId(null)}>
           <div
-            className="bg-white rounded-xl border border-gray-100 shadow-xl w-full max-w-sm mx-4 p-6"
+            className="bg-white border border-gray-100 shadow-xl w-full max-w-sm mx-4 p-6"
             onClick={e => e.stopPropagation()}
           >
             <h2 className="font-barlow font-bold text-lg text-fe-navy mb-3">Delete Task</h2>
@@ -1565,13 +1569,13 @@ export default function ProjectDetailPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setDeletingTaskId(null)}
-                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite rounded-lg text-sm font-fira hover:bg-gray-200 transition-colors"
+                className="px-4 py-2.5 bg-gray-100 text-fe-anthracite text-sm font-fira hover:bg-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => deleteTask(deletingTaskId)}
-                className="flex-1 px-6 py-2.5 bg-red-600 text-white rounded-lg text-sm font-fira font-bold hover:bg-red-700 transition-colors"
+                className="flex-1 px-6 py-2.5 bg-red-600 text-white text-sm font-fira font-bold hover:bg-red-700 transition-colors"
               >
                 Delete Task
               </button>

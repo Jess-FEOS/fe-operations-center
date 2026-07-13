@@ -92,7 +92,7 @@ export default function ProjectsPage() {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setFilter('all')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-fira transition-colors ${
+          className={`px-3 py-1.5 text-sm font-fira transition-colors ${
             filter === 'all' ? 'bg-fe-navy text-white' : 'bg-white text-fe-anthracite border border-gray-200 hover:bg-gray-50'
           }`}
         >
@@ -102,7 +102,7 @@ export default function ProjectsPage() {
           <button
             key={type}
             onClick={() => setFilter(type)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-fira transition-colors ${
+            className={`px-3 py-1.5 text-sm font-fira transition-colors ${
               filter === type ? 'bg-fe-navy text-white' : 'bg-white text-fe-anthracite border border-gray-200 hover:bg-gray-50'
             }`}
           >
@@ -115,7 +115,7 @@ export default function ProjectsPage() {
         {filtered.map(project => (
           <div
             key={project.id}
-            className="bg-white rounded-xl border border-gray-100 p-5 hover:shadow-md transition-shadow group relative"
+            className="bg-white border border-gray-100 p-5 hover:shadow-md transition-shadow group relative"
           >
             <Link href={`/projects/${project.id}`} className="block">
               <div className="flex items-start justify-between mb-3">
@@ -139,7 +139,7 @@ export default function ProjectsPage() {
             </Link>
             <button
               onClick={() => setDuplicating(project)}
-              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-1.5 text-fe-blue-gray hover:text-fe-navy bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-all"
+              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-1.5 text-fe-blue-gray hover:text-fe-navy bg-white border border-gray-200 hover:bg-gray-50 transition-all"
               title="Duplicate project"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

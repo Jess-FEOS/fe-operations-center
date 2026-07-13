@@ -283,7 +283,7 @@ export default function CalendarPage() {
           <div className="w-8 h-8 border-4 border-fe-blue border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="bg-white border border-gray-100 overflow-hidden">
           {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-gray-100">
             {DAYS.map(day => (

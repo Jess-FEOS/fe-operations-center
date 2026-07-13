@@ -225,7 +225,7 @@ export default function WeeklyChecklistPage() {
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => navigateWeek(-1)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-fe-blue-gray hover:text-fe-navy"
+          className="p-2 hover:bg-gray-100 transition-colors text-fe-blue-gray hover:text-fe-navy"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -248,7 +248,7 @@ export default function WeeklyChecklistPage() {
 
         <button
           onClick={() => navigateWeek(1)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-fe-blue-gray hover:text-fe-navy"
+          className="p-2 hover:bg-gray-100 transition-colors text-fe-blue-gray hover:text-fe-navy"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -258,7 +258,7 @@ export default function WeeklyChecklistPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-100">
+        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 bg-red-50 border border-red-100">
           <span className="text-sm font-fira text-red-600">{error}</span>
           <button
             onClick={() => setError(null)}
@@ -273,7 +273,7 @@ export default function WeeklyChecklistPage() {
       )}
 
       {/* Checklist */}
-      <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="text-center py-12 text-sm font-fira text-fe-blue-gray">Loading...</div>
         ) : (
@@ -385,7 +385,7 @@ export default function WeeklyChecklistPage() {
                           setPickerPos({ top: rect.bottom + 4, left: rect.right })
                           setOpenPicker(prev => (prev === item.id ? null : item.id))
                         }}
-                        className="flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-1 px-1.5 py-1 hover:bg-gray-100 transition-colors"
                         title="Edit assignees"
                       >
                         {assignees.length === 0 ? (
@@ -411,7 +411,7 @@ export default function WeeklyChecklistPage() {
                         <div
                           data-assignee-popover
                           style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left, transform: 'translateX(-100%)' }}
-                          className="z-50 w-56 max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1"
+                          className="z-50 w-56 max-h-72 overflow-y-auto bg-white border border-gray-200 shadow-lg py-1"
                         >
                           {team.map(m => {
                             const selected = item.assigned_to_ids.includes(m.id)
