@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Avatar from '@/components/Avatar'
+import PageHeader from '@/components/PageHeader'
 
 interface TeamMember {
   id: string
@@ -216,17 +217,10 @@ export default function WeeklyChecklistPage() {
   })
 
   return (
-    <div className="max-w-3xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="font-barlow font-extrabold text-3xl text-fe-navy">
-          Weekly Checklist
-        </h1>
-        <p className="text-sm font-fira text-fe-blue-gray mt-1">
-          Monday meeting to-do list
-        </p>
-      </div>
+    <div className="font-fira">
+      <PageHeader title="Weekly Checklist" subtitle="Monday meeting to-do list" />
 
+      <div className="max-w-3xl mx-auto">
       {/* Week Navigation */}
       <div className="flex items-center justify-between mb-6">
         <button
@@ -497,6 +491,7 @@ export default function WeeklyChecklistPage() {
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   )

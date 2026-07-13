@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import PageHeader from '@/components/PageHeader'
 import { SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, SimplifiedPhase } from '@/lib/phases'
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -377,14 +378,8 @@ export default function ProgramTimeline() {
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">Program Timeline</h1>
-        <span className="text-sm font-fira text-fe-blue-gray">
-          {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-        </span>
-      </div>
+    <div className="font-fira">
+      <PageHeader title="Program Timeline" eyebrow="Planning" />
 
       {/* Chart container */}
       <div ref={chartRef} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-visible">

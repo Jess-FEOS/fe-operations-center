@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Avatar from '@/components/Avatar';
+import Avatar from '@/components/Avatar'
+import PageHeader from '@/components/PageHeader';
 import { STATUS_COLORS, STATUS_LABELS, TaskStatus } from '@/lib/types';
 
 interface Role {
@@ -725,44 +726,44 @@ export default function TeamPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">
-          Team
-        </h1>
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              setShowAddMember(true);
-              setEditingMemberId(null);
-              setMemberForm({ name: '', role: '', role_id: '', initials: '', color: AVATAR_COLORS[team.length % AVATAR_COLORS.length] });
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Member
-          </button>
-          <button
-            onClick={() => setShowRolesPanel(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-fe-anthracite rounded-lg text-sm font-fira font-bold hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-            </svg>
-            Manage Roles
-          </button>
-          <button
-            onClick={() => setShowDigest(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-navy text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-navy/90 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Weekly Digest
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Team"
+        actions={
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowAddMember(true);
+                setEditingMemberId(null);
+                setMemberForm({ name: '', role: '', role_id: '', initials: '', color: AVATAR_COLORS[team.length % AVATAR_COLORS.length] });
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Member
+            </button>
+            <button
+              onClick={() => setShowRolesPanel(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-fe-line text-fe-anthracite text-sm font-fira font-bold hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              Manage Roles
+            </button>
+            <button
+              onClick={() => setShowDigest(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-navy text-white text-sm font-fira font-bold hover:bg-fe-navy/90 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Weekly Digest
+            </button>
+          </div>
+        }
+      />
 
       {/* Add/Edit Member Modal */}
       {showAddMember && (

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Avatar from '@/components/Avatar'
+import PageHeader from '@/components/PageHeader'
 
 interface TeamMember {
   id: string
@@ -191,36 +192,38 @@ export default function CalendarPage() {
 
   return (
     <div className="font-fira">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">Calendar</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={prevMonth}
-            className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-4 h-4 text-fe-anthracite" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <button
-            onClick={goToday}
-            className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-fira text-fe-anthracite transition-colors"
-          >
-            Today
-          </button>
-          <span className="font-barlow font-bold text-lg text-fe-navy min-w-[180px] text-center">
-            {monthLabel}
-          </span>
-          <button
-            onClick={nextMonth}
-            className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-4 h-4 text-fe-anthracite" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Calendar"
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={prevMonth}
+              className="p-2 border border-fe-line bg-white hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-4 h-4 text-fe-anthracite" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goToday}
+              className="px-3 py-1.5 border border-fe-line bg-white hover:bg-gray-50 text-sm font-fira text-fe-anthracite transition-colors"
+            >
+              Today
+            </button>
+            <span className="font-barlow font-bold text-lg text-fe-navy min-w-[180px] text-center">
+              {monthLabel}
+            </span>
+            <button
+              onClick={nextMonth}
+              className="p-2 border border-fe-line bg-white hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-4 h-4 text-fe-anthracite" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        }
+      />
 
       {/* Team member filters */}
       {team.length > 0 && (

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
+import PageHeader from '@/components/PageHeader'
 
 interface Project {
   id: string
@@ -72,19 +73,21 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">Projects</h1>
-        <Link
-          href="/projects/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Project
-        </Link>
-      </div>
+    <div className="font-fira">
+      <PageHeader
+        title="Projects"
+        actions={
+          <Link
+            href="/projects/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Project
+          </Link>
+        }
+      />
 
       <div className="flex gap-2 mb-6">
         <button

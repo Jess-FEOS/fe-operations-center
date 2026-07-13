@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Avatar from '@/components/Avatar'
 import StatusBadge from '@/components/StatusBadge'
 import WorkflowBadge from '@/components/WorkflowBadge'
+import PageHeader from '@/components/PageHeader'
 import { TaskStatus } from '@/lib/types'
 
 interface TeamMember {
@@ -79,11 +80,10 @@ export default function ThisWeekPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">
-        This Week
-      </h1>
+    <div className="font-fira">
+      <PageHeader title="This Week" subtitle="Tasks due across all projects this week" />
 
+      <div className="space-y-6">
       {/* Filter bar */}
       <div className="flex items-center gap-4 overflow-x-auto pb-2">
         <button
@@ -197,6 +197,7 @@ export default function ThisWeekPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

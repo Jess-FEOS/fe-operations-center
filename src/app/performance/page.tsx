@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import PageHeader from '@/components/PageHeader'
 
 interface Project {
   id: string
@@ -148,20 +149,22 @@ export default function PerformancePage() {
 
   return (
     <div className="font-fira">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">Performance</h1>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Log Metrics
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Performance"
+        actions={
+          !showForm ? (
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Log Metrics
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Log Metrics Form */}
       {showForm && (

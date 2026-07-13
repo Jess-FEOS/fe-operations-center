@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Avatar from '@/components/Avatar'
 import StatusBadge from '@/components/StatusBadge'
 import WorkflowBadge from '@/components/WorkflowBadge'
+import PageHeader from '@/components/PageHeader'
 import { TaskStatus, STATUS_COLORS } from '@/lib/types'
 
 // ----- Types -----
@@ -216,9 +217,10 @@ export default function MarketingPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="font-barlow font-extrabold text-2xl text-fe-navy">Marketing</h1>
+    <div className="font-fira">
+      <PageHeader title="Marketing" />
 
+      <div className="space-y-6">
       {/* Tab bar */}
       <div className="flex gap-2 border-b border-gray-200">
         {([
@@ -273,6 +275,7 @@ export default function MarketingPage() {
           onStatusChange={handleTaskStatusChange}
         />
       )}
+      </div>
     </div>
   )
 }

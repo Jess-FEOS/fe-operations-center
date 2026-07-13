@@ -19,21 +19,21 @@ export default function Sidebar() {
   }
 
   const linkClass = (href: string) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-fira transition-colors ${
+    `flex items-center gap-3 px-3 py-2.5 text-sm font-fira transition-colors ${
       isActive(href)
         ? 'bg-fe-blue text-white'
         : 'text-white/70 hover:text-white hover:bg-white/5'
     }`
 
   const subLinkClass = (href: string) =>
-    `flex items-center gap-2.5 pl-11 pr-3 py-2 rounded-lg text-[13px] font-fira transition-colors ${
+    `flex items-center gap-2.5 pl-11 pr-3 py-2 text-[13px] font-fira transition-colors ${
       isActive(href)
         ? 'bg-fe-blue text-white'
         : 'text-white/60 hover:text-white hover:bg-white/5'
     }`
 
   const groupHeaderClass = (active: boolean) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-fira transition-colors w-full ${
+    `flex items-center gap-3 px-3 py-2.5 text-sm font-fira transition-colors w-full ${
       active
         ? 'text-white font-bold'
         : 'text-white/70 hover:text-white hover:bg-white/5'
@@ -43,7 +43,7 @@ export default function Sidebar() {
     <aside className="fixed left-0 top-0 h-screen w-64 bg-fe-navy flex flex-col z-50">
       <div className="p-6 border-b border-white/10">
         <Link href="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-fe-blue flex items-center justify-center">
+          <div className="w-9 h-9 bg-fe-blue flex items-center justify-center">
             <span className="text-white font-barlow font-extrabold text-sm">FE</span>
           </div>
           <div>
@@ -128,7 +128,7 @@ export default function Sidebar() {
       <div className="px-3 pb-4">
         <Link
           href="/projects/new"
-          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-fe-blue text-white rounded-lg text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
+          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

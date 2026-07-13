@@ -6,6 +6,7 @@ import Avatar from '@/components/Avatar';
 import WorkflowBadge from '@/components/WorkflowBadge';
 import ProgressBar from '@/components/ProgressBar';
 import StatusBadge from '@/components/StatusBadge';
+import PageHeader from '@/components/PageHeader';
 import { TaskStatus, STATUS_LABELS } from '@/lib/types';
 
 interface Project {
@@ -634,17 +635,7 @@ export default function Dashboard() {
   return (
     <div className="font-fira">
       {/* ===== PAGE HEADER BAND ===== */}
-      <div className="fe-pageband -mx-8 -mt-8 mb-8 px-8 pt-7 pb-6">
-        <p className="fe-eyebrow mb-1">Operations Center</p>
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <h1 className="font-barlow font-extrabold text-2xl text-fe-navy leading-none">
-            Dashboard
-          </h1>
-          <p className="text-sm font-fira text-fe-blue-gray">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
-        </div>
-      </div>
+      <PageHeader title="Dashboard" />
 
       {/* ===== SUMMARY METRIC STRIP ===== */}
       {/* One bordered strip with hairline dividers instead of 4 floating cards. */}
