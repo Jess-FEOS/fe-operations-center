@@ -10,6 +10,12 @@ interface Project {
   name: string
 }
 
+interface DeliverableOption {
+  id: string
+  name: string
+  vendor_id: string
+}
+
 interface LibraryAsset {
   id: string
   vendor_id: string
@@ -51,7 +57,9 @@ function fmtSize(bytes: number | null): string {
 export default function AssetLibraryPage() {
   const [assets, setAssets] = useState<LibraryAsset[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [deliverableOptions, setDeliverableOptions] = useState<DeliverableOption[]>([])
   const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<LibraryAsset | null>(null)
 
   const [search, setSearch] = useState('')
   const [projectFilter, setProjectFilter] = useState('all')
@@ -59,9 +67,10 @@ export default function AssetLibraryPage() {
   const [showArchived, setShowArchived] = useState(false)
 
   async function load() {
-    const [a, p] = await Promise.all([
+    const [a, p, v] = await Promise.all([
       fetch('/api/vendors/library?include_archived=true').then((r) => r.json()),
       fetch('/api/projects').then((r) => r.json()),
+      fetch('/api/vendors').then((r) => r.json()),
     ])
     setAssets(Array.isArray(a) ? a : [])
     setProjects(
@@ -69,7 +78,31 @@ export default function AssetLibraryPage() {
         ? p.map((x: any) => ({ id: x.id, name: x.name })).sort((x: Project, y: Project) => x.name.localeCompare(y.name))
         : []
     )
+    // Flatten every vendor's deliverables into a single option list for reassignment.
+    const opts: DeliverableOption[] = []
+    if (Array.isArray(v)) {
+      for (const vendor of v) {
+        for (const d of vendor.deliverables || []) {
+          opts.push({ id: d.id, name: `${vendor.name} — ${d.deliverable}`, vendor_id: vendor.id })
+        }
+      }
+    }
+    opts.sort((x, y) => x.name.localeCompare(y.name))
+    setDeliverableOptions(opts)
     setLoading(false)
+  }
+
+  async function saveEdit(id: string, updates: Partial<LibraryAsset>) {
+    // Optimistic local update, then persist and reload to refresh grouping.
+    setAssets((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)))
+    setEditing(null)
+    await fetch(`/api/vendors/assets/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+    // Reload so project/deliverable names + grouping reflect the change.
+    load()
   }
 
   useEffect(() => {
@@ -251,7 +284,7 @@ export default function AssetLibraryPage() {
                     </h3>
                     <div className="flex flex-wrap gap-4">
                       {dg.assets.map((a) => (
-                        <LibraryCard key={a.id} asset={a} onUnarchive={() => unarchive(a.id)} />
+                        <LibraryCard key={a.id} asset={a} onUnarchive={() => unarchive(a.id)} onEdit={() => setEditing(a)} />
                       ))}
                     </div>
                   </div>
@@ -261,13 +294,123 @@ export default function AssetLibraryPage() {
           ))}
         </div>
       )}
+
+      {editing && (
+        <EditAssetModal
+          asset={editing}
+          projects={projects}
+          deliverableOptions={deliverableOptions}
+          onClose={() => setEditing(null)}
+          onSave={(updates) => saveEdit(editing.id, updates)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Edit modal ──────────────────────────────────────────────────────────────
+
+function EditAssetModal({
+  asset,
+  projects,
+  deliverableOptions,
+  onClose,
+  onSave,
+}: {
+  asset: LibraryAsset
+  projects: Project[]
+  deliverableOptions: DeliverableOption[]
+  onClose: () => void
+  onSave: (updates: Partial<LibraryAsset>) => void
+}) {
+  const [fileName, setFileName] = useState(asset.file_name)
+  const [projectId, setProjectId] = useState(asset.project_id || '')
+  const [deliverableId, setDeliverableId] = useState(asset.deliverable_id || '')
+  const [notes, setNotes] = useState(asset.notes || '')
+
+  // Only show deliverables belonging to this asset's vendor.
+  const vendorDeliverables = deliverableOptions.filter((d) => d.vendor_id === asset.vendor_id)
+
+  const inputClass =
+    'w-full px-3 py-2.5 border border-gray-200 text-sm font-fira text-fe-navy focus:outline-none focus:border-fe-blue'
+  const labelClass = 'block text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray mb-1'
+
+  function submit() {
+    if (!fileName.trim()) return
+    onSave({
+      file_name: fileName.trim(),
+      project_id: projectId || null,
+      deliverable_id: deliverableId || null,
+      notes: notes.trim() || null,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="bg-white border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-4">Edit asset</h2>
+
+        <div className="space-y-4">
+          <div>
+            <label className={labelClass}>File name</label>
+            <input
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              data-testid="input-edit-filename"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Project</label>
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} data-testid="select-edit-project" className={inputClass}>
+              <option value="">— No project —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] font-fira text-fe-blue-gray">Assigning a project moves this out of “No Project.”</p>
+          </div>
+          <div>
+            <label className={labelClass}>Deliverable</label>
+            <select value={deliverableId} onChange={(e) => setDeliverableId(e.target.value)} data-testid="select-edit-deliverable" className={inputClass}>
+              <option value="">— None —</option>
+              {vendorDeliverables.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Notes</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              data-testid="input-edit-notes"
+              className={inputClass}
+              placeholder="Designer / reviewer notes"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 mt-6">
+          <button onClick={onClose} data-testid="button-edit-cancel" className="px-4 py-2 border border-gray-200 text-[13px] font-fira text-fe-navy hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={submit} data-testid="button-edit-save" className="px-4 py-2 bg-fe-blue text-white text-[13px] font-fira font-bold hover:bg-fe-blue/90 transition-colors">
+            Save changes
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Card ────────────────────────────────────────────────────────────────────
 
-function LibraryCard({ asset, onUnarchive }: { asset: LibraryAsset; onUnarchive: () => void }) {
+function LibraryCard({ asset, onUnarchive, onEdit }: { asset: LibraryAsset; onUnarchive: () => void; onEdit: () => void }) {
   const isImage = (asset.file_type || '').startsWith('image/')
   const href = asset.public_url || asset.external_url || undefined
   const muted = asset.is_archived || !asset.is_current
@@ -296,18 +439,31 @@ function LibraryCard({ asset, onUnarchive }: { asset: LibraryAsset; onUnarchive:
         )}
       </div>
 
-      {asset.is_archived && (
+      {/* Hover actions: edit (always) + unarchive (archived only) */}
+      <div className="absolute top-1 right-1 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
-          onClick={onUnarchive}
-          data-testid={`button-unarchive-${asset.id}`}
-          title="Unarchive asset"
-          className="absolute top-1 right-1 z-10 p-1 bg-white/90 text-fe-blue-gray hover:text-fe-teal opacity-0 group-hover:opacity-100 transition-opacity border border-gray-200"
+          onClick={(e) => { e.preventDefault(); onEdit() }}
+          data-testid={`button-edit-${asset.id}`}
+          title="Edit name, project, deliverable, notes"
+          className="p-1 bg-white/90 text-fe-blue-gray hover:text-fe-blue border border-gray-200"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         </button>
-      )}
+        {asset.is_archived && (
+          <button
+            onClick={(e) => { e.preventDefault(); onUnarchive() }}
+            data-testid={`button-unarchive-${asset.id}`}
+            title="Unarchive asset"
+            className="p-1 bg-white/90 text-fe-blue-gray hover:text-fe-teal border border-gray-200"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       <a href={href} target="_blank" rel="noopener noreferrer" className="block">
         <div className="h-36 bg-fe-offwhite flex items-center justify-center overflow-hidden">
