@@ -47,6 +47,10 @@ interface RoleDeliverable {
   review_state: ReviewState
   due_date: string | null
   concepts_due: string | null
+  date_assigned: string | null
+  recurring: boolean
+  external_link: string | null
+  comments: string | null
   vendor_name: string | null
   vendor_color: string | null
   project_name: string | null
@@ -128,6 +132,7 @@ export default function RoleWorkspacePage() {
   const [loading, setLoading] = useState(true)
   const [meId, setMeId] = useState('')
   const [uploadFor, setUploadFor] = useState<RoleDeliverable | null>(null)
+  const [editFor, setEditFor] = useState<RoleDeliverable | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
 
@@ -344,6 +349,7 @@ export default function RoleWorkspacePage() {
                             onToggle={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
                             onPatch={patchDeliverable}
                             onUpload={() => setUploadFor(d)}
+                            onEdit={() => setEditFor(d)}
                           />
                         ))}
                       </tbody>
@@ -366,6 +372,17 @@ export default function RoleWorkspacePage() {
           }}
         />
       )}
+
+      {editFor && (
+        <EditDeliverableModal
+          deliverable={editFor}
+          onClose={() => setEditFor(null)}
+          onSaved={() => {
+            setEditFor(null)
+            load()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -381,6 +398,7 @@ function DeliverableRow({
   onToggle,
   onPatch,
   onUpload,
+  onEdit,
 }: {
   d: RoleDeliverable
   meId: string
@@ -390,6 +408,7 @@ function DeliverableRow({
   onToggle: () => void
   onPatch: (id: string, updates: Record<string, any>) => void
   onUpload: () => void
+  onEdit: () => void
 }) {
   const claimed = !!d.claimed_by_id
   const identityRequired = !meId
@@ -468,6 +487,21 @@ function DeliverableRow({
             <div className="flex flex-col gap-4">
               {/* Action controls */}
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Edit deliverable */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEdit()
+                  }}
+                  data-testid={`button-edit-${d.id}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit
+                </button>
+
                 {/* Assign */}
                 <select
                   value={d.assigned_to_id || ''}
@@ -750,6 +784,189 @@ function UploadVersionModal({
             className="px-4 py-2 bg-fe-blue text-white text-[13px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Edit deliverable modal ──────────────────────────────────────────────────
+
+function EditDeliverableModal({
+  deliverable,
+  onClose,
+  onSaved,
+}: {
+  deliverable: RoleDeliverable
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [text, setText] = useState(deliverable.deliverable || '')
+  const [status, setStatus] = useState<DeliverableStatus>(deliverable.status || 'not_started')
+  const [recurring, setRecurring] = useState(!!deliverable.recurring)
+  const [dateAssigned, setDateAssigned] = useState(deliverable.date_assigned || '')
+  const [conceptsDue, setConceptsDue] = useState(deliverable.concepts_due || '')
+  const [dueDate, setDueDate] = useState(deliverable.due_date || '')
+  const [externalLink, setExternalLink] = useState(deliverable.external_link || '')
+  const [comments, setComments] = useState(deliverable.comments || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const inputClass =
+    'w-full px-3 py-2.5 border border-gray-200 text-sm font-fira text-fe-navy focus:outline-none focus:border-fe-blue'
+  const labelClass = 'block text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray mb-1'
+
+  async function save() {
+    if (!text.trim()) return
+    setBusy(true)
+    setError('')
+    const res = await fetch(`/api/vendors/deliverables/${deliverable.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deliverable: text.trim(),
+        status,
+        recurring,
+        date_assigned: dateAssigned || null,
+        concepts_due: conceptsDue || null,
+        due_date: dueDate || null,
+        external_link: externalLink.trim() || null,
+        comments: comments.trim() || null,
+      }),
+    })
+    setBusy(false)
+    if (res.ok) onSaved()
+    else {
+      const d = await res.json().catch(() => ({}))
+      setError(d.error || 'Save failed')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="bg-white border border-gray-100 shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-1">Edit deliverable</h2>
+        <p className="text-[13px] font-fira text-fe-blue-gray mb-4">{deliverable.vendor_name}</p>
+
+        <div className="space-y-4">
+          <div>
+            <label className={labelClass}>Deliverable name</label>
+            <input
+              className={inputClass}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              data-testid="input-edit-name"
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Status</label>
+              <select
+                className={inputClass}
+                value={status}
+                onChange={(e) => setStatus(e.target.value as DeliverableStatus)}
+                data-testid="select-edit-status"
+              >
+                {(Object.keys(STATUS_LABELS) as DeliverableStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end pb-2">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={recurring}
+                  onChange={(e) => setRecurring(e.target.checked)}
+                  data-testid="checkbox-edit-recurring"
+                  className="w-4 h-4 accent-fe-blue"
+                />
+                <span className="text-sm font-fira text-fe-navy">Recurring</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className={labelClass}>Date Assigned</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={dateAssigned}
+                onChange={(e) => setDateAssigned(e.target.value)}
+                data-testid="input-edit-date-assigned"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Concepts Due</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={conceptsDue}
+                onChange={(e) => setConceptsDue(e.target.value)}
+                data-testid="input-edit-concepts-due"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Due Date</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                data-testid="input-edit-due-date"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={labelClass}>External Link</label>
+            <input
+              className={inputClass}
+              value={externalLink}
+              onChange={(e) => setExternalLink(e.target.value)}
+              data-testid="input-edit-link"
+              placeholder="https://…"
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Comments</label>
+            <textarea
+              className={inputClass}
+              rows={3}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              data-testid="input-edit-comments"
+            />
+          </div>
+
+          {error && <p className="text-[12px] font-fira text-fe-red">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 mt-6">
+          <button
+            onClick={onClose}
+            data-testid="button-edit-cancel"
+            className="px-4 py-2 border border-gray-200 text-[13px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!text.trim() || busy}
+            data-testid="button-edit-save"
+            className="px-4 py-2 bg-fe-blue text-white text-[13px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {busy ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>
