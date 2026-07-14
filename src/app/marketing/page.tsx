@@ -324,7 +324,7 @@ function LaunchTracker({
   }
 
   return (
-    <div className="fe-grid">
+    <div className="fe-cards fe-cards-wide">
       {sorted.map((project) => {
         const days = project.launch_date ? daysUntil(project.launch_date) : null
         const ready = getReadyCount(project.id)
@@ -335,7 +335,7 @@ function LaunchTracker({
         return (
           <div
             key={project.id}
-            className="fe-col-6 bg-white border border-gray-100 overflow-hidden flex"
+            className="bg-white border border-gray-100 overflow-hidden flex"
           >
             {/* Urgency left border */}
             <div className="w-1.5 shrink-0" style={{ backgroundColor: borderColor }} />

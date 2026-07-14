@@ -220,7 +220,7 @@ export default function WeeklyChecklistPage() {
     <div className="font-fira">
       <PageHeader title="Weekly Checklist" subtitle="Monday meeting to-do list" />
 
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
       {/* Week Navigation */}
       <div className="flex items-center justify-between mb-6">
         <button

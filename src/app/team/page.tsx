@@ -643,7 +643,7 @@ export default function TeamPage() {
         {roles.length === 0 ? (
           <p className="text-center text-fe-blue-gray py-8">No roles defined yet. Add your first role above.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="fe-cards fe-cards-narrow">
             {roles.map(role => (
               <div key={role.id} className="bg-white border border-gray-100 p-5 group relative">
                 <div className="absolute top-3 right-3 hidden group-hover:flex items-center gap-1">
@@ -1080,7 +1080,7 @@ export default function TeamPage() {
       )}
 
       {/* Team Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="fe-cards fe-cards-narrow">
         {team.map((member) => {
           const memberTasks = getTasksForMember(member.id);
           const completedTasks = getCompletedForMember(member.id);

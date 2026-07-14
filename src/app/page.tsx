@@ -950,13 +950,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ===== BENTO GRID: lower dashboard panels ===== */}
-      <div className="space-y-5">
-
-      {/* Row 1: This Month's Focus (wide) + At Risk (narrow) */}
+      {/* ===== BENTO GRID: main column + right rail ===== */}
       <div className="fe-grid">
+
+      {/* LEFT main column: rich, wide-content panels */}
+      <div className="fe-col-8 fe-stack">
+
       {/* This Month's Focus */}
-      <div className="fe-col-8 bg-white border border-gray-100 p-5">
+      <div className="bg-white border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
@@ -964,7 +965,7 @@ export default function Dashboard() {
             </h2>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-fira font-bold text-fe-blue hover:bg-blue-50 transition-colors border border-fe-blue/20"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-fira font-bold text-fe-blue hover:bg-blue-50 transition-colors border border-fe-blue/20"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1012,7 +1013,7 @@ export default function Dashboard() {
 
         {/* Add Priority Modal */}
         {showAddForm && (
-          <div className="mb-4 p-4 rounded-lg border border-blue-100 bg-blue-50/30">
+          <div className="mb-4 p-4 border border-blue-100 bg-blue-50/30">
             {suggestedProjects.length > 0 && (
               <div className="mb-4">
                 <h3 className="text-xs font-barlow font-bold text-fe-navy uppercase tracking-wide mb-2">Suggested from your projects</h3>
@@ -1343,8 +1344,95 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* ===== Enrollment & Revenue Tracker ===== */}
+      <div className="bg-white border border-gray-100 p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Enrollment &amp; Revenue Tracker</h2>
+        <p className="text-xs font-fira text-fe-blue-gray mb-4">Course launches with enrollment or revenue goals</p>
+        {enrollmentTracker.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No enrollment or revenue goals set — add them by editing a project.</p>
+        ) : (
+          <div className="space-y-3">
+            {enrollmentTracker.map(row => {
+              const enrollPct = row.enrollment_goal ? Math.min(100, Math.round((row.enrollment_actual / row.enrollment_goal) * 100)) : 0;
+              const revPct = row.revenue_goal ? Math.min(100, Math.round((row.revenue_actual / row.revenue_goal) * 100)) : 0;
+              return (
+                <div key={row.id} className="border border-gray-100 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Link href={`/projects/${row.id}`} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">{row.name}</Link>
+                    <button
+                      onClick={() => { setLogMetricProjectId(row.id); setLogMetricName('enrollments'); setLogMetricValue(''); }}
+                      className="px-2.5 py-1 rounded text-xs font-fira font-bold text-fe-blue border border-fe-blue/20 hover:bg-blue-50 transition-colors"
+                    >
+                      Log Result
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {row.enrollment_goal && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-fira text-fe-blue-gray">Enrollment</span>
+                          <span className="text-xs font-fira font-bold text-fe-anthracite">{row.enrollment_actual}/{row.enrollment_goal}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${enrollPct}%`, backgroundColor: enrollPct >= 75 ? '#22c55e' : enrollPct >= 40 ? '#B29838' : '#ef4444' }} />
+                        </div>
+                      </div>
+                    )}
+                    {row.revenue_goal && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-fira text-fe-blue-gray">Revenue</span>
+                          <span className="text-xs font-fira font-bold text-fe-anthracite">${row.revenue_actual.toLocaleString()}/${('$' + row.revenue_goal.toLocaleString())}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${revPct}%`, backgroundColor: revPct >= 75 ? '#22c55e' : revPct >= 40 ? '#B29838' : '#ef4444' }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Active Campaigns */}
+      <div className="bg-white border border-gray-100 p-5">
+        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
+          Active Campaigns
+        </h2>
+        {campaigns.length === 0 ? (
+          <p className="text-sm text-fe-blue-gray font-fira">No active campaigns — add one from the Marketing page.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {campaigns.map(campaign => (
+              <div key={campaign.id} className="border border-gray-100 p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">{campaign.name}</h3>
+                  <StatusBadge status={(campaign.status as TaskStatus) || 'not_started'} interactive={false} />
+                </div>
+                {campaign.campaign_type && (
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-gray-100 text-fe-blue-gray mb-2">{campaign.campaign_type}</span>
+                )}
+                {campaign.project_name && (
+                  <p className="text-xs font-fira text-fe-blue-gray mb-1">Project: {campaign.project_name}</p>
+                )}
+                {campaign.goal_metric && (
+                  <p className="text-xs font-fira text-fe-anthracite">Goal: <span className="font-bold">{campaign.goal_metric}</span></p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
+
+      {/* RIGHT rail: short status panels */}
+      <div className="fe-col-4 fe-stack">
+
       {/* ===== AT RISK ===== */}
-      <div className="fe-col-4 bg-white border border-gray-100 p-5">
+      <div className="bg-white border border-gray-100 p-5">
         <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">At Risk</h2>
         <p className="text-xs font-fira text-fe-blue-gray mb-4">Programs that need attention before launch</p>
         {atRiskProjects.length === 0 ? (
@@ -1397,13 +1485,9 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-      </div>
-      {/* /Row 1 */}
 
-      {/* Row 2: Recent Changes + Attention Needed */}
-      <div className="fe-grid">
       {/* ===== RECENT CHANGES ===== */}
-      <div className="fe-col-6 bg-white border border-gray-100 p-5">
+      <div className="bg-white border border-gray-100 p-5">
         <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Recent Changes</h2>
         <p className="text-xs font-fira text-fe-blue-gray mb-4">Latest project activity</p>
         {recentChanges.length === 0 ? (
@@ -1445,7 +1529,7 @@ export default function Dashboard() {
 
       {/* ===== 3. ATTENTION NEEDED ===== */}
       {hasAttentionItems && (
-        <div className="fe-col-6 bg-white border border-gray-100 p-5">
+        <div className="bg-white border border-gray-100 p-5">
           <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">Attention Needed</h2>
           <div className="space-y-3">
             {attentionNeeded.overdue_count > 0 && (
@@ -1509,93 +1593,6 @@ export default function Dashboard() {
         </div>
       )}
       </div>
-      {/* /Row 2 */}
-
-      {/* Row 3: Enrollment & Revenue Tracker (wide) + Active Campaigns */}
-      <div className="fe-grid">
-      {/* ===== 2. ENROLLMENT & REVENUE TRACKER ===== */}
-      <div className="fe-col-7 bg-white border border-gray-100 p-5">
-        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-1">Enrollment &amp; Revenue Tracker</h2>
-        <p className="text-xs font-fira text-fe-blue-gray mb-4">Course launches with enrollment or revenue goals</p>
-        {enrollmentTracker.length === 0 ? (
-          <p className="text-sm text-fe-blue-gray font-fira">No enrollment or revenue goals set — add them by editing a project.</p>
-        ) : (
-          <div className="space-y-3">
-            {enrollmentTracker.map(row => {
-              const enrollPct = row.enrollment_goal ? Math.min(100, Math.round((row.enrollment_actual / row.enrollment_goal) * 100)) : 0;
-              const revPct = row.revenue_goal ? Math.min(100, Math.round((row.revenue_actual / row.revenue_goal) * 100)) : 0;
-              return (
-                <div key={row.id} className="border border-gray-100 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Link href={`/projects/${row.id}`} className="font-barlow font-bold text-sm text-fe-navy hover:text-fe-blue transition-colors">{row.name}</Link>
-                    <button
-                      onClick={() => { setLogMetricProjectId(row.id); setLogMetricName('enrollments'); setLogMetricValue(''); }}
-                      className="px-2.5 py-1 rounded text-xs font-fira font-bold text-fe-blue border border-fe-blue/20 hover:bg-blue-50 transition-colors"
-                    >
-                      Log Result
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {row.enrollment_goal && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-fira text-fe-blue-gray">Enrollment</span>
-                          <span className="text-xs font-fira font-bold text-fe-anthracite">{row.enrollment_actual}/{row.enrollment_goal}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${enrollPct}%`, backgroundColor: enrollPct >= 75 ? '#22c55e' : enrollPct >= 40 ? '#B29838' : '#ef4444' }} />
-                        </div>
-                      </div>
-                    )}
-                    {row.revenue_goal && (
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-fira text-fe-blue-gray">Revenue</span>
-                          <span className="text-xs font-fira font-bold text-fe-anthracite">${row.revenue_actual.toLocaleString()}/${('$' + row.revenue_goal.toLocaleString())}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${revPct}%`, backgroundColor: revPct >= 75 ? '#22c55e' : revPct >= 40 ? '#B29838' : '#ef4444' }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      {/* Active Campaigns */}
-      <div className="fe-col-5 bg-white border border-gray-100 p-5">
-        <h2 className="font-barlow font-extrabold text-xl text-fe-navy mb-4">
-          Active Campaigns
-        </h2>
-        {campaigns.length === 0 ? (
-          <p className="text-sm text-fe-blue-gray font-fira">No active campaigns — add one from the Marketing page.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {campaigns.map(campaign => (
-              <div key={campaign.id} className="border border-gray-100 p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <h3 className="font-barlow font-bold text-sm text-fe-navy leading-tight">{campaign.name}</h3>
-                  <StatusBadge status={(campaign.status as TaskStatus) || 'not_started'} interactive={false} />
-                </div>
-                {campaign.campaign_type && (
-                  <span className="inline-block px-2 py-0.5 rounded text-xs font-fira font-bold bg-gray-100 text-fe-blue-gray mb-2">{campaign.campaign_type}</span>
-                )}
-                {campaign.project_name && (
-                  <p className="text-xs font-fira text-fe-blue-gray mb-1">Project: {campaign.project_name}</p>
-                )}
-                {campaign.goal_metric && (
-                  <p className="text-xs font-fira text-fe-anthracite">Goal: <span className="font-bold">{campaign.goal_metric}</span></p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      </div>
-      {/* /Row 3 */}
 
       </div>
       {/* ===== /BENTO GRID ===== */}

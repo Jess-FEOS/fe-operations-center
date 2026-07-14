@@ -111,7 +111,7 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="fe-cards fe-cards-wide">
         {filtered.map(project => (
           <div
             key={project.id}

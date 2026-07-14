@@ -138,10 +138,10 @@ export default function ThisWeekPage() {
           </div>
         </div>
 
-        {/* Project groups arranged 2-up so they sit side by side */}
-        <div className="fe-grid">
+        {/* Project groups stretch to fill the full width (auto-fit) */}
+        <div className="fe-cards fe-cards-wide">
           {Object.entries(grouped).map(([projectName, projectTasks]) => (
-            <div key={projectName} className="fe-col-6 space-y-3">
+            <div key={projectName} className="space-y-3">
               <div className="flex items-center gap-2">
                 <span className="font-barlow font-bold text-sm text-fe-navy">
                   {projectName}

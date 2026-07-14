@@ -117,6 +117,20 @@ body {
   min-width: 0;
 }
 
+/* Content-driven card grid: items auto-flow and STRETCH to fill the
+   row, so a page with only 2-3 items still uses the full width
+   instead of clustering on the left. Use for lists of projects,
+   task groups, metric cards, etc. where the item count varies.
+   --fe-card-min controls the smallest comfortable card width. */
+.fe-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--fe-card-min, 320px), 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+.fe-cards-wide { --fe-card-min: 420px; }
+.fe-cards-narrow { --fe-card-min: 260px; }
+
 /* Standard panel body padding so panels placed in the grid read
    consistently without per-page padding overrides. */
 .fe-panel-body { padding: 1.25rem; }
