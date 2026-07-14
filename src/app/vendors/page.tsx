@@ -797,7 +797,7 @@ function VendorSection({
         {assetsOpen && (
           <div className="px-5 pb-5">
             {vendor.assets.length > 0 ? (
-              <div className="fe-cards fe-cards-narrow">
+              <div className="flex flex-wrap gap-4">
                 {vendor.assets.map((a) => (
                   <AssetCard key={a.id} asset={a} onDelete={() => onDeleteAsset(vendor.id, a.id)} />
                 ))}
@@ -816,7 +816,7 @@ function AssetCard({ asset, onDelete }: { asset: Asset; onDelete: () => void }) 
   const isImage = (asset.file_type || '').startsWith('image/')
   const href = asset.public_url || asset.external_url || undefined
   return (
-    <div data-testid={`card-asset-${asset.id}`} className="relative bg-white border border-gray-100 group">
+    <div data-testid={`card-asset-${asset.id}`} className="relative w-52 shrink-0 bg-white border border-gray-100 group">
       <button
         onClick={onDelete}
         title="Delete asset"
@@ -827,10 +827,10 @@ function AssetCard({ asset, onDelete }: { asset: Asset; onDelete: () => void }) 
         </svg>
       </button>
       <a href={href} target="_blank" rel="noopener noreferrer" className="block">
-        <div className="h-28 bg-fe-offwhite flex items-center justify-center overflow-hidden">
+        <div className="h-36 bg-fe-offwhite flex items-center justify-center overflow-hidden">
           {isImage && href ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={href} alt={asset.file_name} className="w-full h-full object-cover" />
+            <img src={href} alt={asset.file_name} className="max-w-full max-h-full object-contain" />
           ) : (
             <svg className="w-10 h-10 text-fe-blue-gray/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
