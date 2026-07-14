@@ -16,6 +16,7 @@ const PRIMARY = [
 ]
 
 const MORE = [
+  { href: '/vendors/library', label: 'Asset Library' },
   { href: '/performance', label: 'Performance' },
   { href: '/weekly-checklist', label: 'Weekly Checklist' },
   { href: '/calendar', label: 'Calendar' },

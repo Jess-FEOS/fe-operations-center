@@ -29,8 +29,15 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
       const vendorId = formData.get('vendor_id') as string | null;
       const deliverableId = formData.get('deliverable_id') as string | null;
+      const projectId = formData.get('project_id') as string | null;
+      const notes = formData.get('notes') as string | null;
+      const versionRaw = formData.get('version') as string | null;
+      const isCurrentRaw = formData.get('is_current') as string | null;
       const uploadedBy = formData.get('uploaded_by') as string | null;
       const file = formData.get('file') as File | null;
+
+      const version = versionRaw ? parseInt(versionRaw, 10) || 1 : 1;
+      const isCurrent = isCurrentRaw === null ? true : isCurrentRaw !== 'false';
 
       if (!vendorId) {
         return NextResponse.json({ error: 'Missing required field: vendor_id' }, { status: 400 });
@@ -51,17 +58,26 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: uploadError.message }, { status: 500 });
       }
 
+      // Demote existing current versions for this deliverable so only the newest is current.
+      if (deliverableId && isCurrent) {
+        await supabase.from('vendor_assets').update({ is_current: false }).eq('deliverable_id', deliverableId);
+      }
+
       const { data, error } = await supabase
         .from('vendor_assets')
         .insert({
           vendor_id: vendorId,
           deliverable_id: deliverableId || null,
+          project_id: projectId || null,
           file_name: file.name || safeName,
           storage_path: path,
           external_url: null,
           file_type: file.type || null,
           file_size: file.size || null,
           uploaded_by: uploadedBy || null,
+          notes: notes || null,
+          version,
+          is_current: isCurrent,
         })
         .select()
         .single();
@@ -77,7 +93,9 @@ export async function POST(request: NextRequest) {
 
     // ── Mode B: JSON link-only asset ─────────────────────────────────────
     const body = await request.json();
-    const { vendor_id, deliverable_id, file_name, external_url, uploaded_by } = body;
+    const { vendor_id, deliverable_id, project_id, file_name, external_url, uploaded_by, notes } = body;
+    const version = body.version ?? 1;
+    const is_current = body.is_current ?? true;
 
     if (!vendor_id || !file_name || !external_url) {
       return NextResponse.json(
@@ -86,17 +104,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Demote existing current versions for this deliverable so only the newest is current.
+    if (deliverable_id && is_current) {
+      await supabase.from('vendor_assets').update({ is_current: false }).eq('deliverable_id', deliverable_id);
+    }
+
     const { data, error } = await supabase
       .from('vendor_assets')
       .insert({
         vendor_id,
         deliverable_id: deliverable_id || null,
+        project_id: project_id || null,
         file_name,
         storage_path: null,
         external_url,
         file_type: 'link',
         file_size: null,
         uploaded_by: uploaded_by || null,
+        notes: notes || null,
+        version,
+        is_current,
       })
       .select()
       .single();

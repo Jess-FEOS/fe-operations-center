@@ -18,6 +18,7 @@ export async function PATCH(
     const allowedFields = [
       'vendor_id', 'project_id', 'deliverable', 'recurring', 'date_assigned',
       'concepts_due', 'due_date', 'status', 'comments', 'external_link', 'sort_order',
+      'is_archived', 'archived_at',
     ];
 
     const updates: Record<string, any> = {};

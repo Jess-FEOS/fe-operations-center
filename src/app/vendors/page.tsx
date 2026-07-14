@@ -30,18 +30,26 @@ interface Deliverable {
   comments: string | null
   external_link: string | null
   sort_order: number
+  is_archived: boolean
+  archived_at: string | null
 }
 
 interface Asset {
   id: string
   vendor_id: string
   deliverable_id: string | null
+  project_id: string | null
   file_name: string
   storage_path: string | null
   external_url: string | null
   file_type: string | null
   file_size: number | null
   public_url: string | null
+  is_archived: boolean
+  archived_at: string | null
+  version: number
+  is_current: boolean
+  notes: string | null
 }
 
 interface Vendor {
@@ -193,6 +201,21 @@ export default function VendorsPage() {
     await fetch(`/api/vendors/assets/${assetId}`, { method: 'DELETE' })
   }
 
+  async function patchAsset(vendorId: string, assetId: string, updates: Partial<Asset>) {
+    setVendors((prev) =>
+      prev.map((vn) =>
+        vn.id === vendorId
+          ? { ...vn, assets: vn.assets.map((a) => (a.id === assetId ? { ...a, ...updates } : a)) }
+          : vn
+      )
+    )
+    await fetch(`/api/vendors/assets/${assetId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -225,6 +248,7 @@ export default function VendorsPage() {
           onDeleteVendor={deleteVendor}
           onAddAsset={(v) => setAssetVendor(v)}
           onDeleteAsset={deleteAsset}
+          onPatchAsset={patchAsset}
           onOpenComments={(d) => setCommentModal(d)}
         />
       ) : (
@@ -284,6 +308,7 @@ export default function VendorsPage() {
       {assetVendor && (
         <AssetModal
           vendor={assetVendor}
+          projects={projects}
           onClose={() => setAssetVendor(null)}
           onSaved={() => {
             setAssetVendor(null)
@@ -461,9 +486,12 @@ function DeliverableRow({
   showVendor,
   vendorColor,
   vendorName,
+  archived,
   onPatch,
   onEdit,
   onDelete,
+  onArchive,
+  onUnarchive,
   onOpenComments,
 }: {
   d: Deliverable
@@ -471,13 +499,16 @@ function DeliverableRow({
   showVendor?: boolean
   vendorColor?: string
   vendorName?: string
+  archived?: boolean
   onPatch: (id: string, updates: Partial<Deliverable>) => void
   onEdit: () => void
   onDelete: () => void
+  onArchive?: () => void
+  onUnarchive?: () => void
   onOpenComments: () => void
 }) {
   return (
-    <tr data-testid={`row-deliverable-${d.id}`} className="border-t border-gray-100 hover:bg-fe-offwhite/60">
+    <tr data-testid={`row-deliverable-${d.id}`} className={`border-t border-gray-100 hover:bg-fe-offwhite/60 ${archived ? 'text-fe-blue-gray' : ''}`}>
       {showVendor && (
         <td className="px-3 py-2 align-top">
           <span className="inline-flex items-center gap-1.5 text-[12px] font-fira text-fe-navy font-bold">
@@ -487,7 +518,12 @@ function DeliverableRow({
         </td>
       )}
       <td className="px-3 py-2 align-top">
-        <span className="text-[13px] font-fira text-fe-navy">{d.deliverable}</span>
+        <span className={`text-[13px] font-fira ${archived ? 'text-fe-blue-gray' : 'text-fe-navy'}`}>{d.deliverable}</span>
+        {archived && (
+          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-fira font-bold bg-fe-blue-gray/15 text-fe-blue-gray uppercase tracking-wide">
+            Archived
+          </span>
+        )}
       </td>
       <td className="px-3 py-2 align-top">
         {d.recurring ? (
@@ -556,6 +592,29 @@ function DeliverableRow({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
+          {archived ? (
+            <button
+              onClick={onUnarchive}
+              data-testid={`button-unarchive-deliverable-${d.id}`}
+              title="Unarchive deliverable"
+              className="p-1 text-fe-blue-gray hover:text-fe-teal"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={onArchive}
+              data-testid={`button-archive-deliverable-${d.id}`}
+              title="Archive deliverable"
+              className="p-1 text-fe-blue-gray hover:text-fe-navy"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={onDelete}
             title="Delete deliverable"
@@ -604,6 +663,7 @@ function ByVendorView({
   onDeleteVendor,
   onAddAsset,
   onDeleteAsset,
+  onPatchAsset,
   onOpenComments,
 }: {
   vendors: Vendor[]
@@ -616,6 +676,7 @@ function ByVendorView({
   onDeleteVendor: (id: string) => void
   onAddAsset: (v: Vendor) => void
   onDeleteAsset: (vendorId: string, assetId: string) => void
+  onPatchAsset: (vendorId: string, assetId: string, updates: Partial<Asset>) => void
   onOpenComments: (d: Deliverable) => void
 }) {
   return (
@@ -633,6 +694,7 @@ function ByVendorView({
           onDeleteVendor={onDeleteVendor}
           onAddAsset={onAddAsset}
           onDeleteAsset={onDeleteAsset}
+          onPatchAsset={onPatchAsset}
           onOpenComments={onOpenComments}
         />
       ))}
@@ -651,6 +713,7 @@ function VendorSection({
   onDeleteVendor,
   onAddAsset,
   onDeleteAsset,
+  onPatchAsset,
   onOpenComments,
 }: {
   vendor: Vendor
@@ -663,9 +726,31 @@ function VendorSection({
   onDeleteVendor: (id: string) => void
   onAddAsset: (v: Vendor) => void
   onDeleteAsset: (vendorId: string, assetId: string) => void
+  onPatchAsset: (vendorId: string, assetId: string, updates: Partial<Asset>) => void
   onOpenComments: (d: Deliverable) => void
 }) {
   const [assetsOpen, setAssetsOpen] = useState(false)
+  const [archivedOpen, setArchivedOpen] = useState(false)
+
+  const activeDeliverables = vendor.deliverables.filter((d) => !d.is_archived)
+  const archivedDeliverables = vendor.deliverables.filter((d) => d.is_archived)
+  const activeAssets = vendor.assets.filter((a) => !a.is_archived)
+  const archivedAssetCount = vendor.assets.filter((a) => a.is_archived).length
+
+  function archiveDeliverable(id: string) {
+    onPatch(id, { is_archived: true, archived_at: new Date().toISOString() })
+  }
+  function unarchiveDeliverable(id: string) {
+    onPatch(id, { is_archived: false, archived_at: null })
+  }
+
+  const versionsByDeliverable = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const a of vendor.assets) {
+      if (a.deliverable_id) map[a.deliverable_id] = (map[a.deliverable_id] || 0) + 1
+    }
+    return map
+  }, [vendor.assets])
 
   return (
     <div className="bg-white border border-gray-100">
@@ -742,12 +827,12 @@ function VendorSection({
       </div>
 
       {/* Deliverables table */}
-      {vendor.deliverables.length > 0 ? (
+      {activeDeliverables.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <DeliverableTableHead />
             <tbody>
-              {vendor.deliverables.map((d) => (
+              {activeDeliverables.map((d) => (
                 <DeliverableRow
                   key={d.id}
                   d={d}
@@ -755,6 +840,7 @@ function VendorSection({
                   onPatch={onPatch}
                   onEdit={() => onEditDeliverable(vendor.id, d)}
                   onDelete={() => onDeleteDeliverable(d.id)}
+                  onArchive={() => archiveDeliverable(d.id)}
                   onOpenComments={() => onOpenComments(d)}
                 />
               ))}
@@ -764,6 +850,47 @@ function VendorSection({
       ) : (
         <div className="px-5 py-6 text-[13px] font-fira text-fe-blue-gray">
           No deliverables yet.
+        </div>
+      )}
+
+      {/* Archived deliverables disclosure */}
+      {archivedDeliverables.length > 0 && (
+        <div className="border-t border-gray-100">
+          <button
+            onClick={() => setArchivedOpen((o) => !o)}
+            data-testid={`disclosure-archived-deliverables-${vendor.id}`}
+            className="w-full flex items-center gap-2 px-5 py-3 text-[12px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray hover:text-fe-navy"
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${archivedOpen ? 'rotate-90' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            Archived ({archivedDeliverables.length})
+          </button>
+          {archivedOpen && (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <DeliverableTableHead />
+                <tbody>
+                  {archivedDeliverables.map((d) => (
+                    <DeliverableRow
+                      key={d.id}
+                      d={d}
+                      projects={projects}
+                      archived
+                      onPatch={onPatch}
+                      onEdit={() => onEditDeliverable(vendor.id, d)}
+                      onDelete={() => onDeleteDeliverable(d.id)}
+                      onUnarchive={() => unarchiveDeliverable(d.id)}
+                      onOpenComments={() => onOpenComments(d)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -780,7 +907,12 @@ function VendorSection({
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            Assets ({vendor.assets.length})
+            Assets ({activeAssets.length})
+            {archivedAssetCount > 0 && (
+              <span className="normal-case tracking-normal font-fira font-normal text-fe-blue-gray/80">
+                · {archivedAssetCount} archived
+              </span>
+            )}
           </button>
           <button
             onClick={() => onAddAsset(vendor)}
@@ -796,10 +928,16 @@ function VendorSection({
 
         {assetsOpen && (
           <div className="px-5 pb-5">
-            {vendor.assets.length > 0 ? (
+            {activeAssets.length > 0 ? (
               <div className="flex flex-wrap gap-4">
-                {vendor.assets.map((a) => (
-                  <AssetCard key={a.id} asset={a} onDelete={() => onDeleteAsset(vendor.id, a.id)} />
+                {activeAssets.map((a) => (
+                  <AssetCard
+                    key={a.id}
+                    asset={a}
+                    multipleVersions={(versionsByDeliverable[a.deliverable_id || ''] || 0) > 1}
+                    onDelete={() => onDeleteAsset(vendor.id, a.id)}
+                    onArchive={() => onPatchAsset(vendor.id, a.id, { is_archived: true, archived_at: new Date().toISOString() })}
+                  />
                 ))}
               </div>
             ) : (
@@ -812,20 +950,59 @@ function VendorSection({
   )
 }
 
-function AssetCard({ asset, onDelete }: { asset: Asset; onDelete: () => void }) {
+function AssetCard({
+  asset,
+  multipleVersions,
+  onDelete,
+  onArchive,
+}: {
+  asset: Asset
+  multipleVersions?: boolean
+  onDelete: () => void
+  onArchive?: () => void
+}) {
   const isImage = (asset.file_type || '').startsWith('image/')
   const href = asset.public_url || asset.external_url || undefined
+  const showCurrent = asset.is_current && multipleVersions
   return (
     <div data-testid={`card-asset-${asset.id}`} className="relative w-52 shrink-0 bg-white border border-gray-100 group">
-      <button
-        onClick={onDelete}
-        title="Delete asset"
-        className="absolute top-1 right-1 z-10 p-1 bg-white/90 text-fe-blue-gray hover:text-fe-red opacity-0 group-hover:opacity-100 transition-opacity border border-gray-200"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      <div className="absolute top-1 right-1 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onArchive && (
+          <button
+            onClick={onArchive}
+            data-testid={`button-archive-asset-${asset.id}`}
+            title="Archive asset"
+            className="p-1 bg-white/90 text-fe-blue-gray hover:text-fe-navy border border-gray-200"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+          </button>
+        )}
+        <button
+          onClick={onDelete}
+          title="Delete asset"
+          className="p-1 bg-white/90 text-fe-blue-gray hover:text-fe-red border border-gray-200"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      {(asset.version > 1 || showCurrent) && (
+        <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
+          {showCurrent && (
+            <span className="px-2 py-0.5 rounded-full bg-fe-teal text-white text-[10px] font-fira font-bold">
+              Current
+            </span>
+          )}
+          {asset.version > 1 && (
+            <span className="px-1.5 py-0.5 bg-fe-navy text-white text-[10px] font-fira font-bold">
+              v{asset.version}
+            </span>
+          )}
+        </div>
+      )}
       <a href={href} target="_blank" rel="noopener noreferrer" className="block">
         <div className="h-36 bg-fe-offwhite flex items-center justify-center overflow-hidden">
           {isImage && href ? (
@@ -841,6 +1018,11 @@ function AssetCard({ asset, onDelete }: { asset: Asset; onDelete: () => void }) 
           <p className="text-[12px] font-fira text-fe-navy truncate" title={asset.file_name}>
             {asset.file_name}
           </p>
+          {asset.notes && (
+            <p className="text-[10px] font-fira text-fe-blue-gray truncate" title={asset.notes}>
+              {asset.notes}
+            </p>
+          )}
           <p className="text-[10px] font-fira text-fe-blue-gray">
             {asset.file_type === 'link' ? 'Link' : fmtSize(asset.file_size)}
           </p>
@@ -873,10 +1055,12 @@ function AllDeliverablesView({
   const [statusFilter, setStatusFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
+      if (!showArchived && r.is_archived) return false
       if (vendorFilter !== 'all' && r.vendor_id !== vendorFilter) return false
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
       if (projectFilter !== 'all') {
@@ -886,7 +1070,7 @@ function AllDeliverablesView({
       if (q && !r.deliverable.toLowerCase().includes(q)) return false
       return true
     })
-  }, [rows, vendorFilter, statusFilter, projectFilter, search])
+  }, [rows, vendorFilter, statusFilter, projectFilter, search, showArchived])
 
   const selectClass =
     'px-3 py-2 text-[13px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue'
@@ -942,6 +1126,16 @@ function AllDeliverablesView({
             </option>
           ))}
         </select>
+        <label className="inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            data-testid="toggle-show-archived"
+            className="w-4 h-4 accent-fe-blue"
+          />
+          <span className="text-[13px] font-fira text-fe-navy">Show archived</span>
+        </label>
         <span className="text-[12px] font-fira text-fe-blue-gray ml-auto">
           {filtered.length} of {rows.length}
         </span>
@@ -960,9 +1154,12 @@ function AllDeliverablesView({
                 showVendor
                 vendorColor={r.vendor.color}
                 vendorName={r.vendor.name}
+                archived={r.is_archived}
                 onPatch={onPatch}
                 onEdit={() => onEditDeliverable(r.vendor_id, r)}
                 onDelete={() => onDeleteDeliverable(r.id)}
+                onArchive={() => onPatch(r.id, { is_archived: true, archived_at: new Date().toISOString() })}
+                onUnarchive={() => onPatch(r.id, { is_archived: false, archived_at: null })}
                 onOpenComments={() => onOpenComments(r)}
               />
             ))}
@@ -1263,16 +1460,20 @@ function DeliverableModal({
 
 function AssetModal({
   vendor,
+  projects,
   onClose,
   onSaved,
 }: {
   vendor: Vendor
+  projects: Project[]
   onClose: () => void
   onSaved: () => void
 }) {
   const [tab, setTab] = useState<'upload' | 'link'>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [deliverableId, setDeliverableId] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [notes, setNotes] = useState('')
   const [linkName, setLinkName] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1285,6 +1486,10 @@ function AssetModal({
     const fd = new FormData()
     fd.append('vendor_id', vendor.id)
     if (deliverableId) fd.append('deliverable_id', deliverableId)
+    if (projectId) fd.append('project_id', projectId)
+    if (notes.trim()) fd.append('notes', notes.trim())
+    fd.append('version', '1')
+    fd.append('is_current', 'true')
     fd.append('file', file)
     const res = await fetch('/api/vendors/assets', { method: 'POST', body: fd })
     setBusy(false)
@@ -1305,8 +1510,12 @@ function AssetModal({
       body: JSON.stringify({
         vendor_id: vendor.id,
         deliverable_id: deliverableId || null,
+        project_id: projectId || null,
         file_name: linkName.trim(),
         external_url: linkUrl.trim(),
+        notes: notes.trim() || null,
+        version: 1,
+        is_current: true,
       }),
     })
     setBusy(false)
@@ -1339,17 +1548,34 @@ function AssetModal({
         ))}
       </div>
 
-      {/* Deliverable link (shared) */}
+      {/* Deliverable / project / notes (shared) */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className={labelClass}>Link to deliverable (optional)</label>
+          <select className={inputClass} value={deliverableId} onChange={(e) => setDeliverableId(e.target.value)}>
+            <option value="">— None —</option>
+            {vendor.deliverables.filter((d) => !d.is_archived).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.deliverable}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Project (optional)</label>
+          <select className={inputClass} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— None —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="mb-4">
-        <label className={labelClass}>Link to deliverable (optional)</label>
-        <select className={inputClass} value={deliverableId} onChange={(e) => setDeliverableId(e.target.value)}>
-          <option value="">— None —</option>
-          {vendor.deliverables.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.deliverable}
-            </option>
-          ))}
-        </select>
+        <label className={labelClass}>Notes (optional)</label>
+        <textarea className={inputClass} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Designer / reviewer notes…" />
       </div>
 
       {tab === 'upload' ? (
