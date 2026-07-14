@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     const {
       vendor_id, project_id, deliverable, recurring, date_assigned,
       concepts_due, due_date, status, comments, external_link, sort_order,
+      role_id, assigned_to_id,
     } = body;
 
     if (!vendor_id || !deliverable) {
@@ -20,6 +21,19 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: vendor_id, deliverable' },
         { status: 400 }
       );
+    }
+
+    // Default new deliverables to the Designers role so they surface in that
+    // workspace (all current work belongs to Designers/RMY). An explicit
+    // role_id or assigned_to_id in the body overrides this default.
+    let effectiveRoleId: string | null = role_id ?? null;
+    if (!effectiveRoleId && !assigned_to_id) {
+      const { data: designers } = await supabase
+        .from('vendor_roles')
+        .select('id')
+        .eq('name', 'Designers')
+        .maybeSingle();
+      effectiveRoleId = designers?.id ?? null;
     }
 
     const { data, error } = await supabase
@@ -36,6 +50,8 @@ export async function POST(request: NextRequest) {
         comments: comments || null,
         external_link: external_link || null,
         sort_order: sort_order ?? 0,
+        role_id: effectiveRoleId,
+        assigned_to_id: assigned_to_id || null,
       })
       .select('*, projects(name)')
       .single();
