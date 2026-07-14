@@ -958,14 +958,14 @@ export default function Dashboard() {
 
       {/* This Month's Focus */}
       <div className="bg-white border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h2 className="font-barlow font-extrabold text-xl text-fe-navy">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <h2 className="font-barlow font-extrabold text-xl text-fe-navy whitespace-nowrap">
               This Month&apos;s Focus
             </h2>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-fira font-bold text-fe-blue hover:bg-blue-50 transition-colors border border-fe-blue/20"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-fira font-bold text-fe-blue hover:bg-blue-50 transition-colors border border-fe-blue/20 whitespace-nowrap flex-shrink-0"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -982,7 +982,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => handleMonthChange(opt.value)}
                     title={isCurrent ? `${opt.label} (current month)` : opt.label}
-                    className={`px-3 py-1.5 rounded-l-lg text-xs font-fira font-bold transition-colors ${
+                    className={`px-3 py-1.5 text-xs font-fira font-bold transition-colors ${
                       isSelected
                         ? 'bg-fe-navy text-white'
                         : 'bg-gray-100 text-fe-anthracite hover:bg-gray-200'
@@ -995,7 +995,7 @@ export default function Dashboard() {
                     onClick={() => handleQuickAddToMonth(opt.value)}
                     title={`Add priority to ${opt.label}`}
                     aria-label={`Add priority to ${opt.label}`}
-                    className={`px-1.5 rounded-r-lg border-l text-xs font-fira font-bold transition-colors ${
+                    className={`px-1.5 border-l text-xs font-fira font-bold transition-colors ${
                       isSelected
                         ? 'bg-fe-navy text-white border-white/20 hover:bg-fe-navy/80'
                         : 'bg-gray-100 text-fe-blue-gray border-white hover:bg-gray-200 hover:text-fe-blue'
