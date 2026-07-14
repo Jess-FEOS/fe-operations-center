@@ -486,9 +486,16 @@ function LibraryCard({ asset, onUnarchive, onEdit }: { asset: LibraryAsset; onUn
             </p>
           )}
           <div className="flex items-center justify-between gap-2 mt-1">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-fira text-fe-blue-gray truncate">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-fira text-fe-blue-gray truncate min-w-0">
               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: asset.vendor_color || '#647692' }} />
-              {asset.vendor_name || '—'}
+              {asset.project_name ? (
+                <>
+                  <span className="text-fe-navy font-bold truncate">{asset.project_name}</span>
+                  {asset.vendor_name && <span className="truncate">· {asset.vendor_name}</span>}
+                </>
+              ) : (
+                <span className="truncate">{asset.vendor_name || '—'}</span>
+              )}
             </span>
             <span className="text-[10px] font-fira text-fe-blue-gray shrink-0">
               {asset.file_type === 'link' ? 'Link' : fmtSize(asset.file_size)}

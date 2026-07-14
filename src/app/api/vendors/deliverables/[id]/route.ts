@@ -19,6 +19,9 @@ export async function PATCH(
       'vendor_id', 'project_id', 'deliverable', 'recurring', 'date_assigned',
       'concepts_due', 'due_date', 'status', 'comments', 'external_link', 'sort_order',
       'is_archived', 'archived_at',
+      // Role workspace: assignment, claim, approval, manual role tag.
+      'assigned_to_id', 'claimed_by_id', 'claimed_at',
+      'approved_by_id', 'approved_at', 'review_state', 'role_id',
     ];
 
     const updates: Record<string, any> = {};
