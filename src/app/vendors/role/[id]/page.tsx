@@ -8,7 +8,7 @@ import PageHeader from '@/components/PageHeader'
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type DeliverableStatus = 'not_started' | 'in_progress' | 'in_review' | 'approved' | 'delivered'
-type ReviewState = 'pending' | 'approved' | 'changes_requested'
+type ReviewState = 'pending' | 'ready' | 'approved' | 'changes_requested'
 
 interface RoleMember {
   id: string
@@ -64,7 +64,21 @@ interface RoleDeliverable {
   approved_by_id: string | null
   approved_by_name: string | null
   approved_at: string | null
+  ready_by_id: string | null
+  ready_by_name: string | null
+  ready_at: string | null
+  changes_requested_by_id: string | null
+  changes_requested_by_name: string | null
+  changes_requested_at: string | null
   assets: DeliverableAsset[]
+}
+
+interface ActivityEntry {
+  id: string
+  action: string
+  actor_name: string | null
+  detail: string | null
+  created_at: string
 }
 
 interface RoleData {
@@ -95,15 +109,38 @@ const STATUS_PILL: Record<DeliverableStatus, string> = {
 }
 
 const REVIEW_LABELS: Record<ReviewState, string> = {
-  pending: 'Pending Review',
+  pending: 'Not Submitted',
+  ready: 'Ready for Review',
   approved: 'Approved',
   changes_requested: 'Changes Requested',
 }
 
 const REVIEW_PILL: Record<ReviewState, string> = {
   pending: 'bg-gray-100 text-gray-600',
+  ready: 'bg-fe-blue text-white',
   approved: 'bg-fe-teal text-white',
   changes_requested: 'bg-fe-red text-white',
+}
+
+function fmtDateTime(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  ready: 'Marked ready for review',
+  approved: 'Approved',
+  changes_requested: 'Requested changes',
+  completed: 'Completed',
+  assigned: 'Assigned',
+  version_uploaded: 'Uploaded a version',
+  edited: 'Edited details',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -343,6 +380,7 @@ export default function RoleWorkspacePage() {
                             key={d.id}
                             d={d}
                             meId={meId}
+                            meName={team.find((m) => m.id === meId)?.name || null}
                             team={team}
                             roleMembers={role.members}
                             expanded={expandedRow === d.id}
@@ -392,6 +430,7 @@ export default function RoleWorkspacePage() {
 function DeliverableRow({
   d,
   meId,
+  meName,
   team,
   roleMembers,
   expanded,
@@ -402,6 +441,7 @@ function DeliverableRow({
 }: {
   d: RoleDeliverable
   meId: string
+  meName: string | null
   team: TeamMember[]
   roleMembers: RoleMember[]
   expanded: boolean
@@ -410,8 +450,30 @@ function DeliverableRow({
   onUpload: () => void
   onEdit: () => void
 }) {
-  const claimed = !!d.claimed_by_id
   const identityRequired = !meId
+  const [showActivity, setShowActivity] = useState(false)
+  const [activity, setActivity] = useState<ActivityEntry[] | null>(null)
+  const [loadingActivity, setLoadingActivity] = useState(false)
+
+  async function loadActivity() {
+    setLoadingActivity(true)
+    const res = await fetch(`/api/vendors/deliverables/${d.id}/activity`).then((r) => r.json()).catch(() => [])
+    setActivity(Array.isArray(res) ? res : [])
+    setLoadingActivity(false)
+  }
+
+  function toggleActivity() {
+    const next = !showActivity
+    setShowActivity(next)
+    if (next && activity === null) loadActivity()
+  }
+
+  // Build the high-level "last updated per status" line from stored timestamps.
+  const statusLine: { label: string; who: string | null; at: string | null }[] = []
+  if (d.ready_at) statusLine.push({ label: 'Ready', who: d.ready_by_name, at: d.ready_at })
+  if (d.changes_requested_at)
+    statusLine.push({ label: 'Changes requested', who: d.changes_requested_by_name, at: d.changes_requested_at })
+  if (d.approved_at) statusLine.push({ label: 'Approved', who: d.approved_by_name, at: d.approved_at })
 
   // Assign picker: role members first, then everyone else.
   const roleMemberIds = new Set(roleMembers.map((m) => m.id))
@@ -506,7 +568,16 @@ function DeliverableRow({
                 <select
                   value={d.assigned_to_id || ''}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => onPatch(d.id, { assigned_to_id: e.target.value || null })}
+                  onChange={(e) => {
+                    const val = e.target.value || null
+                    const who = val ? team.find((m) => m.id === val)?.name || null : null
+                    onPatch(d.id, {
+                      assigned_to_id: val,
+                      activity: val
+                        ? { action: 'assigned', actor_id: meId, actor_name: meName, detail: `Assigned to ${who}` }
+                        : undefined,
+                    })
+                  }}
                   data-testid={`button-assign-${d.id}`}
                   className="px-2 py-1.5 text-[12px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue"
                 >
@@ -529,77 +600,134 @@ function DeliverableRow({
                   )}
                 </select>
 
-                {/* Claim / checkout */}
-                {claimed ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-fira text-fe-blue-gray">
-                      Checked out by <span className="font-bold text-fe-navy">{d.claimed_by_name}</span>
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onPatch(d.id, { claimed_by_id: null, claimed_at: null })
-                      }}
-                      data-testid={`button-release-${d.id}`}
-                      className="px-2.5 py-1.5 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-                    >
-                      Release
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPatch(d.id, { claimed_by_id: meId, claimed_at: new Date().toISOString(), status: 'in_progress' })
-                    }}
-                    disabled={identityRequired}
-                    data-testid={`button-checkout-${d.id}`}
-                    title={identityRequired ? 'Select who you are to claim' : 'Check out this deliverable'}
-                    className="px-3 py-1.5 bg-fe-navy text-white text-[12px] font-fira font-bold hover:bg-fe-navy/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Check out
-                  </button>
-                )}
-
-                {/* Review actions */}
-                {d.review_state === 'approved' && d.approved_by_name ? (
-                  <span className="text-[12px] font-fira text-fe-teal font-bold">Approved by {d.approved_by_name}</span>
+                {/* Ready — designer signals the document is ready for review */}
+                {d.review_state === 'ready' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-fe-blue/10 text-fe-blue text-[12px] font-fira font-bold">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Ready for review
+                  </span>
                 ) : (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       onPatch(d.id, {
-                        approved_by_id: meId,
-                        approved_at: new Date().toISOString(),
-                        review_state: 'approved',
-                        status: 'approved',
+                        review_state: 'ready',
+                        status: 'in_review',
+                        ready_by_id: meId,
+                        ready_at: new Date().toISOString(),
+                        activity: { action: 'ready', actor_id: meId, actor_name: meName },
                       })
                     }}
                     disabled={identityRequired}
-                    data-testid={`button-approve-${d.id}`}
-                    title={identityRequired ? 'Select who you are to approve' : 'Approve this deliverable'}
-                    className="px-3 py-1.5 bg-fe-teal text-white text-[12px] font-fira font-bold hover:bg-fe-teal/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    data-testid={`button-ready-${d.id}`}
+                    title={identityRequired ? 'Select who you are first' : 'Mark ready for review'}
+                    className="px-3 py-1.5 bg-fe-blue text-white text-[12px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Approve
+                    Mark ready
                   </button>
                 )}
+
+                {/* Request changes — sends it back */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    onPatch(d.id, { review_state: 'changes_requested', approved_by_id: null, approved_at: null })
+                    onPatch(d.id, {
+                      review_state: 'changes_requested',
+                      status: 'in_progress',
+                      changes_requested_by_id: meId,
+                      changes_requested_at: new Date().toISOString(),
+                      approved_by_id: null,
+                      approved_at: null,
+                      activity: { action: 'changes_requested', actor_id: meId, actor_name: meName },
+                    })
                   }}
                   disabled={identityRequired}
                   data-testid={`button-request-changes-${d.id}`}
-                  title={identityRequired ? 'Select who you are to request changes' : 'Request changes'}
+                  title={identityRequired ? 'Select who you are first' : 'Request changes'}
                   className="px-3 py-1.5 border border-fe-red text-fe-red text-[12px] font-fira font-bold hover:bg-fe-red/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Request changes
                 </button>
 
+                {/* Approve — completes + archives (moves out of sight) */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPatch(d.id, {
+                      review_state: 'approved',
+                      status: 'delivered',
+                      approved_by_id: meId,
+                      approved_at: new Date().toISOString(),
+                      is_archived: true,
+                      archived_at: new Date().toISOString(),
+                      activity: { action: 'approved', actor_id: meId, actor_name: meName, detail: 'Approved → completed & archived' },
+                    })
+                  }}
+                  disabled={identityRequired}
+                  data-testid={`button-approve-${d.id}`}
+                  title={identityRequired ? 'Select who you are first' : 'Approve — marks complete and archives'}
+                  className="px-3 py-1.5 bg-fe-teal text-white text-[12px] font-fira font-bold hover:bg-fe-teal/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Approve &amp; complete
+                </button>
+
                 {identityRequired && (
-                  <span className="text-[11px] font-fira text-fe-blue-gray italic">Select who you are to claim/approve</span>
+                  <span className="text-[11px] font-fira text-fe-blue-gray italic">Select who you are first</span>
                 )}
               </div>
+
+              {/* High-level status timeline (last update per status) + hidden activity */}
+              {(statusLine.length > 0 || true) && (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+                    {statusLine.length === 0 ? (
+                      <span className="text-[11px] font-fira text-fe-blue-gray italic">No status updates yet</span>
+                    ) : (
+                      statusLine.map((s, i) => (
+                        <span key={i} className="text-[11px] font-fira text-fe-blue-gray">
+                          <span className="font-bold text-fe-navy">{s.label}</span>
+                          {s.who ? ` · ${s.who}` : ''} · {fmtDateTime(s.at)}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleActivity()
+                    }}
+                    data-testid={`button-activity-${d.id}`}
+                    className="text-[11px] font-fira text-fe-blue hover:underline"
+                  >
+                    {showActivity ? 'Hide activity' : 'View activity'}
+                  </button>
+                </div>
+              )}
+
+              {/* Hidden activity log drawer */}
+              {showActivity && (
+                <div className="border border-gray-100 bg-white p-3" data-testid={`activity-log-${d.id}`}>
+                  {loadingActivity ? (
+                    <p className="text-[12px] font-fira text-fe-blue-gray">Loading activity…</p>
+                  ) : activity && activity.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {activity.map((a) => (
+                        <li key={a.id} className="flex items-baseline gap-2 text-[12px] font-fira">
+                          <span className="w-1.5 h-1.5 rounded-full bg-fe-blue-gray shrink-0 translate-y-1" />
+                          <span className="text-fe-navy font-bold">{ACTION_LABELS[a.action] || a.action}</span>
+                          {a.actor_name && <span className="text-fe-blue-gray">by {a.actor_name}</span>}
+                          {a.detail && <span className="text-fe-blue-gray">— {a.detail}</span>}
+                          <span className="text-fe-blue-gray ml-auto">{fmtDateTime(a.created_at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[12px] font-fira text-fe-blue-gray">No activity recorded yet.</p>
+                  )}
+                </div>
+              )}
 
               {/* Assets */}
               <div className="border-t border-gray-100 pt-3">

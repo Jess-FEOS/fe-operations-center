@@ -95,6 +95,8 @@ export async function GET(
       const assignee = d.assigned_to_id ? memberById.get(d.assigned_to_id) : null;
       const claimer = d.claimed_by_id ? memberById.get(d.claimed_by_id) : null;
       const approver = d.approved_by_id ? memberById.get(d.approved_by_id) : null;
+      const readyBy = d.ready_by_id ? memberById.get(d.ready_by_id) : null;
+      const changesBy = d.changes_requested_by_id ? memberById.get(d.changes_requested_by_id) : null;
       return {
         ...d,
         vendor_name: d.vendors?.name || null,
@@ -105,6 +107,8 @@ export async function GET(
         assigned_to_color: assignee?.color || null,
         claimed_by_name: claimer?.name || null,
         approved_by_name: approver?.name || null,
+        ready_by_name: readyBy?.name || null,
+        changes_requested_by_name: changesBy?.name || null,
         assets: assetsByDeliverable.get(d.id) || [],
         vendors: undefined,
         projects: undefined,
