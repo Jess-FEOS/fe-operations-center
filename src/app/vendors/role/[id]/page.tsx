@@ -128,6 +128,8 @@ export default function RoleWorkspacePage() {
   const [loading, setLoading] = useState(true)
   const [meId, setMeId] = useState('')
   const [uploadFor, setUploadFor] = useState<RoleDeliverable | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
 
   async function load() {
     const [r, t] = await Promise.all([
@@ -164,6 +166,20 @@ export default function RoleWorkspacePage() {
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [role])
+
+  function toggleCollapse(key: string) {
+    setCollapsed((c) => ({ ...c, [key]: !c[key] }))
+  }
+
+  function collapseAll() {
+    const all: Record<string, boolean> = {}
+    for (const g of groups) all[g.key] = true
+    setCollapsed(all)
+  }
+
+  function expandAll() {
+    setCollapsed({})
+  }
 
   if (loading) {
     return (
@@ -205,13 +221,31 @@ export default function RoleWorkspacePage() {
       />
 
       {/* Controls bar with identity picker */}
-      <div className="bg-white border border-gray-100 p-4 mb-8 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-          <span className="text-[13px] font-fira text-fe-blue-gray">
-            {role.deliverables.length} deliverable{role.deliverables.length === 1 ? '' : 's'} · {role.members.length} member
-            {role.members.length === 1 ? '' : 's'}
-          </span>
+      <div className="bg-white border border-gray-100 p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+            <span className="text-[13px] font-fira text-fe-blue-gray">
+              {role.deliverables.length} deliverable{role.deliverables.length === 1 ? '' : 's'} · {role.members.length} member
+              {role.members.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[12px] font-fira">
+            <button
+              onClick={collapseAll}
+              data-testid="button-collapse-all"
+              className="px-2.5 py-1 border border-gray-200 text-fe-navy hover:bg-gray-50 transition-colors"
+            >
+              Collapse all
+            </button>
+            <button
+              onClick={expandAll}
+              data-testid="button-expand-all"
+              className="px-2.5 py-1 border border-gray-200 text-fe-navy hover:bg-gray-50 transition-colors"
+            >
+              Expand all
+            </button>
+          </div>
         </div>
         <label className="flex items-center gap-2">
           <span className="text-[13px] font-fira text-fe-blue-gray">Viewing as:</span>
@@ -222,7 +256,7 @@ export default function RoleWorkspacePage() {
             className="px-3 py-2 text-[13px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue"
           >
             <option value="">— Select who you are —</option>
-            {role.members.map((m) => (
+            {team.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>
@@ -236,29 +270,89 @@ export default function RoleWorkspacePage() {
           No deliverables assigned to this role yet.
         </div>
       ) : (
-        <div className="space-y-10">
-          {groups.map((g) => (
-            <section key={g.key} data-testid={`group-category-${g.name}`}>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color || '#647692' }} />
-                <h2 className="font-barlow font-bold text-sm uppercase tracking-wider text-fe-blue-gray">{g.name}</h2>
-                <span className="text-[12px] font-fira text-fe-blue-gray">({g.items.length})</span>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {g.items.map((d) => (
-                  <DeliverableCard
-                    key={d.id}
-                    d={d}
-                    meId={meId}
-                    team={team}
-                    roleMembers={role.members}
-                    onPatch={patchDeliverable}
-                    onUpload={() => setUploadFor(d)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+        <div className="space-y-5">
+          {groups.map((g) => {
+            const isCollapsed = !!collapsed[g.key]
+            const doneCount = g.items.filter((d) => d.review_state === 'approved').length
+            return (
+              <section
+                key={g.key}
+                data-testid={`group-category-${g.name}`}
+                className="bg-white border border-gray-100"
+              >
+                {/* Category header — click to collapse/expand */}
+                <button
+                  onClick={() => toggleCollapse(g.key)}
+                  data-testid={`toggle-category-${g.key}`}
+                  className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50/60 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg
+                      className={`w-4 h-4 text-fe-blue-gray transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color || '#647692' }} />
+                    <h2 className="font-barlow font-bold text-base text-fe-navy">{g.name}</h2>
+                  </div>
+                  <span className="text-[12px] font-fira text-fe-blue-gray">
+                    {doneCount}/{g.items.length} approved
+                  </span>
+                </button>
+
+                {/* Deliverable table */}
+                {!isCollapsed && (
+                  <div className="border-t border-gray-100 overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-gray-50/60 border-b border-gray-100">
+                          <th className="px-5 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                            Deliverable
+                          </th>
+                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                            Assigned
+                          </th>
+                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                            Concepts
+                          </th>
+                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                            Due
+                          </th>
+                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                            Status
+                          </th>
+                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                            Review
+                          </th>
+                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray text-right">
+                            Assets
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.items.map((d) => (
+                          <DeliverableRow
+                            key={d.id}
+                            d={d}
+                            meId={meId}
+                            team={team}
+                            roleMembers={role.members}
+                            expanded={expandedRow === d.id}
+                            onToggle={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
+                            onPatch={patchDeliverable}
+                            onUpload={() => setUploadFor(d)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )
+          })}
         </div>
       )}
 
@@ -276,13 +370,15 @@ export default function RoleWorkspacePage() {
   )
 }
 
-// ── Deliverable card ───────────────────────────────────────────────────────────
+// ── Deliverable row (table) ─────────────────────────────────────────────────
 
-function DeliverableCard({
+function DeliverableRow({
   d,
   meId,
   team,
   roleMembers,
+  expanded,
+  onToggle,
   onPatch,
   onUpload,
 }: {
@@ -290,6 +386,8 @@ function DeliverableCard({
   meId: string
   team: TeamMember[]
   roleMembers: RoleMember[]
+  expanded: boolean
+  onToggle: () => void
   onPatch: (id: string, updates: Record<string, any>) => void
   onUpload: () => void
 }) {
@@ -301,169 +399,209 @@ function DeliverableCard({
   const otherMembers = team.filter((m) => !roleMemberIds.has(m.id))
 
   return (
-    <div data-testid={`deliverable-card-${d.id}`} className="bg-white border border-gray-100 p-4">
-      {/* Title row */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-barlow font-bold text-base text-fe-navy leading-tight">{d.deliverable}</h3>
-          {d.project_name && (
-            <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-fira font-bold bg-fe-blue-gray/15 text-fe-blue-gray uppercase tracking-wide">
-              {d.project_name}
+    <>
+      <tr
+        data-testid={`deliverable-row-${d.id}`}
+        onClick={onToggle}
+        className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/40 cursor-pointer align-middle"
+      >
+        <td className="px-5 py-3">
+          <div className="flex items-center gap-2">
+            <svg
+              className={`w-3.5 h-3.5 text-fe-blue-gray shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="font-fira text-[13px] text-fe-navy">{d.deliverable}</span>
+            {d.project_name && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-fira font-bold bg-fe-blue-gray/15 text-fe-blue-gray uppercase tracking-wide">
+                {d.project_name}
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="px-3 py-3">
+          {d.assigned_to_id ? (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-fira text-fe-navy">
+              <span
+                className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-fira font-bold"
+                style={{ backgroundColor: d.assigned_to_color || '#647692' }}
+              >
+                {d.assigned_to_initials}
+              </span>
+              <span className="hidden sm:inline">{d.assigned_to_name}</span>
             </span>
+          ) : (
+            <span className="text-[12px] font-fira text-fe-blue-gray italic">—</span>
           )}
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-fira font-bold whitespace-nowrap ${STATUS_PILL[d.status]}`}>
+        </td>
+        <td className="px-3 py-3 text-[12px] font-fira text-fe-blue-gray whitespace-nowrap">
+          {fmtDate(d.concepts_due)}
+        </td>
+        <td className="px-3 py-3 text-[12px] font-fira text-fe-blue-gray whitespace-nowrap">{fmtDate(d.due_date)}</td>
+        <td className="px-3 py-3">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-fira font-bold whitespace-nowrap ${STATUS_PILL[d.status]}`}
+          >
             {STATUS_LABELS[d.status]}
           </span>
-          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-fira font-bold whitespace-nowrap ${REVIEW_PILL[d.review_state]}`}>
+        </td>
+        <td className="px-3 py-3">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-fira font-bold whitespace-nowrap ${REVIEW_PILL[d.review_state]}`}
+          >
             {REVIEW_LABELS[d.review_state]}
           </span>
-        </div>
-      </div>
+        </td>
+        <td className="px-5 py-3 text-right text-[12px] font-fira text-fe-blue-gray whitespace-nowrap">
+          {d.assets.length > 0 ? `${d.assets.length}` : '—'}
+        </td>
+      </tr>
 
-      {/* Dates */}
-      {(d.due_date || d.concepts_due) && (
-        <p className="mt-2 text-[12px] font-fira text-fe-blue-gray">
-          {d.concepts_due && <>Concepts {fmtDate(d.concepts_due)}</>}
-          {d.concepts_due && d.due_date && ' · '}
-          {d.due_date && <>Due {fmtDate(d.due_date)}</>}
-        </p>
+      {/* Expanded detail row — actions + assets */}
+      {expanded && (
+        <tr className="border-b border-gray-100 bg-fe-offwhite/40" data-testid={`deliverable-detail-${d.id}`}>
+          <td colSpan={7} className="px-5 py-4">
+            <div className="flex flex-col gap-4">
+              {/* Action controls */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Assign */}
+                <select
+                  value={d.assigned_to_id || ''}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => onPatch(d.id, { assigned_to_id: e.target.value || null })}
+                  data-testid={`button-assign-${d.id}`}
+                  className="px-2 py-1.5 text-[12px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue"
+                >
+                  <option value="">Assign…</option>
+                  <optgroup label="This role">
+                    {roleMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {otherMembers.length > 0 && (
+                    <optgroup label="Others">
+                      {otherMembers.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+
+                {/* Claim / checkout */}
+                {claimed ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-fira text-fe-blue-gray">
+                      Checked out by <span className="font-bold text-fe-navy">{d.claimed_by_name}</span>
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onPatch(d.id, { claimed_by_id: null, claimed_at: null })
+                      }}
+                      data-testid={`button-release-${d.id}`}
+                      className="px-2.5 py-1.5 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
+                    >
+                      Release
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onPatch(d.id, { claimed_by_id: meId, claimed_at: new Date().toISOString(), status: 'in_progress' })
+                    }}
+                    disabled={identityRequired}
+                    data-testid={`button-checkout-${d.id}`}
+                    title={identityRequired ? 'Select who you are to claim' : 'Check out this deliverable'}
+                    className="px-3 py-1.5 bg-fe-navy text-white text-[12px] font-fira font-bold hover:bg-fe-navy/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Check out
+                  </button>
+                )}
+
+                {/* Review actions */}
+                {d.review_state === 'approved' && d.approved_by_name ? (
+                  <span className="text-[12px] font-fira text-fe-teal font-bold">Approved by {d.approved_by_name}</span>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onPatch(d.id, {
+                        approved_by_id: meId,
+                        approved_at: new Date().toISOString(),
+                        review_state: 'approved',
+                        status: 'approved',
+                      })
+                    }}
+                    disabled={identityRequired}
+                    data-testid={`button-approve-${d.id}`}
+                    title={identityRequired ? 'Select who you are to approve' : 'Approve this deliverable'}
+                    className="px-3 py-1.5 bg-fe-teal text-white text-[12px] font-fira font-bold hover:bg-fe-teal/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Approve
+                  </button>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPatch(d.id, { review_state: 'changes_requested', approved_by_id: null, approved_at: null })
+                  }}
+                  disabled={identityRequired}
+                  data-testid={`button-request-changes-${d.id}`}
+                  title={identityRequired ? 'Select who you are to request changes' : 'Request changes'}
+                  className="px-3 py-1.5 border border-fe-red text-fe-red text-[12px] font-fira font-bold hover:bg-fe-red/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Request changes
+                </button>
+
+                {identityRequired && (
+                  <span className="text-[11px] font-fira text-fe-blue-gray italic">Select who you are to claim/approve</span>
+                )}
+              </div>
+
+              {/* Assets */}
+              <div className="border-t border-gray-100 pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                    Assets ({d.assets.length})
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onUpload()
+                    }}
+                    data-testid={`button-upload-${d.id}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload version
+                  </button>
+                </div>
+                {d.assets.length > 0 ? (
+                  <div className="flex flex-wrap gap-3">
+                    {d.assets.map((a) => (
+                      <AssetThumb key={a.id} asset={a} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[12px] font-fira text-fe-blue-gray">No assets uploaded yet.</p>
+                )}
+              </div>
+            </div>
+          </td>
+        </tr>
       )}
-
-      {/* Assignee + assign control */}
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        {d.assigned_to_id ? (
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-fira text-fe-navy">
-            <span
-              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-fira font-bold"
-              style={{ backgroundColor: d.assigned_to_color || '#647692' }}
-            >
-              {d.assigned_to_initials}
-            </span>
-            {d.assigned_to_name}
-          </span>
-        ) : (
-          <span className="text-[12px] font-fira text-fe-blue-gray italic">Unassigned</span>
-        )}
-        <select
-          value={d.assigned_to_id || ''}
-          onChange={(e) => onPatch(d.id, { assigned_to_id: e.target.value || null })}
-          data-testid={`button-assign-${d.id}`}
-          className="ml-auto px-2 py-1 text-[12px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue"
-        >
-          <option value="">Assign…</option>
-          <optgroup label="This role">
-            {roleMembers.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </optgroup>
-          {otherMembers.length > 0 && (
-            <optgroup label="Others">
-              {otherMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-      </div>
-
-      {/* Claim / checkout */}
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        {claimed ? (
-          <>
-            <span className="text-[12px] font-fira text-fe-blue-gray">
-              Checked out by <span className="font-bold text-fe-navy">{d.claimed_by_name}</span>
-            </span>
-            <button
-              onClick={() => onPatch(d.id, { claimed_by_id: null, claimed_at: null })}
-              data-testid={`button-release-${d.id}`}
-              className="px-2.5 py-1 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-            >
-              Release
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => onPatch(d.id, { claimed_by_id: meId, claimed_at: new Date().toISOString(), status: 'in_progress' })}
-            disabled={identityRequired}
-            data-testid={`button-checkout-${d.id}`}
-            title={identityRequired ? 'Select who you are to claim' : 'Check out this deliverable'}
-            className="px-3 py-1.5 bg-fe-navy text-white text-[12px] font-fira font-bold hover:bg-fe-navy/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Check out
-          </button>
-        )}
-      </div>
-
-      {/* Review actions */}
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        {d.review_state === 'approved' && d.approved_by_name ? (
-          <span className="text-[12px] font-fira text-fe-teal font-bold">Approved by {d.approved_by_name}</span>
-        ) : (
-          <button
-            onClick={() =>
-              onPatch(d.id, {
-                approved_by_id: meId,
-                approved_at: new Date().toISOString(),
-                review_state: 'approved',
-                status: 'approved',
-              })
-            }
-            disabled={identityRequired}
-            data-testid={`button-approve-${d.id}`}
-            title={identityRequired ? 'Select who you are to approve' : 'Approve this deliverable'}
-            className="px-3 py-1.5 bg-fe-teal text-white text-[12px] font-fira font-bold hover:bg-fe-teal/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Approve
-          </button>
-        )}
-        <button
-          onClick={() => onPatch(d.id, { review_state: 'changes_requested', approved_by_id: null, approved_at: null })}
-          disabled={identityRequired}
-          data-testid={`button-request-changes-${d.id}`}
-          title={identityRequired ? 'Select who you are to request changes' : 'Request changes'}
-          className="px-3 py-1.5 border border-fe-red text-fe-red text-[12px] font-fira font-bold hover:bg-fe-red/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Request changes
-        </button>
-        {identityRequired && (
-          <span className="text-[11px] font-fira text-fe-blue-gray italic">Select who you are to claim/approve</span>
-        )}
-      </div>
-
-      {/* Assets */}
-      <div className="mt-4 border-t border-gray-100 pt-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-            Assets ({d.assets.length})
-          </span>
-          <button
-            onClick={onUpload}
-            data-testid={`button-upload-${d.id}`}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Upload version
-          </button>
-        </div>
-        {d.assets.length > 0 ? (
-          <div className="flex flex-wrap gap-3">
-            {d.assets.map((a) => (
-              <AssetThumb key={a.id} asset={a} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-[12px] font-fira text-fe-blue-gray">No assets uploaded yet.</p>
-        )}
-      </div>
-    </div>
+    </>
   )
 }
 
@@ -477,6 +615,7 @@ function AssetThumb({ asset }: { asset: DeliverableAsset }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
       data-testid={`asset-thumb-${asset.id}`}
       className={`relative block w-32 shrink-0 bg-white border border-gray-100 ${!asset.is_current ? 'opacity-70' : ''}`}
     >
