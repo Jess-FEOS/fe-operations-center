@@ -9,13 +9,14 @@ const PRIMARY = [
   { href: '/', label: 'Dashboard' },
   { href: '/this-week', label: 'This Week' },
   { href: '/projects', label: 'Projects' },
+  { href: '/vendors', label: 'Vendors' },
   { href: '/marketing', label: 'Marketing' },
   { href: '/program-timeline', label: 'Planning' },
   { href: '/team', label: 'Team' },
-  { href: '/performance', label: 'Performance' },
 ]
 
 const MORE = [
+  { href: '/performance', label: 'Performance' },
   { href: '/weekly-checklist', label: 'Weekly Checklist' },
   { href: '/calendar', label: 'Calendar' },
   { href: '/tasks/bulk-edit', label: 'Bulk Editor' },
