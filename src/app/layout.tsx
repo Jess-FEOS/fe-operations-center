@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Sidebar from '@/components/Sidebar'
+import TopNav from '@/components/TopNav'
 
 export const metadata: Metadata = {
   title: 'Fundamental Edge Operations Center',
@@ -14,10 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="flex min-h-screen">
-        <Sidebar />
-        <main className="flex-1 ml-64 min-h-screen" style={{ backgroundColor: '#F4F5F7' }}>
-          <div className="p-8">
+      <body className="min-h-screen" style={{ backgroundColor: '#F4F5F7' }}>
+        <TopNav />
+        <main className="pt-16 min-h-screen">
+          <div className="max-w-[1600px] mx-auto px-6 py-8">
             {children}
           </div>
         </main>

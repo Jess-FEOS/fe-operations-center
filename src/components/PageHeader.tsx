@@ -36,7 +36,7 @@ export default function PageHeader({
   })
 
   return (
-    <div className="fe-pageband -mx-8 -mt-8 mb-8 px-8 pt-7 pb-6 no-print">
+    <div className="fe-pageband -mx-6 -mt-8 mb-8 px-6 pt-7 pb-6 no-print">
       <p className="fe-eyebrow mb-1">{eyebrow}</p>
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div className="min-w-0">
