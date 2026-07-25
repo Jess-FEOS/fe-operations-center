@@ -157,6 +157,7 @@ export async function POST(request: NextRequest) {
           week_number: task.week_offset + 1,
           status: 'not_started',
           owner_ids: task.owner_ids,
+          role_id: task.role_id || null,
         };
       });
 

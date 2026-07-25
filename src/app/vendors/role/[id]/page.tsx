@@ -70,6 +70,7 @@ interface RoleDeliverable {
   changes_requested_by_id: string | null
   changes_requested_by_name: string | null
   changes_requested_at: string | null
+  source: 'manual' | 'template' | null
   assets: DeliverableAsset[]
 }
 
@@ -375,21 +376,44 @@ export default function RoleWorkspacePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {g.items.map((d) => (
-                          <DeliverableRow
-                            key={d.id}
-                            d={d}
-                            meId={meId}
-                            meName={team.find((m) => m.id === meId)?.name || null}
-                            team={team}
-                            roleMembers={role.members}
-                            expanded={expandedRow === d.id}
-                            onToggle={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
-                            onPatch={patchDeliverable}
-                            onUpload={() => setUploadFor(d)}
-                            onEdit={() => setEditFor(d)}
-                          />
-                        ))}
+                        {(() => {
+                          const templateItems = g.items.filter((d) => d.source === 'template')
+                          const manualItems = g.items.filter((d) => d.source !== 'template')
+                          const renderRow = (d: RoleDeliverable) => (
+                            <DeliverableRow
+                              key={d.id}
+                              d={d}
+                              meId={meId}
+                              meName={team.find((m) => m.id === meId)?.name || null}
+                              team={team}
+                              roleMembers={role.members}
+                              expanded={expandedRow === d.id}
+                              onToggle={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
+                              onPatch={patchDeliverable}
+                              onUpload={() => setUploadFor(d)}
+                              onEdit={() => setEditFor(d)}
+                            />
+                          )
+                          const subHeader = (label: string, count: number) => (
+                            <tr className="bg-gray-50/40 border-b border-gray-100">
+                              <td colSpan={7} className="px-5 py-1.5">
+                                <span className="text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+                                  {label} · {count}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                          // Only show sub-headers when BOTH kinds exist; otherwise a flat list.
+                          const showSplit = templateItems.length > 0 && manualItems.length > 0
+                          return (
+                            <>
+                              {showSplit && subHeader('From project templates', templateItems.length)}
+                              {templateItems.map(renderRow)}
+                              {showSplit && subHeader('Manually assigned', manualItems.length)}
+                              {manualItems.map(renderRow)}
+                            </>
+                          )
+                        })()}
                       </tbody>
                     </table>
                   </div>
