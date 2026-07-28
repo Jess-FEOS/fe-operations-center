@@ -12,19 +12,20 @@ import PageHeader from '@/components/PageHeader'
 // Two views: Kanban board (by status) and a sortable/filterable table.
 // ------------------------------------------------------------------
 
-type Status = 'idea' | 'drafted' | 'scheduled' | 'posted'
+type Status = 'ready' | 'idea' | 'drafted' | 'scheduled' | 'posted'
 
 const STATUSES: { key: Status; label: string; color: string }[] = [
+  { key: 'ready', label: 'Ready to write', color: '#437F94' },
   { key: 'idea', label: 'Idea', color: '#9CA3AF' },
   { key: 'drafted', label: 'Drafted', color: '#0762C8' },
   { key: 'scheduled', label: 'Scheduled', color: '#B29838' },
   { key: 'posted', label: 'Posted', color: '#046A38' },
 ]
 const STATUS_COLOR: Record<Status, string> = {
-  idea: '#9CA3AF', drafted: '#0762C8', scheduled: '#B29838', posted: '#046A38',
+  ready: '#437F94', idea: '#9CA3AF', drafted: '#0762C8', scheduled: '#B29838', posted: '#046A38',
 }
 const STATUS_LABEL: Record<Status, string> = {
-  idea: 'Idea', drafted: 'Drafted', scheduled: 'Scheduled', posted: 'Posted',
+  ready: 'Ready to write', idea: 'Idea', drafted: 'Drafted', scheduled: 'Scheduled', posted: 'Posted',
 }
 
 const CHANNELS = ['YouTube', 'TikTok', 'Instagram', 'LinkedIn', 'X', 'Email', 'Blog'] as const
@@ -42,13 +43,18 @@ interface ContentItem {
   owner: Owner | null
   project_id: string | null
   project_name: string | null
+  transcript: string | null
+  content_kind: 'clip' | 'episode'
+  hashtags: string | null
+  video_link: string | null
 }
 interface TeamMember { id: string; name: string; initials: string; color: string }
 interface ProjectLite { id: string; name: string }
 
 const EMPTY: Omit<ContentItem, 'owner' | 'project_name'> = {
-  id: '', title: '', channels: [], status: 'idea', scheduled_date: null,
+  id: '', title: '', channels: [], status: 'ready', scheduled_date: null,
   asset_link: null, caption: null, owner_id: null, project_id: null,
+  transcript: null, content_kind: 'clip', hashtags: null, video_link: null,
 }
 
 function fmtDate(s: string | null) {
@@ -72,6 +78,8 @@ export default function MarketingPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState<typeof EMPTY>({ ...EMPTY })
   const [saving, setSaving] = useState(false)
+  const [drafting, setDrafting] = useState(false)
+  const [draftErr, setDraftErr] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -95,10 +103,38 @@ export default function MarketingPage() {
       id: it.id, title: it.title, channels: it.channels || [], status: it.status,
       scheduled_date: it.scheduled_date, asset_link: it.asset_link, caption: it.caption,
       owner_id: it.owner_id, project_id: it.project_id,
+      transcript: it.transcript, content_kind: it.content_kind || 'clip',
+      hashtags: it.hashtags, video_link: it.video_link,
     })
     setFormOpen(true)
   }
-  const closeForm = () => { setFormOpen(false); setSaving(false) }
+  const closeForm = () => { setFormOpen(false); setSaving(false); setDraftErr(null) }
+
+  // Run the FE-voice drafter on the transcript, fill title/description/hashtags.
+  const draftCopy = async () => {
+    if (!form.transcript || !form.transcript.trim()) { setDraftErr('Paste a transcript first.'); return }
+    setDrafting(true); setDraftErr(null)
+    try {
+      const res = await fetch('/api/marketing/draft', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: form.transcript, content_kind: form.content_kind }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setDraftErr(data?.error || 'Drafting failed.'); return }
+      setForm((f) => ({
+        ...f,
+        title: data.title || f.title,
+        caption: data.description || f.caption,
+        hashtags: data.hashtags || f.hashtags,
+        // once copy exists, nudge from 'ready' toward 'drafted'
+        status: f.status === 'ready' ? 'drafted' : f.status,
+      }))
+    } catch (e: any) {
+      setDraftErr(e?.message || 'Drafting failed.')
+    } finally {
+      setDrafting(false)
+    }
+  }
 
   const toggleChannel = (ch: string) => {
     setForm((f) => ({
@@ -127,7 +163,7 @@ export default function MarketingPage() {
 
   // advance status inline (board card + table). Cycles forward, wraps at posted.
   const advanceStatus = async (it: ContentItem) => {
-    const order: Status[] = ['idea', 'drafted', 'scheduled', 'posted']
+    const order: Status[] = ['ready', 'idea', 'drafted', 'scheduled', 'posted']
     const next = order[(order.indexOf(it.status) + 1) % order.length]
     // optimistic
     setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, status: next } : x)))
@@ -183,7 +219,7 @@ export default function MarketingPage() {
         </div>
       ) : view === 'board' ? (
         // ---------------- Kanban board ----------------
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3" data-testid="board">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3" data-testid="board">
           {STATUSES.map((col) => {
             const colItems = items.filter((it) => it.status === col.key)
             return (
@@ -346,6 +382,34 @@ export default function MarketingPage() {
             </div>
 
             <div className="p-5 space-y-3">
+              {/* --- Source & FE-voice drafting --- */}
+              <div className="border border-fe-teal/40 bg-fe-teal/5 p-3 space-y-2.5" data-testid="draft-panel">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-fira text-fe-teal uppercase tracking-wider font-bold">Draft with FE voice</span>
+                  <div className="flex border border-fe-line">
+                    <button type="button" onClick={() => setForm({ ...form, content_kind: 'clip' })} data-testid="kind-clip"
+                      className={`px-2.5 py-1 text-xs font-fira ${form.content_kind === 'clip' ? 'bg-fe-teal text-white' : 'bg-white text-fe-blue-gray'}`}>Clip</button>
+                    <button type="button" onClick={() => setForm({ ...form, content_kind: 'episode' })} data-testid="kind-episode"
+                      className={`px-2.5 py-1 text-xs font-fira border-l border-fe-line ${form.content_kind === 'episode' ? 'bg-fe-teal text-white' : 'bg-white text-fe-blue-gray'}`}>Episode</button>
+                  </div>
+                </div>
+                <Field label="Video link (Drive)">
+                  <input className="fe-input" value={form.video_link || ''} onChange={(e) => setForm({ ...form, video_link: e.target.value || null })} placeholder="https://drive.google.com/…" data-testid="input-video" />
+                </Field>
+                <Field label={form.content_kind === 'episode' ? 'Episode transcript' : 'Clip transcript'}>
+                  <textarea className="fe-input min-h-[90px] resize-y font-fira text-xs" value={form.transcript || ''} onChange={(e) => setForm({ ...form, transcript: e.target.value || null })} placeholder="Paste the transcript here, then draft the title + description…" data-testid="input-transcript" />
+                </Field>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={draftCopy} disabled={drafting || !form.transcript?.trim()} data-testid="button-draft"
+                    className="px-3 py-1.5 bg-fe-teal text-white text-sm font-fira font-bold hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2">
+                    {drafting && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    {drafting ? 'Drafting…' : 'Draft copy with FE voice'}
+                  </button>
+                  <span className="text-[11px] font-fira text-fe-blue-gray">Fills title, description &amp; hashtags below — you edit.</span>
+                </div>
+                {draftErr && <p className="text-xs font-fira text-fe-red" data-testid="draft-error">{draftErr}</p>}
+              </div>
+
               <Field label="Title">
                 <input className="fe-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Q3 launch teaser reel" data-testid="input-title" />
               </Field>
@@ -397,8 +461,12 @@ export default function MarketingPage() {
                 <input className="fe-input" value={form.asset_link || ''} onChange={(e) => setForm({ ...form, asset_link: e.target.value || null })} placeholder="https://drive.google.com/…" data-testid="input-link" />
               </Field>
 
-              <Field label="Caption">
-                <textarea className="fe-input min-h-[80px] resize-y" value={form.caption || ''} onChange={(e) => setForm({ ...form, caption: e.target.value || null })} placeholder="Post copy…" data-testid="input-caption" />
+              <Field label="Description / caption">
+                <textarea className="fe-input min-h-[110px] resize-y" value={form.caption || ''} onChange={(e) => setForm({ ...form, caption: e.target.value || null })} placeholder="Post copy…" data-testid="input-caption" />
+              </Field>
+
+              <Field label="Hashtags">
+                <input className="fe-input" value={form.hashtags || ''} onChange={(e) => setForm({ ...form, hashtags: e.target.value || null })} placeholder="#investing #AI #buyside" data-testid="input-hashtags" />
               </Field>
             </div>
 

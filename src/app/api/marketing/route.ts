@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 // Fields: title (required), channels text[], status, scheduled_date,
 //         asset_link, caption, owner_id, project_id.
 
-const ALLOWED = ['title', 'channels', 'status', 'scheduled_date', 'asset_link', 'caption', 'owner_id', 'project_id']
+const ALLOWED = ['title', 'channels', 'status', 'scheduled_date', 'asset_link', 'caption', 'owner_id', 'project_id', 'transcript', 'content_kind', 'hashtags', 'video_link']
 
 // GET /api/marketing  → all items with owner + project joined, newest first
 export async function GET() {
@@ -29,6 +29,10 @@ export async function GET() {
       scheduled_date: r.scheduled_date,
       asset_link: r.asset_link,
       caption: r.caption,
+      transcript: r.transcript,
+      content_kind: r.content_kind || 'clip',
+      hashtags: r.hashtags,
+      video_link: r.video_link,
       owner_id: r.owner_id,
       owner: r.team_members
         ? { id: r.team_members.id, name: r.team_members.name, initials: r.team_members.initials, color: r.team_members.color }
@@ -48,7 +52,7 @@ function cleanRow(body: any) {
     if (!(f in body)) continue
     let v = body[f]
     if (f === 'channels') v = Array.isArray(v) ? v : []
-    else if (f === 'owner_id' || f === 'project_id' || f === 'scheduled_date' || f === 'asset_link' || f === 'caption') {
+    else if (f === 'owner_id' || f === 'project_id' || f === 'scheduled_date' || f === 'asset_link' || f === 'caption' || f === 'transcript' || f === 'hashtags' || f === 'video_link') {
       v = v === '' ? null : v
     }
     row[f] = v
