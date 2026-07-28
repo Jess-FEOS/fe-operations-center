@@ -394,10 +394,17 @@ export default function MarketingPage() {
                   </div>
                 </div>
                 <Field label="Video link (Drive)">
-                  <input className="fe-input" value={form.video_link || ''} onChange={(e) => setForm({ ...form, video_link: e.target.value || null })} placeholder="https://drive.google.com/…" data-testid="input-video" />
+                  <div className="flex gap-2">
+                    <input className="fe-input flex-1" value={form.video_link || ''} onChange={(e) => setForm({ ...form, video_link: e.target.value || null })} placeholder="https://drive.google.com/…" data-testid="input-video" />
+                    {form.video_link?.trim() && (
+                      <a href={form.video_link} target="_blank" rel="noreferrer" data-testid="link-open-video"
+                        className="px-2.5 py-1.5 border border-fe-teal text-fe-teal text-xs font-fira whitespace-nowrap hover:bg-fe-teal hover:text-white">Open ↗</a>
+                    )}
+                  </div>
                 </Field>
                 <Field label={form.content_kind === 'episode' ? 'Episode transcript' : 'Clip transcript'}>
-                  <textarea className="fe-input min-h-[90px] resize-y font-fira text-xs" value={form.transcript || ''} onChange={(e) => setForm({ ...form, transcript: e.target.value || null })} placeholder="Paste the transcript here, then draft the title + description…" data-testid="input-transcript" />
+                  <textarea className="fe-input min-h-[90px] resize-y font-fira text-xs" value={form.transcript || ''} onChange={(e) => setForm({ ...form, transcript: e.target.value || null })} placeholder="Paste a transcript from Otter, a caption file, or any source — then draft the title + description…" data-testid="input-transcript" />
+                  <p className="text-[11px] font-fira text-fe-blue-gray mt-1">No transcript? Upload the Drive video to Otter, copy the text, and paste it here.</p>
                 </Field>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={draftCopy} disabled={drafting || !form.transcript?.trim()} data-testid="button-draft"
