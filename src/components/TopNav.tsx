@@ -7,7 +7,6 @@ import { useRouter, usePathname } from 'next/navigation'
 // Primary destinations shown inline; secondary ones tuck under "More".
 const PRIMARY = [
   { href: '/', label: 'Dashboard' },
-  { href: '/this-week', label: 'This Week' },
   { href: '/projects', label: 'Projects' },
   { href: '/vendors', label: 'Vendors' },
   { href: '/marketing', label: 'Marketing' },
