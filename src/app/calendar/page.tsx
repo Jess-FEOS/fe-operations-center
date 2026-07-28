@@ -1,71 +1,68 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import Avatar from '@/components/Avatar'
 import PageHeader from '@/components/PageHeader'
 
-interface TeamMember {
-  id: string
-  name: string
-  initials: string
-  color: string
-  role_data: { id: string; name: string; color: string } | null
-}
+// ------------------------------------------------------------------
+// Master calendar — three toggleable layers on one month grid:
+//   • Projects  — auto-derived from task due dates, one chip per project/day
+//   • Seminars  — added directly on the calendar (date, time, client, location)
+//   • Marketing — displayed from marketing_content; links to the Marketing page
+// A single unified feed (/api/calendar) supplies all three.
+// ------------------------------------------------------------------
 
-interface CalendarTask {
-  id: string
-  task_name: string
-  due_date: string
-  status: string
+type Layer = 'project' | 'seminar' | 'marketing'
+
+interface ProjectEvent {
+  type: 'project'
+  date: string
   project_id: string
   project_name: string
-  workflow_type: string
-  owner_ids: string[]
+  task_count: number
+  task_titles: string[]
+}
+interface SeminarEvent {
+  type: 'seminar'
+  date: string
+  id: string
+  title: string | null
+  start_time: string | null
+  client_name: string | null
+  location: string | null
+  notes: string | null
+}
+interface MarketingEvent {
+  type: 'marketing'
+  date: string
+  id: string
+  title: string
+  channels: string[]
+  status: string
+  asset_link: string | null
+}
+type CalendarEvent = ProjectEvent | SeminarEvent | MarketingEvent
+
+const LAYERS: { key: Layer; label: string; color: string }[] = [
+  { key: 'project', label: 'Projects', color: '#0762C8' },
+  { key: 'seminar', label: 'Seminars', color: '#B29838' },
+  { key: 'marketing', label: 'Marketing', color: '#437F94' },
+]
+const LAYER_COLOR: Record<Layer, string> = {
+  project: '#0762C8',
+  seminar: '#B29838',
+  marketing: '#437F94',
 }
 
-interface ProjectGroup {
-  projectId: string
-  projectName: string
-  workflowType: string
-  tasks: CalendarTask[]
-}
-
-const WORKFLOW_COLORS: Record<string, string> = {
-  'course-launch': '#0762C8',
-  'podcast': '#437F94',
-  'newsletter': '#B29838',
-  'subscription': '#046A38',
-}
-
-// Fallback color for unknown workflow types (the "Other" bucket). Matches the
-// chip fallback used below so toggling "Other" controls exactly those chips.
-const OTHER_COLOR = '#647692'
-
-// Category filter layers: the four known workflow types plus an "Other" catch-all,
-// so every task maps to exactly one toggleable category and nothing is unfilterable.
-const CATEGORIES = [...Object.keys(WORKFLOW_COLORS), 'other']
-
-const CATEGORY_LABELS: Record<string, string> = {
-  'course-launch': 'Course launch',
-  'podcast': 'Podcast',
-  'newsletter': 'Newsletter',
-  'subscription': 'Subscription',
-  'other': 'Other',
-}
-
-// A task's category = its workflow_type if known, else the "other" bucket.
-function categoryOf(workflowType: string): string {
-  return workflowType in WORKFLOW_COLORS ? workflowType : 'other'
-}
-
-function categoryColor(category: string): string {
-  return category === 'other' ? OTHER_COLOR : WORKFLOW_COLORS[category]
+const MKT_STATUS_COLOR: Record<string, string> = {
+  idea: '#9CA3AF',
+  drafted: '#0762C8',
+  scheduled: '#B29838',
+  posted: '#046A38',
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-// Format date as YYYY-MM-DD without UTC conversion
 function toDateStr(d: Date) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -76,90 +73,86 @@ function toDateStr(d: Date) {
 function getMonthRange(year: number, month: number) {
   const first = new Date(year, month, 1)
   const last = new Date(year, month + 1, 0)
-
-  // Pad to Monday before first day
   let startDay = first.getDay()
   if (startDay === 0) startDay = 7
   const calStart = new Date(first)
   calStart.setDate(first.getDate() - (startDay - 1))
-
-  // Pad to Sunday after last day
   let endDay = last.getDay()
   if (endDay === 0) endDay = 7
   const calEnd = new Date(last)
   calEnd.setDate(last.getDate() + (7 - endDay))
-
   return { calStart, calEnd, first, last }
+}
+
+function fmtTime(t: string | null) {
+  if (!t) return ''
+  const [h, m] = t.split(':')
+  let hour = parseInt(h, 10)
+  const ampm = hour >= 12 ? 'PM' : 'AM'
+  hour = hour % 12 || 12
+  return `${hour}:${m} ${ampm}`
+}
+
+const EMPTY_FORM = {
+  id: '',
+  title: '',
+  seminar_date: '',
+  start_time: '',
+  client_name: '',
+  location: '',
+  notes: '',
 }
 
 export default function CalendarPage() {
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [month, setMonth] = useState(() => new Date().getMonth())
-  const [tasks, setTasks] = useState<CalendarTask[]>([])
-  const [team, setTeam] = useState<TeamMember[]>([])
+  const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set())
-  // Active category layers. Default: all on (Set holds every category).
-  const [activeCategories, setActiveCategories] = useState<Set<string>>(() => new Set(CATEGORIES))
+  const [activeLayers, setActiveLayers] = useState<Set<Layer>>(
+    () => new Set<Layer>(['project', 'seminar', 'marketing'])
+  )
+
+  // Seminar day form
+  const [formOpen, setFormOpen] = useState(false)
+  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [saving, setSaving] = useState(false)
 
   const { calStart, calEnd, first } = getMonthRange(year, month)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true)
     const from = toDateStr(calStart)
     const to = toDateStr(calEnd)
-    Promise.all([
-      fetch(`/api/tasks/range?from=${from}&to=${to}`).then(r => r.json()).catch(() => []),
-      fetch('/api/team').then(r => r.json()).catch(() => []),
-    ]).then(([tasksData, teamData]) => {
-      setTasks(Array.isArray(tasksData) ? tasksData : [])
-      setTeam(Array.isArray(teamData) ? teamData : [])
-      setLoading(false)
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetch(`/api/calendar?from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then((d) => setEvents(Array.isArray(d?.events) ? d.events : []))
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month])
 
-  const toggleMember = (id: string) => {
-    setSelectedMembers(prev => {
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const toggleLayer = (key: Layer) => {
+    setActiveLayers((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
 
-  const toggleCategory = (cat: string) => {
-    setActiveCategories(prev => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
+  // Bucket events by date, filtered to active layers.
+  const byDate = new Map<string, CalendarEvent[]>()
+  for (const e of events) {
+    if (!activeLayers.has(e.type)) continue
+    if (!byDate.has(e.date)) byDate.set(e.date, [])
+    byDate.get(e.date)!.push(e)
   }
 
-  // Compose category + team filters with AND: a task shows only if its category
-  // layer is active AND it passes the team filter (team filter inactive = all pass).
-  const filteredTasks = tasks.filter(t => {
-    const categoryOk = activeCategories.has(categoryOf(t.workflow_type))
-    const teamOk = selectedMembers.size === 0 || (t.owner_ids?.some(oid => selectedMembers.has(oid)) ?? false)
-    return categoryOk && teamOk
-  })
-
-  // Group tasks by date, then by project within each date
-  const groupsByDate = new Map<string, ProjectGroup[]>()
-  for (const task of filteredTasks) {
-    const key = task.due_date
-    if (!groupsByDate.has(key)) groupsByDate.set(key, [])
-    const dateGroups = groupsByDate.get(key)!
-    let group = dateGroups.find(g => g.projectId === task.project_id)
-    if (!group) {
-      group = { projectId: task.project_id, projectName: task.project_name, workflowType: task.workflow_type, tasks: [] }
-      dateGroups.push(group)
-    }
-    group.tasks.push(task)
-  }
-
-  // Build calendar grid (weeks of days)
+  // Build weeks
   const weeks: Date[][] = []
   const cursor = new Date(calStart)
   while (cursor <= calEnd) {
@@ -175,30 +168,70 @@ export default function CalendarPage() {
   const monthLabel = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
   const prevMonth = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11) }
-    else setMonth(m => m - 1)
+    if (month === 0) { setYear((y) => y - 1); setMonth(11) }
+    else setMonth((m) => m - 1)
   }
-
   const nextMonth = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0) }
-    else setMonth(m => m + 1)
+    if (month === 11) { setYear((y) => y + 1); setMonth(0) }
+    else setMonth((m) => m + 1)
   }
-
   const goToday = () => {
     const now = new Date()
     setYear(now.getFullYear())
     setMonth(now.getMonth())
   }
 
+  // --- Seminar form handlers
+  const openNew = (dateStr: string) => {
+    setForm({ ...EMPTY_FORM, seminar_date: dateStr })
+    setFormOpen(true)
+  }
+  const openEdit = (s: SeminarEvent) => {
+    setForm({
+      id: s.id,
+      title: s.title || '',
+      seminar_date: s.date,
+      start_time: s.start_time || '',
+      client_name: s.client_name || '',
+      location: s.location || '',
+      notes: s.notes || '',
+    })
+    setFormOpen(true)
+  }
+  const closeForm = () => { setFormOpen(false); setSaving(false) }
+
+  const saveSeminar = async () => {
+    if (!form.seminar_date) return
+    setSaving(true)
+    const method = form.id ? 'PATCH' : 'POST'
+    const res = await fetch('/api/seminars', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    }).catch(() => null)
+    setSaving(false)
+    if (res && res.ok) { closeForm(); load() }
+  }
+  const deleteSeminar = async () => {
+    if (!form.id) return
+    setSaving(true)
+    const res = await fetch(`/api/seminars?id=${form.id}`, { method: 'DELETE' }).catch(() => null)
+    setSaving(false)
+    if (res && res.ok) { closeForm(); load() }
+  }
+
   return (
     <div className="font-fira">
       <PageHeader
-        title="Calendar"
+        title="Master Calendar"
+        subtitle="Projects, seminars, and marketing on one surface"
         actions={
           <div className="flex items-center gap-2">
             <button
               onClick={prevMonth}
               className="p-2 border border-fe-line bg-white hover:bg-gray-50 transition-colors"
+              data-testid="button-prev-month"
+              aria-label="Previous month"
             >
               <svg className="w-4 h-4 text-fe-anthracite" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -207,15 +240,18 @@ export default function CalendarPage() {
             <button
               onClick={goToday}
               className="px-3 py-1.5 border border-fe-line bg-white hover:bg-gray-50 text-sm font-fira text-fe-anthracite transition-colors"
+              data-testid="button-today"
             >
               Today
             </button>
-            <span className="font-barlow font-bold text-lg text-fe-navy min-w-[180px] text-center">
+            <span className="font-barlow font-bold text-lg text-fe-navy min-w-[180px] text-center" data-testid="text-month">
               {monthLabel}
             </span>
             <button
               onClick={nextMonth}
               className="p-2 border border-fe-line bg-white hover:bg-gray-50 transition-colors"
+              data-testid="button-next-month"
+              aria-label="Next month"
             >
               <svg className="w-4 h-4 text-fe-anthracite" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -225,57 +261,29 @@ export default function CalendarPage() {
         }
       />
 
-      {/* Team member filters */}
-      {team.length > 0 && (
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-xs text-fe-blue-gray font-fira mr-1">Filter by:</span>
-          {team.map(member => {
-            const isActive = selectedMembers.has(member.id)
-            return (
-              <button
-                key={member.id}
-                onClick={() => toggleMember(member.id)}
-                className={`transition-all rounded-full ${isActive ? 'ring-2 ring-fe-blue ring-offset-1' : 'opacity-50 hover:opacity-80'}`}
-                title={member.name}
-              >
-                <Avatar initials={member.initials} color={member.color} size="sm" />
-              </button>
-            )
-          })}
-          {selectedMembers.size > 0 && (
-            <button
-              onClick={() => setSelectedMembers(new Set())}
-              className="text-xs font-fira text-fe-blue-gray hover:text-fe-navy transition-colors ml-1"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Category layer toggles (mirrors the team filter row above) */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <span className="text-xs text-fe-blue-gray font-fira mr-1">Categories:</span>
-        {CATEGORIES.map(cat => {
-          const isActive = activeCategories.has(cat)
-          const color = categoryColor(cat)
+      {/* Layer toggles */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap no-print">
+        <span className="text-xs text-fe-blue-gray font-fira mr-1 uppercase tracking-wider">Layers</span>
+        {LAYERS.map((l) => {
+          const on = activeLayers.has(l.key)
           return (
             <button
-              key={cat}
-              onClick={() => toggleCategory(cat)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 bg-white text-xs font-fira text-fe-anthracite transition-all ${
-                isActive ? 'ring-2 ring-fe-blue ring-offset-1' : 'opacity-50 hover:opacity-80'
+              key={l.key}
+              onClick={() => toggleLayer(l.key)}
+              data-testid={`toggle-layer-${l.key}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 border border-fe-line bg-white text-xs font-fira text-fe-anthracite transition-all ${
+                on ? 'ring-2 ring-fe-blue ring-offset-1' : 'opacity-45 hover:opacity-80'
               }`}
-              title={CATEGORY_LABELS[cat]}
             >
               <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: isActive ? color : '#cbd5e1' }}
+                className="w-2.5 h-2.5 shrink-0"
+                style={{ backgroundColor: on ? l.color : '#cbd5e1' }}
               />
-              {CATEGORY_LABELS[cat]}
+              {l.label}
             </button>
           )
         })}
+        <span className="text-xs text-fe-blue-gray font-fira ml-2">Click any day to add a seminar</span>
       </div>
 
       {loading ? (
@@ -283,70 +291,102 @@ export default function CalendarPage() {
           <div className="w-8 h-8 border-4 border-fe-blue border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="bg-white border border-gray-100 overflow-hidden">
+        <div className="bg-white border border-fe-line overflow-hidden">
           {/* Day headers */}
-          <div className="grid grid-cols-7 border-b border-gray-100">
-            {DAYS.map(day => (
-              <div key={day} className="px-2 py-2.5 text-center text-xs font-fira font-bold text-fe-blue-gray bg-gray-50">
+          <div className="grid grid-cols-7 border-b border-fe-line">
+            {DAYS.map((day) => (
+              <div key={day} className="px-2 py-2.5 text-center text-xs font-fira font-bold text-fe-blue-gray bg-fe-offwhite">
                 {day}
               </div>
             ))}
           </div>
 
-          {/* Calendar weeks */}
+          {/* Weeks */}
           {weeks.map((week, wi) => (
-            <div key={wi} className="grid grid-cols-7 border-b border-gray-50 last:border-b-0">
+            <div key={wi} className="grid grid-cols-7 border-b border-fe-line last:border-b-0">
               {week.map((day, di) => {
                 const dateStr = toDateStr(day)
                 const isCurrentMonth = day.getMonth() === month
                 const isToday = dateStr === todayStr
-                const dayGroups = groupsByDate.get(dateStr) || []
+                const dayEvents = byDate.get(dateStr) || []
 
                 return (
                   <div
                     key={di}
-                    className={`min-h-[130px] border-r border-gray-50 last:border-r-0 p-2 ${
-                      isCurrentMonth ? 'bg-white' : 'bg-gray-50/50'
+                    onClick={() => openNew(dateStr)}
+                    data-testid={`day-${dateStr}`}
+                    className={`group min-h-[132px] border-r border-fe-line last:border-r-0 p-2 cursor-pointer transition-colors ${
+                      isCurrentMonth ? 'bg-white hover:bg-fe-offwhite' : 'bg-fe-offwhite'
                     }`}
                   >
-                    <div className={`text-xs font-fira mb-2 ${
-                      isToday
-                        ? 'w-6 h-6 rounded-full bg-fe-blue text-white flex items-center justify-center font-bold'
-                        : isCurrentMonth ? 'text-fe-anthracite font-medium' : 'text-gray-300'
-                    }`}>
-                      {day.getDate()}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className={`text-xs font-fira ${
+                        isToday
+                          ? 'w-6 h-6 rounded-full bg-fe-blue text-white flex items-center justify-center font-bold'
+                          : isCurrentMonth ? 'text-fe-anthracite font-medium' : 'text-gray-300'
+                      }`}>
+                        {day.getDate()}
+                      </div>
+                      <span className="opacity-0 group-hover:opacity-100 text-fe-blue-gray text-base leading-none transition-opacity" aria-hidden>+</span>
                     </div>
-                    <div className="space-y-1">
-                      {dayGroups.slice(0, 3).map(group => {
-                        const color = WORKFLOW_COLORS[group.workflowType] || '#647692'
-                        const tooltipText = group.tasks.map(t => `• ${t.task_name}`).join('\n')
+
+                    <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                      {dayEvents.map((ev, idx) => {
+                        if (ev.type === 'project') {
+                          const c = LAYER_COLOR.project
+                          return (
+                            <Link
+                              key={`p-${ev.project_id}-${idx}`}
+                              href={`/projects/${ev.project_id}`}
+                              className="block px-2 py-1 text-xs font-fira truncate hover:opacity-80 transition-opacity"
+                              style={{ backgroundColor: `${c}12`, color: c, borderLeft: `3px solid ${c}` }}
+                              title={ev.task_titles.map((t) => `• ${t}`).join('\n')}
+                              data-testid={`event-project-${ev.project_id}`}
+                            >
+                              <span className="truncate">{ev.project_name}</span>
+                              <span
+                                className="ml-1 inline-flex items-center justify-center px-1 min-w-[16px] h-4 rounded-full text-white font-bold leading-none"
+                                style={{ backgroundColor: c, fontSize: '10px' }}
+                              >
+                                {ev.task_count}
+                              </span>
+                            </Link>
+                          )
+                        }
+                        if (ev.type === 'seminar') {
+                          const c = LAYER_COLOR.seminar
+                          const label = ev.client_name || ev.title || 'Seminar'
+                          return (
+                            <button
+                              key={`s-${ev.id}`}
+                              onClick={() => openEdit(ev)}
+                              className="w-full text-left px-2 py-1 text-xs font-fira truncate hover:opacity-80 transition-opacity"
+                              style={{ backgroundColor: `${c}18`, color: '#7a6626', borderLeft: `3px solid ${c}` }}
+                              title={[ev.title, ev.client_name, ev.location, fmtTime(ev.start_time)].filter(Boolean).join(' · ')}
+                              data-testid={`event-seminar-${ev.id}`}
+                            >
+                              {ev.start_time && <span className="font-bold mr-1">{fmtTime(ev.start_time)}</span>}
+                              <span className="truncate">{label}</span>
+                            </button>
+                          )
+                        }
+                        // marketing
+                        const c = LAYER_COLOR.marketing
+                        const sc = MKT_STATUS_COLOR[ev.status] || '#9CA3AF'
                         return (
                           <Link
-                            key={group.projectId}
-                            href={`/projects/${group.projectId}`}
-                            className="group/chip relative block px-2 py-1 rounded text-xs font-fira truncate hover:opacity-80 transition-opacity"
-                            style={{
-                              backgroundColor: `${color}12`,
-                              color: color,
-                              borderLeft: `3px solid ${color}`,
-                            }}
-                            title={tooltipText}
+                            key={`m-${ev.id}`}
+                            href="/marketing"
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-fira truncate hover:opacity-80 transition-opacity"
+                            style={{ backgroundColor: `${c}14`, color: '#2f5866', borderLeft: `3px solid ${c}` }}
+                            title={`${ev.title} — ${ev.status}${ev.channels.length ? ' · ' + ev.channels.join(', ') : ''}`}
+                            data-testid={`event-marketing-${ev.id}`}
                           >
-                            <span className="truncate">{group.projectName}</span>
-                            <span
-                              className="ml-1 inline-flex items-center justify-center px-1 min-w-[16px] h-4 rounded-full text-white text-xs font-bold leading-none"
-                              style={{ backgroundColor: color, fontSize: '10px' }}
-                            >
-                              {group.tasks.length}
-                            </span>
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: sc }} />
+                            <span className="truncate">{ev.title}</span>
                           </Link>
                         )
                       })}
-                      {dayGroups.length > 3 && (
-                        <div className="text-xs text-fe-blue-gray font-fira px-1">
-                          +{dayGroups.length - 3} more
-                        </div>
-                      )}
                     </div>
                   </div>
                 )
@@ -355,6 +395,131 @@ export default function CalendarPage() {
           ))}
         </div>
       )}
+
+      {/* Legend footnote */}
+      <div className="mt-3 flex items-center gap-4 text-xs font-fira text-fe-blue-gray no-print flex-wrap">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.project }} /> Projects (task due dates)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.seminar }} /> Seminars (click a day to add)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.marketing }} /> Marketing (opens Marketing page)</span>
+      </div>
+
+      {/* Seminar add/edit modal */}
+      {formOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 no-print"
+          onClick={closeForm}
+        >
+          <div
+            className="bg-white border border-fe-line w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="modal-seminar"
+          >
+            <div className="fe-panel-header flex items-center justify-between px-5 py-3.5 border-b border-fe-line">
+              <h2 className="font-barlow font-bold text-lg text-fe-navy">
+                {form.id ? 'Edit seminar' : 'Add seminar'}
+              </h2>
+              <button onClick={closeForm} className="text-fe-blue-gray hover:text-fe-navy" aria-label="Close" data-testid="button-close-modal">✕</button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <Field label="Client name">
+                <input
+                  className="fe-input"
+                  value={form.client_name}
+                  onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+                  placeholder="e.g. Point72 Academy"
+                  data-testid="input-client"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Date">
+                  <input
+                    type="date"
+                    className="fe-input"
+                    value={form.seminar_date}
+                    onChange={(e) => setForm({ ...form, seminar_date: e.target.value })}
+                    data-testid="input-date"
+                  />
+                </Field>
+                <Field label="Time">
+                  <input
+                    type="time"
+                    className="fe-input"
+                    value={form.start_time}
+                    onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                    data-testid="input-time"
+                  />
+                </Field>
+              </div>
+              <Field label="Location">
+                <input
+                  className="fe-input"
+                  value={form.location}
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                  placeholder="City, ST or Virtual"
+                  data-testid="input-location"
+                />
+              </Field>
+              <Field label="Title (optional)">
+                <input
+                  className="fe-input"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="e.g. Valuation Deep Dive"
+                  data-testid="input-title"
+                />
+              </Field>
+              <Field label="Notes (optional)">
+                <textarea
+                  className="fe-input min-h-[64px] resize-y"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  data-testid="input-notes"
+                />
+              </Field>
+            </div>
+
+            <div className="flex items-center justify-between px-5 py-3.5 border-t border-fe-line">
+              {form.id ? (
+                <button
+                  onClick={deleteSeminar}
+                  disabled={saving}
+                  className="text-xs font-fira text-fe-red hover:underline disabled:opacity-50"
+                  data-testid="button-delete-seminar"
+                >
+                  Delete
+                </button>
+              ) : <span />}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={closeForm}
+                  className="px-3 py-1.5 border border-fe-line bg-white hover:bg-gray-50 text-sm font-fira text-fe-anthracite"
+                  data-testid="button-cancel-seminar"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveSeminar}
+                  disabled={saving || !form.seminar_date}
+                  className="px-4 py-1.5 bg-fe-blue text-white text-sm font-fira font-bold hover:opacity-90 disabled:opacity-50"
+                  data-testid="button-save-seminar"
+                >
+                  {saving ? 'Saving…' : form.id ? 'Save' : 'Add seminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-fira text-fe-blue-gray uppercase tracking-wider mb-1">{label}</span>
+      {children}
+    </label>
   )
 }

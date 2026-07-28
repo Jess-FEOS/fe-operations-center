@@ -57,6 +57,27 @@ body {
   background: #FCFCFD;
 }
 
+/* Form input: square, hairline border, editorial. Used across modals/forms. */
+.fe-input {
+  width: 100%;
+  font-family: 'Fira Sans', sans-serif;
+  font-size: 0.875rem;
+  color: var(--fe-ink);
+  background: var(--fe-surface);
+  border: 1px solid var(--fe-line-strong);
+  border-radius: 0;
+  padding: 0.5rem 0.625rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.fe-input:focus {
+  outline: none;
+  border-color: #0762C8;
+  box-shadow: 0 0 0 1px #0762C8;
+}
+.fe-input::placeholder {
+  color: #9CA3AF;
+}
+
 /* Section eyebrow: small, uppercase, tracked label above a group. */
 .fe-eyebrow {
   font-family: 'Barlow', sans-serif;
