@@ -166,11 +166,15 @@ select option:checked {
   }
   main {
     margin-left: 0 !important;
+    padding-top: 0 !important;
   }
   .no-print {
     display: none !important;
   }
   body {
     background: white !important;
+  }
+  .break-inside-avoid {
+    break-inside: avoid;
   }
 }

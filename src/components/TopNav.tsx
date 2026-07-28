@@ -76,7 +76,7 @@ export default function TopNav() {
     }`
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-fe-navy z-50 flex items-center gap-4 px-6">
+    <header className="fixed top-0 left-0 right-0 h-16 bg-fe-navy z-50 flex items-center gap-4 px-6 no-print">
       {/* Logo */}
       <Link href="/" className="flex items-center gap-3 shrink-0">
         <div className="w-9 h-9 bg-fe-blue flex items-center justify-center">
