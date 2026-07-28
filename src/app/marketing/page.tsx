@@ -1,705 +1,430 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import Avatar from '@/components/Avatar'
-import StatusBadge from '@/components/StatusBadge'
-import WorkflowBadge from '@/components/WorkflowBadge'
 import PageHeader from '@/components/PageHeader'
-import { TaskStatus, STATUS_COLORS } from '@/lib/types'
 
-// ----- Types -----
+// ------------------------------------------------------------------
+// Marketing content pipeline. Backed by marketing_content — the SAME
+// table the master calendar's Marketing layer reads, so items created
+// here appear on the calendar on their scheduled_date.
+// Two views: Kanban board (by status) and a sortable/filterable table.
+// ------------------------------------------------------------------
 
-type Tab = 'launch' | 'content' | 'thisweek'
+type Status = 'idea' | 'drafted' | 'scheduled' | 'posted'
 
-type ChannelStatus = 'not_started' | 'in_progress' | 'done'
+const STATUSES: { key: Status; label: string; color: string }[] = [
+  { key: 'idea', label: 'Idea', color: '#9CA3AF' },
+  { key: 'drafted', label: 'Drafted', color: '#0762C8' },
+  { key: 'scheduled', label: 'Scheduled', color: '#B29838' },
+  { key: 'posted', label: 'Posted', color: '#046A38' },
+]
+const STATUS_COLOR: Record<Status, string> = {
+  idea: '#9CA3AF', drafted: '#0762C8', scheduled: '#B29838', posted: '#046A38',
+}
+const STATUS_LABEL: Record<Status, string> = {
+  idea: 'Idea', drafted: 'Drafted', scheduled: 'Scheduled', posted: 'Posted',
+}
 
-const CHANNELS = ['Email', 'Twitter', 'LinkedIn', 'YouTube', 'Blog'] as const
-type Channel = (typeof CHANNELS)[number]
+const CHANNELS = ['YouTube', 'TikTok', 'Instagram', 'LinkedIn', 'X', 'Email', 'Blog'] as const
 
-const CONTENT_OUTPUTS = ['FE Weekly', 'Blog', 'Twitter', 'LinkedIn', 'YouTube Short'] as const
-type ContentOutput = (typeof CONTENT_OUTPUTS)[number]
-
-interface ActiveProject {
+interface Owner { id: string; name: string; initials: string; color: string }
+interface ContentItem {
   id: string
-  name: string
-  workflow_type: string
-  launch_date: string | null
+  title: string
+  channels: string[]
+  status: Status
+  scheduled_date: string | null
+  asset_link: string | null
+  caption: string | null
+  owner_id: string | null
+  owner: Owner | null
+  project_id: string | null
+  project_name: string | null
+}
+interface TeamMember { id: string; name: string; initials: string; color: string }
+interface ProjectLite { id: string; name: string }
+
+const EMPTY: Omit<ContentItem, 'owner' | 'project_name'> = {
+  id: '', title: '', channels: [], status: 'idea', scheduled_date: null,
+  asset_link: null, caption: null, owner_id: null, project_id: null,
 }
 
-interface WeekRow {
-  weekNum: number
-  saturdayDate: string
-  topic: string
-  statuses: Record<ContentOutput, ChannelStatus>
+function fmtDate(s: string | null) {
+  if (!s) return '—'
+  const d = new Date(s + 'T12:00:00')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
-
-interface WeekTask {
-  id: string
-  task_name: string
-  project_id: string
-  project_name: string
-  workflow_type: string
-  phase: string
-  status: TaskStatus
-  due_date: string
-  owner_ids: string[]
-  role_id: string | null
-}
-
-interface TeamMember {
-  id: string
-  name: string
-  initials: string
-  color: string
-  role: string
-  role_data: { id: string; name: string; color: string } | null
-}
-
-interface Role {
-  id: string
-  name: string
-  color: string
-}
-
-// ----- Helpers -----
-
-function daysUntil(dateStr: string): number {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  const target = new Date(dateStr + 'T00:00:00')
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-}
-
-function cycleChannelStatus(s: ChannelStatus): ChannelStatus {
-  if (s === 'not_started') return 'in_progress'
-  if (s === 'in_progress') return 'done'
-  return 'not_started'
-}
-
-const CHANNEL_STATUS_COLORS: Record<ChannelStatus, string> = {
-  not_started: '#9CA3AF',
-  in_progress: '#EAB308',
-  done: '#046A38',
-}
-
-const CHANNEL_STATUS_BG: Record<ChannelStatus, string> = {
-  not_started: 'bg-gray-100 text-gray-500',
-  in_progress: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  done: 'bg-green-50 text-green-700 border-green-200',
-}
-
-function generateWeekRows(): WeekRow[] {
-  const now = new Date()
-  const year = now.getFullYear()
-  const dayOfWeek = now.getDay()
-  const saturday = new Date(now)
-  saturday.setDate(now.getDate() + (6 - dayOfWeek))
-  saturday.setHours(0, 0, 0, 0)
-
-  const rows: WeekRow[] = []
-  const current = new Date(saturday)
-
-  const startOfYear = new Date(year, 0, 1)
-  let weekNum = Math.ceil(((current.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24) + startOfYear.getDay() + 1) / 7)
-
-  while (current.getFullYear() <= year && rows.length < 52) {
-    const defaultStatuses = {} as Record<ContentOutput, ChannelStatus>
-    for (const o of CONTENT_OUTPUTS) defaultStatuses[o] = 'not_started'
-
-    rows.push({
-      weekNum,
-      saturdayDate: current.toISOString().split('T')[0],
-      topic: '',
-      statuses: defaultStatuses,
-    })
-
-    current.setDate(current.getDate() + 7)
-    weekNum++
-  }
-
-  return rows
-}
-
-function isCurrentWeek(saturdayDate: string): boolean {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  const sat = new Date(saturdayDate + 'T00:00:00')
-  const sun = new Date(sat)
-  sun.setDate(sat.getDate() - 6)
-  return now >= sun && now <= sat
-}
-
-function urgencyColor(days: number | null): string {
-  if (days === null) return '#9CA3AF'
-  if (days <= 30) return '#DC2626'
-  if (days <= 60) return '#EAB308'
-  return '#046A38'
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-// ----- Component -----
 
 export default function MarketingPage() {
-  const [tab, setTab] = useState<Tab>('launch')
-
-  // Launch Tracker state
-  const [projects, setProjects] = useState<ActiveProject[]>([])
-  const [channelStatuses, setChannelStatuses] = useState<Record<string, Record<Channel, ChannelStatus>>>({})
-
-  // Weekly Content state
-  const [weekRows, setWeekRows] = useState<WeekRow[]>(() => generateWeekRows())
-  const [showAllWeeks, setShowAllWeeks] = useState(false)
-
-  // This Week state
-  const [tasks, setTasks] = useState<WeekTask[]>([])
+  const [view, setView] = useState<'board' | 'table'>('board')
+  const [items, setItems] = useState<ContentItem[]>([])
   const [team, setTeam] = useState<TeamMember[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const [marketingRoleId, setMarketingRoleId] = useState<string | null>(null)
+  const [projects, setProjects] = useState<ProjectLite[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Fetch projects for Launch Tracker
-  useEffect(() => {
-    fetch('/api/projects')
-      .then((res) => res.json())
-      .then((data) => {
-        const active = (data || []).filter((p: any) => p.status === 'active')
-        setProjects(active)
-        const statuses: Record<string, Record<Channel, ChannelStatus>> = {}
-        for (const p of active) {
-          statuses[p.id] = {} as Record<Channel, ChannelStatus>
-          for (const ch of CHANNELS) statuses[p.id][ch] = 'not_started'
-        }
-        setChannelStatuses(statuses)
-      })
-  }, [])
+  // filters (table view)
+  const [filterStatus, setFilterStatus] = useState<'' | Status>('')
+  const [filterChannel, setFilterChannel] = useState<string>('')
 
-  // Fetch tasks, team, roles for This Week tab
-  useEffect(() => {
-    fetch('/api/tasks/this-week')
-      .then((res) => res.json())
-      .then(setTasks)
-    fetch('/api/team')
-      .then((res) => res.json())
-      .then(setTeam)
-    fetch('/api/roles')
-      .then((res) => res.json())
-      .then((data) => {
-        const rolesArr = Array.isArray(data) ? data : []
-        setRoles(rolesArr)
-        const mktRole = rolesArr.find(
-          (r: Role) => r.name.toLowerCase().includes('marketing director')
-        )
-        if (mktRole) setMarketingRoleId(mktRole.id)
-      })
-  }, [])
+  // modal
+  const [formOpen, setFormOpen] = useState(false)
+  const [form, setForm] = useState<typeof EMPTY>({ ...EMPTY })
+  const [saving, setSaving] = useState(false)
 
-  const teamById = team.reduce<Record<string, TeamMember>>((acc, m) => {
-    acc[m.id] = m
-    return acc
-  }, {})
-
-  const marketingTasks = marketingRoleId
-    ? tasks.filter((t) => t.role_id === marketingRoleId)
-    : []
-
-  async function handleTaskStatusChange(task: WeekTask, newStatus: TaskStatus) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t))
-    )
-    await fetch(`/api/projects/${task.project_id}/tasks/${task.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
+  const load = useCallback(() => {
+    setLoading(true)
+    Promise.all([
+      fetch('/api/marketing').then((r) => r.json()).catch(() => []),
+      fetch('/api/team').then((r) => r.json()).catch(() => []),
+      fetch('/api/projects').then((r) => r.json()).catch(() => []),
+    ]).then(([itemsData, teamData, projData]) => {
+      setItems(Array.isArray(itemsData) ? itemsData : [])
+      setTeam(Array.isArray(teamData) ? teamData.map((m: any) => ({ id: m.id, name: m.name, initials: m.initials, color: m.color })) : [])
+      setProjects(Array.isArray(projData) ? projData.map((p: any) => ({ id: p.id, name: p.name })) : [])
+      setLoading(false)
     })
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const openNew = () => { setForm({ ...EMPTY }); setFormOpen(true) }
+  const openEdit = (it: ContentItem) => {
+    setForm({
+      id: it.id, title: it.title, channels: it.channels || [], status: it.status,
+      scheduled_date: it.scheduled_date, asset_link: it.asset_link, caption: it.caption,
+      owner_id: it.owner_id, project_id: it.project_id,
+    })
+    setFormOpen(true)
   }
+  const closeForm = () => { setFormOpen(false); setSaving(false) }
 
-  return (
-    <div className="font-fira">
-      <PageHeader title="Marketing" />
-
-      <div className="space-y-6">
-      {/* Tab bar */}
-      <div className="flex gap-2 border-b border-gray-200">
-        {([
-          { key: 'launch' as Tab, label: 'Launch Tracker' },
-          { key: 'content' as Tab, label: 'Weekly Content' },
-          {
-            key: 'thisweek' as Tab,
-            label: 'This Week',
-            count: marketingTasks.length,
-          },
-        ]).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-fira flex items-center gap-2 ${
-              tab === t.key
-                ? 'border-b-2 border-fe-blue text-fe-blue font-bold'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {t.label}
-            {'count' in t && (t.count ?? 0) > 0 && (
-              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-fe-blue text-white min-w-[20px]">
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {tab === 'launch' && (
-        <LaunchTracker
-          projects={projects}
-          channelStatuses={channelStatuses}
-          setChannelStatuses={setChannelStatuses}
-        />
-      )}
-      {tab === 'content' && (
-        <WeeklyContent
-          weekRows={weekRows}
-          setWeekRows={setWeekRows}
-          showAll={showAllWeeks}
-          onShowMore={() => setShowAllWeeks(true)}
-        />
-      )}
-      {tab === 'thisweek' && (
-        <ThisWeekMarketing
-          tasks={marketingTasks}
-          teamById={teamById}
-          roles={roles}
-          onStatusChange={handleTaskStatusChange}
-        />
-      )}
-      </div>
-    </div>
-  )
-}
-
-// ----- Tab 1: Launch Tracker -----
-
-function LaunchTracker({
-  projects,
-  channelStatuses,
-  setChannelStatuses,
-}: {
-  projects: ActiveProject[]
-  channelStatuses: Record<string, Record<Channel, ChannelStatus>>
-  setChannelStatuses: React.Dispatch<React.SetStateAction<Record<string, Record<Channel, ChannelStatus>>>>
-}) {
-  function toggleChannel(projectId: string, channel: Channel) {
-    setChannelStatuses((prev) => ({
-      ...prev,
-      [projectId]: {
-        ...prev[projectId],
-        [channel]: cycleChannelStatus(prev[projectId]?.[channel] || 'not_started'),
-      },
+  const toggleChannel = (ch: string) => {
+    setForm((f) => ({
+      ...f,
+      channels: f.channels.includes(ch) ? f.channels.filter((c) => c !== ch) : [...f.channels, ch],
     }))
   }
 
-  function getReadyCount(projectId: string): number {
-    const statuses = channelStatuses[projectId]
-    if (!statuses) return 0
-    return CHANNELS.filter((ch) => statuses[ch] === 'done').length
+  const save = async () => {
+    if (!form.title.trim()) return
+    setSaving(true)
+    const method = form.id ? 'PATCH' : 'POST'
+    const res = await fetch('/api/marketing', {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+    }).catch(() => null)
+    setSaving(false)
+    if (res && res.ok) { closeForm(); load() }
+  }
+  const remove = async () => {
+    if (!form.id) return
+    setSaving(true)
+    const res = await fetch(`/api/marketing?id=${form.id}`, { method: 'DELETE' }).catch(() => null)
+    setSaving(false)
+    if (res && res.ok) { closeForm(); load() }
   }
 
-  // Sort by launch date ascending (soonest first), no-date projects at the end
-  const sorted = [...projects].sort((a, b) => {
-    if (!a.launch_date && !b.launch_date) return 0
-    if (!a.launch_date) return 1
-    if (!b.launch_date) return -1
-    return new Date(a.launch_date).getTime() - new Date(b.launch_date).getTime()
+  // advance status inline (board card + table). Cycles forward, wraps at posted.
+  const advanceStatus = async (it: ContentItem) => {
+    const order: Status[] = ['idea', 'drafted', 'scheduled', 'posted']
+    const next = order[(order.indexOf(it.status) + 1) % order.length]
+    // optimistic
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, status: next } : x)))
+    await fetch('/api/marketing', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: it.id, status: next }),
+    }).catch(() => null)
+  }
+
+  const filtered = items.filter((it) => {
+    if (filterStatus && it.status !== filterStatus) return false
+    if (filterChannel && !it.channels.includes(filterChannel)) return false
+    return true
   })
 
-  if (sorted.length === 0) {
-    return (
-      <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
-        No active projects found.
-      </div>
-    )
-  }
-
   return (
-    <div className="fe-cards fe-cards-wide">
-      {sorted.map((project) => {
-        const days = project.launch_date ? daysUntil(project.launch_date) : null
-        const ready = getReadyCount(project.id)
-        const readyPct = CHANNELS.length > 0 ? Math.round((ready / CHANNELS.length) * 100) : 0
-        const borderColor = urgencyColor(days)
-        const isUrgent = days !== null && days >= 0 && days <= 14
+    <div className="font-fira">
+      <PageHeader
+        title="Marketing"
+        subtitle="Content pipeline — plans here flow onto the calendar"
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="flex border border-fe-line">
+              <button
+                onClick={() => setView('board')}
+                data-testid="view-board"
+                className={`px-3 py-1.5 text-sm font-fira transition-colors ${view === 'board' ? 'bg-fe-navy text-white' : 'bg-white text-fe-blue-gray hover:bg-gray-50'}`}
+              >Board</button>
+              <button
+                onClick={() => setView('table')}
+                data-testid="view-table"
+                className={`px-3 py-1.5 text-sm font-fira transition-colors border-l border-fe-line ${view === 'table' ? 'bg-fe-navy text-white' : 'bg-white text-fe-blue-gray hover:bg-gray-50'}`}
+              >Table</button>
+            </div>
+            <button
+              onClick={openNew}
+              data-testid="button-new-content"
+              className="px-4 py-1.5 bg-fe-blue text-white text-sm font-fira font-bold hover:opacity-90"
+            >+ New content</button>
+          </div>
+        }
+      />
 
-        return (
-          <div
-            key={project.id}
-            className="bg-white border border-gray-100 overflow-hidden flex"
-          >
-            {/* Urgency left border */}
-            <div className="w-1.5 shrink-0" style={{ backgroundColor: borderColor }} />
-
-            <div className="flex-1 p-5 space-y-4">
-              {/* Header row */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="font-barlow font-bold text-lg text-fe-navy">{project.name}</span>
-                  <WorkflowBadge type={project.workflow_type} />
-                  {isUrgent && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-fira font-bold bg-red-100 text-red-600 uppercase tracking-wide">
-                      Urgent
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${readyPct}%`, backgroundColor: readyPct >= 80 ? '#22c55e' : readyPct >= 40 ? '#B29838' : '#ef4444' }}
-                    />
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-fe-blue border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : items.length === 0 ? (
+        <div className="border border-fe-line bg-white p-12 text-center">
+          <p className="font-barlow font-bold text-lg text-fe-navy mb-1">No content yet</p>
+          <p className="text-sm text-fe-blue-gray font-fira mb-4">Add your first piece of content — it'll show on the calendar on its scheduled date.</p>
+          <button onClick={openNew} className="px-4 py-2 bg-fe-blue text-white text-sm font-fira font-bold hover:opacity-90" data-testid="button-new-content-empty">+ New content</button>
+        </div>
+      ) : view === 'board' ? (
+        // ---------------- Kanban board ----------------
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3" data-testid="board">
+          {STATUSES.map((col) => {
+            const colItems = items.filter((it) => it.status === col.key)
+            return (
+              <div key={col.key} className="bg-fe-offwhite border border-fe-line" data-testid={`col-${col.key}`}>
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-fe-line bg-white">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5" style={{ backgroundColor: col.color }} />
+                    <span className="font-barlow font-bold text-sm text-fe-navy">{col.label}</span>
                   </div>
-                  <span className="text-xs font-fira text-fe-blue-gray">
-                    {ready}/{CHANNELS.length} channels ready
-                  </span>
+                  <span className="text-xs font-fira text-fe-blue-gray">{colItems.length}</span>
+                </div>
+                <div className="p-2 space-y-2 min-h-[80px]">
+                  {colItems.map((it) => (
+                    <div
+                      key={it.id}
+                      className="bg-white border border-fe-line p-2.5 cursor-pointer hover:border-fe-line-strong transition-colors"
+                      style={{ borderLeft: `3px solid ${col.color}` }}
+                      onClick={() => openEdit(it)}
+                      data-testid={`card-${it.id}`}
+                    >
+                      <p className="font-fira text-sm text-fe-anthracite font-medium leading-snug mb-1.5">{it.title}</p>
+                      {it.channels.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-1.5">
+                          {it.channels.map((ch) => (
+                            <span key={ch} className="text-[10px] font-fira px-1.5 py-0.5 bg-fe-offwhite border border-fe-line text-fe-blue-gray uppercase tracking-wide">{ch}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-fira text-fe-blue-gray">{fmtDate(it.scheduled_date)}</span>
+                        <div className="flex items-center gap-1.5">
+                          {it.owner && <Avatar initials={it.owner.initials} color={it.owner.color} size="sm" title={it.owner.name} />}
+                          {col.key !== 'posted' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
+                              className="text-xs font-fira text-fe-blue hover:underline"
+                              data-testid={`advance-${it.id}`}
+                              title="Move to next stage"
+                            >→</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {colItems.length === 0 && (
+                    <p className="text-xs font-fira text-fe-blue-gray/60 text-center py-4">Nothing here</p>
+                  )}
                 </div>
               </div>
+            )
+          })}
+        </div>
+      ) : (
+        // ---------------- Table ----------------
+        <div>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-xs text-fe-blue-gray font-fira uppercase tracking-wider mr-1">Filter</span>
+            <select
+              className="fe-input w-auto py-1.5"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as any)}
+              data-testid="filter-status"
+            >
+              <option value="">All statuses</option>
+              {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+            <select
+              className="fe-input w-auto py-1.5"
+              value={filterChannel}
+              onChange={(e) => setFilterChannel(e.target.value)}
+              data-testid="filter-channel"
+            >
+              <option value="">All channels</option>
+              {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {(filterStatus || filterChannel) && (
+              <button onClick={() => { setFilterStatus(''); setFilterChannel('') }} className="text-xs font-fira text-fe-blue-gray hover:text-fe-navy">Clear</button>
+            )}
+          </div>
 
-              {/* Days countdown + launch date + channels */}
-              <div className="flex items-center gap-6 flex-wrap">
-                {/* Big countdown */}
-                <div className="shrink-0 text-center min-w-[80px]">
-                  {days !== null ? (
-                    <>
-                      <p
-                        className="font-barlow font-extrabold text-3xl leading-none"
-                        style={{ color: borderColor }}
+          <div className="border border-fe-line bg-white overflow-x-auto">
+            <table className="w-full text-sm font-fira">
+              <thead>
+                <tr className="border-b border-fe-line bg-fe-offwhite text-left">
+                  <th className="px-3 py-2.5 font-barlow font-bold text-fe-navy">Title</th>
+                  <th className="px-3 py-2.5 font-barlow font-bold text-fe-navy">Channels</th>
+                  <th className="px-3 py-2.5 font-barlow font-bold text-fe-navy">Status</th>
+                  <th className="px-3 py-2.5 font-barlow font-bold text-fe-navy">Date</th>
+                  <th className="px-3 py-2.5 font-barlow font-bold text-fe-navy">Owner</th>
+                  <th className="px-3 py-2.5 font-barlow font-bold text-fe-navy">Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((it) => (
+                  <tr
+                    key={it.id}
+                    className="border-b border-fe-line last:border-b-0 hover:bg-fe-offwhite cursor-pointer"
+                    onClick={() => openEdit(it)}
+                    data-testid={`row-${it.id}`}
+                  >
+                    <td className="px-3 py-2.5 text-fe-anthracite font-medium">{it.title}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {it.channels.map((ch) => (
+                          <span key={ch} className="text-[10px] font-fira px-1.5 py-0.5 bg-fe-offwhite border border-fe-line text-fe-blue-gray uppercase">{ch}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-fira"
+                        style={{ backgroundColor: `${STATUS_COLOR[it.status]}18`, color: STATUS_COLOR[it.status] }}
+                        title="Click to advance"
+                        data-testid={`status-${it.id}`}
                       >
-                        {days < 0 ? Math.abs(days) : days}
-                      </p>
-                      <p className="text-[10px] font-fira text-fe-blue-gray mt-1">
-                        {days < 0 ? 'days overdue' : 'days to launch'}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="font-barlow font-extrabold text-3xl leading-none text-gray-300">&mdash;</p>
-                      <p className="text-[10px] font-fira text-fe-blue-gray mt-1">no date set</p>
-                    </>
-                  )}
-                </div>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_COLOR[it.status] }} />
+                        {STATUS_LABEL[it.status]}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2.5 text-fe-blue-gray whitespace-nowrap">{fmtDate(it.scheduled_date)}</td>
+                    <td className="px-3 py-2.5">
+                      {it.owner ? (
+                        <div className="flex items-center gap-1.5">
+                          <Avatar initials={it.owner.initials} color={it.owner.color} size="sm" title={it.owner.name} />
+                          <span className="text-fe-anthracite">{it.owner.name}</span>
+                        </div>
+                      ) : <span className="text-fe-blue-gray/60">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {it.asset_link ? (
+                        <a href={it.asset_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-fe-blue hover:underline">Open</a>
+                      ) : <span className="text-fe-blue-gray/60">—</span>}
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-8 text-center text-fe-blue-gray font-fira">No items match these filters.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-                {/* Divider */}
-                <div className="w-px h-12 bg-gray-200 shrink-0" />
+      {/* Connectedness note */}
+      <p className="mt-3 text-xs font-fira text-fe-blue-gray">
+        Scheduled items appear on the{' '}
+        <Link href="/calendar" className="text-fe-blue hover:underline">master calendar</Link>{' '}
+        under the Marketing layer on their scheduled date.
+      </p>
 
-                {/* Launch date */}
-                <div className="shrink-0">
-                  {project.launch_date ? (
-                    <p className="text-sm font-fira text-fe-blue-gray">
-                      {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
-                  ) : (
-                    <p className="text-sm font-fira text-gray-400 italic">No launch date</p>
-                  )}
-                </div>
+      {/* Add / edit modal */}
+      {formOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeForm}>
+          <div className="bg-white border border-fe-line w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="modal-content">
+            <div className="fe-panel-header flex items-center justify-between px-5 py-3.5 border-b border-fe-line sticky top-0 bg-white">
+              <h2 className="font-barlow font-bold text-lg text-fe-navy">{form.id ? 'Edit content' : 'New content'}</h2>
+              <button onClick={closeForm} className="text-fe-blue-gray hover:text-fe-navy" aria-label="Close" data-testid="button-close">✕</button>
+            </div>
 
-                {/* Divider */}
-                <div className="w-px h-12 bg-gray-200 shrink-0" />
+            <div className="p-5 space-y-3">
+              <Field label="Title">
+                <input className="fe-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Q3 launch teaser reel" data-testid="input-title" />
+              </Field>
 
-                {/* Channel statuses — labeled icons */}
-                <div className="flex items-center gap-5 flex-1">
+              <Field label="Channels">
+                <div className="flex flex-wrap gap-1.5">
                   {CHANNELS.map((ch) => {
-                    const status = channelStatuses[project.id]?.[ch] || 'not_started'
+                    const on = form.channels.includes(ch)
                     return (
                       <button
                         key={ch}
-                        onClick={() => toggleChannel(project.id, ch)}
-                        className="flex flex-col items-center gap-1.5 group"
-                        title={`Click to cycle status`}
-                      >
-                        <span
-                          className="w-3.5 h-3.5 rounded-full transition-colors ring-2 ring-offset-1 ring-transparent group-hover:ring-gray-300"
-                          style={{ backgroundColor: CHANNEL_STATUS_COLORS[status] }}
-                        />
-                        <span className="text-[10px] font-fira text-fe-blue-gray group-hover:text-fe-navy transition-colors leading-none">
-                          {ch}
-                        </span>
-                      </button>
+                        type="button"
+                        onClick={() => toggleChannel(ch)}
+                        data-testid={`channel-${ch}`}
+                        className={`px-2.5 py-1 text-xs font-fira border transition-colors ${on ? 'bg-fe-blue text-white border-fe-blue' : 'bg-white text-fe-blue-gray border-fe-line hover:border-fe-line-strong'}`}
+                      >{ch}</button>
                     )
                   })}
                 </div>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Status">
+                  <select className="fe-input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })} data-testid="input-status">
+                    {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Scheduled date">
+                  <input type="date" className="fe-input" value={form.scheduled_date || ''} onChange={(e) => setForm({ ...form, scheduled_date: e.target.value || null })} data-testid="input-date" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Owner">
+                  <select className="fe-input" value={form.owner_id || ''} onChange={(e) => setForm({ ...form, owner_id: e.target.value || null })} data-testid="input-owner">
+                    <option value="">Unassigned</option>
+                    {team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Project (optional)">
+                  <select className="fe-input" value={form.project_id || ''} onChange={(e) => setForm({ ...form, project_id: e.target.value || null })} data-testid="input-project">
+                    <option value="">None</option>
+                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              <Field label="Asset / Drive link">
+                <input className="fe-input" value={form.asset_link || ''} onChange={(e) => setForm({ ...form, asset_link: e.target.value || null })} placeholder="https://drive.google.com/…" data-testid="input-link" />
+              </Field>
+
+              <Field label="Caption">
+                <textarea className="fe-input min-h-[80px] resize-y" value={form.caption || ''} onChange={(e) => setForm({ ...form, caption: e.target.value || null })} placeholder="Post copy…" data-testid="input-caption" />
+              </Field>
+            </div>
+
+            <div className="flex items-center justify-between px-5 py-3.5 border-t border-fe-line sticky bottom-0 bg-white">
+              {form.id ? (
+                <button onClick={remove} disabled={saving} className="text-xs font-fira text-fe-red hover:underline disabled:opacity-50" data-testid="button-delete">Delete</button>
+              ) : <span />}
+              <div className="flex items-center gap-2">
+                <button onClick={closeForm} className="px-3 py-1.5 border border-fe-line bg-white hover:bg-gray-50 text-sm font-fira text-fe-anthracite" data-testid="button-cancel">Cancel</button>
+                <button onClick={save} disabled={saving || !form.title.trim()} className="px-4 py-1.5 bg-fe-blue text-white text-sm font-fira font-bold hover:opacity-90 disabled:opacity-50" data-testid="button-save">
+                  {saving ? 'Saving…' : form.id ? 'Save' : 'Add content'}
+                </button>
               </div>
             </div>
           </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ----- Tab 2: Weekly Content -----
-
-function WeeklyContent({
-  weekRows,
-  setWeekRows,
-  showAll,
-  onShowMore,
-}: {
-  weekRows: WeekRow[]
-  setWeekRows: React.Dispatch<React.SetStateAction<WeekRow[]>>
-  showAll: boolean
-  onShowMore: () => void
-}) {
-  const visibleRows = showAll ? weekRows : weekRows.slice(0, 8)
-
-  function updateTopic(idx: number, topic: string) {
-    setWeekRows((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, topic } : row))
-    )
-  }
-
-  function toggleOutputStatus(idx: number, output: ContentOutput) {
-    setWeekRows((prev) =>
-      prev.map((row, i) =>
-        i === idx
-          ? {
-              ...row,
-              statuses: {
-                ...row.statuses,
-                [output]: cycleChannelStatus(row.statuses[output]),
-              },
-            }
-          : row
-      )
-    )
-  }
-
-  function doneCount(row: WeekRow): number {
-    return CONTENT_OUTPUTS.filter((o) => row.statuses[o] === 'done').length
-  }
-
-  return (
-    <div className="space-y-3">
-      {visibleRows.map((row, idx) => {
-        const isCurrent = isCurrentWeek(row.saturdayDate)
-        const complete = doneCount(row)
-
-        return (
-          <div
-            key={row.weekNum}
-            className={`border p-4 space-y-3 ${
-              isCurrent
-                ? 'bg-blue-50/50 border-fe-blue/20'
-                : 'bg-white border-gray-100'
-            }`}
-          >
-            {/* Week header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="font-barlow font-bold text-sm text-fe-navy">
-                  Wk {row.weekNum}
-                </span>
-                <span className="text-xs font-fira text-fe-blue-gray">
-                  {formatDate(row.saturdayDate)}
-                </span>
-                {isCurrent && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-fira font-bold bg-fe-blue text-white uppercase tracking-wide">
-                    This Week
-                  </span>
-                )}
-              </div>
-              <span className="text-xs font-fira text-fe-blue-gray">
-                {complete}/{CONTENT_OUTPUTS.length} complete
-              </span>
-            </div>
-
-            {/* Topic input — prominent */}
-            <input
-              type="text"
-              value={row.topic}
-              onChange={(e) => updateTopic(idx, e.target.value)}
-              placeholder="What's the topic this week?"
-              className="w-full px-3 py-2.5 text-sm font-fira border border-gray-200 rounded-lg focus:outline-none focus:border-fe-blue focus:ring-1 focus:ring-fe-blue placeholder:text-gray-400"
-            />
-
-            {/* Status pills */}
-            <div className="flex flex-wrap gap-2">
-              {CONTENT_OUTPUTS.map((output) => {
-                const status = row.statuses[output]
-                return (
-                  <button
-                    key={output}
-                    onClick={() => toggleOutputStatus(idx, output)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-fira font-bold border transition-colors ${CHANNEL_STATUS_BG[status]}`}
-                    title="Click to cycle status"
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: CHANNEL_STATUS_COLORS[status] }}
-                    />
-                    {output}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
-
-      {/* Show more */}
-      {!showAll && weekRows.length > 8 && (
-        <button
-          onClick={onShowMore}
-          className="w-full py-3 text-sm font-fira font-bold text-fe-blue hover:text-fe-blue/80 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
-        >
-          Show {weekRows.length - 8} more weeks
-        </button>
+        </div>
       )}
     </div>
   )
 }
 
-// ----- Tab 3: This Week (Marketing Director) -----
-
-function ThisWeekMarketing({
-  tasks,
-  teamById,
-  roles,
-  onStatusChange,
-}: {
-  tasks: WeekTask[]
-  teamById: Record<string, TeamMember>
-  roles: Role[]
-  onStatusChange: (task: WeekTask, newStatus: TaskStatus) => void
-}) {
-  if (tasks.length === 0) {
-    return (
-      <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
-        No Marketing Director tasks scheduled for this week.
-      </div>
-    )
-  }
-
-  // Group by urgency
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  const todayStr = now.toISOString().split('T')[0]
-
-  const overdue: WeekTask[] = []
-  const dueToday: WeekTask[] = []
-  const dueThisWeek: WeekTask[] = []
-
-  for (const task of tasks) {
-    if (task.due_date < todayStr) overdue.push(task)
-    else if (task.due_date === todayStr) dueToday.push(task)
-    else dueThisWeek.push(task)
-  }
-
-  const sections = [
-    { label: 'Overdue', tasks: overdue, color: 'text-red-600', dotColor: 'bg-red-500' },
-    { label: 'Due Today', tasks: dueToday, color: 'text-amber-600', dotColor: 'bg-amber-500' },
-    { label: 'Due This Week', tasks: dueThisWeek, color: 'text-fe-navy', dotColor: 'bg-fe-blue' },
-  ].filter((s) => s.tasks.length > 0)
-
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-6">
-      {sections.map((section) => (
-        <div key={section.label} className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${section.dotColor}`} />
-            <span className={`font-barlow font-bold text-sm ${section.color}`}>
-              {section.label}
-            </span>
-            <span className="text-xs font-fira text-fe-blue-gray">
-              ({section.tasks.length})
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {section.tasks.map((task) => (
-              <div
-                key={task.id}
-                className="bg-white border border-gray-100 p-4 flex items-start justify-between gap-4"
-              >
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div>
-                    <p className="font-barlow font-bold text-sm text-fe-navy">
-                      {task.project_name}
-                    </p>
-                    <p className="font-fira font-bold text-sm text-fe-navy mt-0.5">
-                      {task.task_name}
-                    </p>
-                    <p className="text-xs text-gray-400">{task.phase}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {task.owner_ids.length > 0
-                      ? task.owner_ids.map((oid) => {
-                          const member = teamById[oid]
-                          return member ? (
-                            <div key={oid} className="flex items-center gap-1">
-                              <Avatar
-                                initials={member.initials}
-                                color={member.color}
-                                size="sm"
-                              />
-                              <span className="text-xs font-fira text-fe-blue-gray">
-                                {member.role_data ? (
-                                  <>
-                                    <span className="font-bold" style={{ color: member.role_data.color }}>
-                                      {member.role_data.name}
-                                    </span>{' '}
-                                    &middot; {member.name.split(' ')[0]}
-                                  </>
-                                ) : (
-                                  member.name.split(' ')[0]
-                                )}
-                              </span>
-                            </div>
-                          ) : null
-                        })
-                      : task.role_id
-                      ? (() => {
-                          const role = roles.find((r) => r.id === task.role_id)
-                          return role ? (
-                            <div className="flex items-center gap-1">
-                              <div
-                                className="w-6 h-6 rounded-full border-2 border-dashed flex items-center justify-center"
-                                style={{ borderColor: role.color }}
-                              >
-                                <span className="text-[8px] font-bold" style={{ color: role.color }}>
-                                  ?
-                                </span>
-                              </div>
-                              <span className="text-xs font-fira">
-                                <span className="font-bold" style={{ color: role.color }}>
-                                  {role.name}
-                                </span>
-                                <span className="text-amber-500"> — Unassigned</span>
-                              </span>
-                            </div>
-                          ) : null
-                        })()
-                      : null}
-                  </div>
-                </div>
-
-                <div className="shrink-0">
-                  <StatusBadge
-                    status={task.status}
-                    interactive
-                    onClick={(newStatus) => onStatusChange(task, newStatus)}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
+    <label className="block">
+      <span className="block text-xs font-fira text-fe-blue-gray uppercase tracking-wider mb-1">{label}</span>
+      {children}
+    </label>
   )
 }
