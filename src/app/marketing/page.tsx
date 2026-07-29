@@ -412,7 +412,7 @@ export default function MarketingPage() {
                     {drafting && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                     {drafting ? 'Drafting…' : 'Draft copy with FE voice'}
                   </button>
-                  <span className="text-[11px] font-fira text-fe-blue-gray">Fills title, description &amp; hashtags below — you edit.</span>
+                  <span className="text-[11px] font-fira text-fe-blue-gray">Fills title, description &amp; tags below — you edit.</span>
                 </div>
                 {draftErr && <p className="text-xs font-fira text-fe-red" data-testid="draft-error">{draftErr}</p>}
               </div>
@@ -472,8 +472,8 @@ export default function MarketingPage() {
                 <textarea className="fe-input min-h-[110px] resize-y" value={form.caption || ''} onChange={(e) => setForm({ ...form, caption: e.target.value || null })} placeholder="Post copy…" data-testid="input-caption" />
               </Field>
 
-              <Field label="Hashtags">
-                <input className="fe-input" value={form.hashtags || ''} onChange={(e) => setForm({ ...form, hashtags: e.target.value || null })} placeholder="#investing #AI #buyside" data-testid="input-hashtags" />
+              <Field label="Tags">
+                <input className="fe-input" value={form.hashtags || ''} onChange={(e) => setForm({ ...form, hashtags: e.target.value || null })} placeholder="investing, AI, buyside, hedge funds" data-testid="input-hashtags" />
               </Field>
             </div>
 

@@ -47,17 +47,25 @@ METHOD:
 3. TITLE: short, punchy, front-load the hook; self-contained (viewer has zero context);
    frame contested claims as the speaker's view unless near-verbatim quote. A clean near-verbatim
    quote often makes the best title.
-4. DESCRIPTION (short, reads fast on a phone):
-   - 1-2 line hook expanding the title's promise; end on a reason to watch, not a summary.
-   - One line of context naming the guest + tying to the episode (e.g. "Kris Bennatti, founder of
-     Hudson Labs, on Invest with AI."). Use [GUEST NAME] if not clear from transcript.
-   - CTA: "Full episode: [LINK]"
-5. HASHTAGS: ~6, professional not spammy. Default: #investing #AI #hedgefunds #buyside #finance #InvestWithAI
+4. DESCRIPTION — EXACT structure, in this order (500 CHARACTERS MAX total, hard limit):
+   a. OVERVIEW: 1 short line (~1 sentence) setting up what the clip is about. Reads fast on a phone.
+   b. THREE DIRECT QUOTES pulled from the clip — each on its OWN line, wrapped in curly double
+      quotes, VERBATIM from the transcript. Clean ONLY filler words and obvious transcription
+      errors; never paraphrase, never change wording or meaning. Pick the 3 sharpest, most
+      self-contained lines the speaker actually said. Format each line exactly like:
+      “the speaker's exact words here.”
+   c. CTA: "Full episode: [LINK]"
+   NEVER put hashtags anywhere in the description. NO # symbols in the description. Ever.
+   Keep the WHOLE description at or under 500 characters — if over, shorten the overview and/or
+   pick shorter verbatim quotes (you may trim a quote at a natural boundary, marking an internal
+   cut with …, but the retained words must stay verbatim).
+5. TAGS: ~6 short YouTube-style keyword tags (NOT hashtags). Plain keywords, comma-separated, NO
+   # symbols. Default themes: investing, AI, hedge funds, buyside, finance, Invest with AI
    (swap 1-2 for the clip's specific topic if clearly relevant).
 
 Return STRICT JSON only, no prose, no markdown fences:
-{"title": "...", "description": "...", "hashtags": "#... #..."}
-The description must NOT include the hashtags (those go in the hashtags field).
+{"title": "...", "description": "...", "tags": "investing, AI, hedge funds, buyside, finance, Invest with AI"}
+The description must NOT include the tags or any hashtags. The tags field holds plain keywords with NO # symbols.
 `.trim()
 
 // ---- Content writer (full episode → YouTube copy w/ chapters) ----
@@ -85,27 +93,35 @@ METHOD:
    - CTA block (lowest friction first): full-podcast link [LINK], then one-sentence AI Accelerator pitch
      [ACCELERATOR LINK + CODE], then guest's company link [GUEST LINK].
    - Follow/social line: [SOCIAL LINKS]
-4. HASHTAGS: #InvestWithAI #AI #AIinvesting #buyside #hedgefunds #fundamentalinvesting
+4. TAGS: ~6 plain YouTube-style keyword tags (NOT hashtags, NO # symbols), comma-separated.
+   Default themes: Invest with AI, AI, AI investing, buyside, hedge funds, fundamental investing.
+
+NEVER put hashtags or # symbols anywhere in the description.
 
 Return STRICT JSON only, no prose, no markdown fences:
-{"title": "...", "description": "...", "hashtags": "#... #..."}
-The description SHOULD include the timestamps and CTA blocks, but NOT the hashtags (those go in the hashtags field).
+{"title": "...", "description": "...", "tags": "Invest with AI, AI, AI investing, buyside, hedge funds, fundamental investing"}
+The description SHOULD include the timestamps and CTA blocks, but NOT the tags. The tags field holds plain keywords with NO # symbols.
 `.trim()
 
 function extractJson(text: string): { title: string; description: string; hashtags: string } | null {
   if (!text) return null
   // strip markdown fences if present
   let t = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
+  // note: the storage field is named `hashtags` for legacy reasons, but it now holds
+  // plain YouTube-style TAGS (no # symbols). The model returns them under `tags`.
   // grab the first {...} block
   const start = t.indexOf('{')
   const end = t.lastIndexOf('}')
   if (start === -1 || end === -1) return null
   try {
     const obj = JSON.parse(t.slice(start, end + 1))
+    // Prefer `tags`; fall back to legacy `hashtags`. Strip any stray # the model added.
+    const rawTags = String(obj.tags ?? obj.hashtags ?? '')
+    const cleanTags = rawTags.replace(/#/g, '').replace(/\s+/g, ' ').trim()
     return {
       title: String(obj.title || ''),
       description: String(obj.description || ''),
-      hashtags: String(obj.hashtags || ''),
+      hashtags: cleanTags,
     }
   } catch {
     return null
