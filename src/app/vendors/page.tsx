@@ -46,18 +46,6 @@ export default function VendorsPage() {
         eyebrow="OPERATIONS CENTER"
         title="Vendors"
         subtitle="Choose your workspace. Each role sees the deliverables assigned to them."
-        actions={
-          <Link
-            href="/vendors/categories"
-            data-testid="link-manage-categories"
-            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-[13px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            Manage vendor categories
-          </Link>
-        }
       />
 
       {loading ? (
