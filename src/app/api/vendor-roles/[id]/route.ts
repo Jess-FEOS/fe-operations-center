@@ -80,6 +80,7 @@ export async function GET(
           file_size: a.file_size,
           version: a.version,
           is_current: a.is_current,
+          is_from_team: a.is_from_team ?? false,
           notes: a.notes,
           public_url: a.storage_path
             ? supabase.storage.from(BUCKET).getPublicUrl(a.storage_path).data.publicUrl

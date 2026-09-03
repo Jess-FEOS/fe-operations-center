@@ -34,10 +34,13 @@ export async function POST(request: NextRequest) {
       const versionRaw = formData.get('version') as string | null;
       const isCurrentRaw = formData.get('is_current') as string | null;
       const uploadedBy = formData.get('uploaded_by') as string | null;
+      const isFromTeam = (formData.get('is_from_team') as string | null) === 'true';
       const file = formData.get('file') as File | null;
 
       const version = versionRaw ? parseInt(versionRaw, 10) || 1 : 1;
-      const isCurrent = isCurrentRaw === null ? true : isCurrentRaw !== 'false';
+      // Team reference files are not "current versions" of the vendor's deliverable,
+      // so they never participate in the current-version demotion below.
+      const isCurrent = isFromTeam ? false : isCurrentRaw === null ? true : isCurrentRaw !== 'false';
 
       if (!vendorId) {
         return NextResponse.json({ error: 'Missing required field: vendor_id' }, { status: 400 });
@@ -59,7 +62,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Demote existing current versions for this deliverable so only the newest is current.
-      if (deliverableId && isCurrent) {
+      if (deliverableId && isCurrent && !isFromTeam) {
         await supabase.from('vendor_assets').update({ is_current: false }).eq('deliverable_id', deliverableId);
       }
 
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
           notes: notes || null,
           version,
           is_current: isCurrent,
+          is_from_team: isFromTeam,
         })
         .select()
         .single();

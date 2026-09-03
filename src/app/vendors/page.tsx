@@ -34,7 +34,11 @@ export default function VendorsPage() {
     fetch('/api/vendor-roles')
       .then((r) => r.json())
       .then((data) => {
-        setRoles(Array.isArray(data) ? data : [])
+        // Vendor portal is for our external partners only: the Editor and the
+        // Designers. Other internal roles are managed elsewhere.
+        const VENDOR_ROLES = ['Editor', 'Designers']
+        const list = Array.isArray(data) ? data : []
+        setRoles(list.filter((r: VendorRole) => VENDOR_ROLES.includes(r.name)))
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -44,8 +48,8 @@ export default function VendorsPage() {
     <div className="font-fira">
       <PageHeader
         eyebrow="OPERATIONS CENTER"
-        title="Vendors"
-        subtitle="Choose your workspace. Each role sees the deliverables assigned to them."
+        title="Vendor Portal"
+        subtitle="A shared home for our editor and design partners — every deliverable, due date, note, and file in one place."
       />
 
       {loading ? (
@@ -54,10 +58,10 @@ export default function VendorsPage() {
         </div>
       ) : roles.length === 0 ? (
         <div className="text-center py-20 text-fe-blue-gray font-fira text-sm">
-          No roles yet. Add a role to create a workspace.
+          No vendor workspaces yet.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {roles.map((role) => (
             <RoleCard key={role.id} role={role} />
           ))}

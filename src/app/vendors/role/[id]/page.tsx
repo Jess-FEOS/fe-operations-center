@@ -8,7 +8,6 @@ import PageHeader from '@/components/PageHeader'
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type DeliverableStatus = 'not_started' | 'in_progress' | 'in_review' | 'approved' | 'delivered'
-type ReviewState = 'pending' | 'ready' | 'approved' | 'changes_requested'
 
 interface RoleMember {
   id: string
@@ -18,13 +17,9 @@ interface RoleMember {
   role: string
 }
 
-interface TeamMember {
-  id: string
-  name: string
-  initials: string
-  color: string
-  role: string
-  vendor_role_id: string | null
+interface InspoLink {
+  label: string
+  url: string
 }
 
 interface DeliverableAsset {
@@ -35,6 +30,7 @@ interface DeliverableAsset {
   file_size: number | null
   version: number
   is_current: boolean
+  is_from_team: boolean
   notes: string | null
   public_url: string | null
 }
@@ -44,42 +40,17 @@ interface RoleDeliverable {
   vendor_id: string
   deliverable: string
   status: DeliverableStatus
-  review_state: ReviewState
   due_date: string | null
   concepts_due: string | null
   date_assigned: string | null
   recurring: boolean
   external_link: string | null
   comments: string | null
+  inspo_links: InspoLink[] | null
   vendor_name: string | null
   vendor_color: string | null
   project_name: string | null
-  assigned_to_id: string | null
-  assigned_to_name: string | null
-  assigned_to_initials: string | null
-  assigned_to_color: string | null
-  claimed_by_id: string | null
-  claimed_by_name: string | null
-  claimed_at: string | null
-  approved_by_id: string | null
-  approved_by_name: string | null
-  approved_at: string | null
-  ready_by_id: string | null
-  ready_by_name: string | null
-  ready_at: string | null
-  changes_requested_by_id: string | null
-  changes_requested_by_name: string | null
-  changes_requested_at: string | null
-  source: 'manual' | 'template' | null
   assets: DeliverableAsset[]
-}
-
-interface ActivityEntry {
-  id: string
-  action: string
-  actor_name: string | null
-  detail: string | null
-  created_at: string
 }
 
 interface RoleData {
@@ -109,47 +80,12 @@ const STATUS_PILL: Record<DeliverableStatus, string> = {
   delivered: 'bg-fe-green text-white',
 }
 
-const REVIEW_LABELS: Record<ReviewState, string> = {
-  pending: 'Not Submitted',
-  ready: 'Ready for Review',
-  approved: 'Approved',
-  changes_requested: 'Changes Requested',
-}
-
-const REVIEW_PILL: Record<ReviewState, string> = {
-  pending: 'bg-gray-100 text-gray-600',
-  ready: 'bg-fe-blue text-white',
-  approved: 'bg-fe-teal text-white',
-  changes_requested: 'bg-fe-red text-white',
-}
-
-function fmtDateTime(dateStr: string | null): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-const ACTION_LABELS: Record<string, string> = {
-  ready: 'Marked ready for review',
-  approved: 'Approved',
-  changes_requested: 'Requested changes',
-  completed: 'Completed',
-  assigned: 'Assigned',
-  version_uploaded: 'Uploaded a version',
-  edited: 'Edited details',
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtDate(dateStr: string | null): string {
   if (!dateStr) return '—'
   const d = new Date(dateStr.length <= 10 ? dateStr + 'T00:00:00' : dateStr)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function fmtSize(bytes: number | null): string {
@@ -159,28 +95,35 @@ function fmtSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function daysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null
+  const d = new Date(dateStr.length <= 10 ? dateStr + 'T00:00:00' : dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function normalizeUrl(url: string): string {
+  const t = url.trim()
+  if (!t) return ''
+  if (/^https?:\/\//i.test(t)) return t
+  return `https://${t}`
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function RoleWorkspacePage() {
+export default function VendorWorkspacePage() {
   const params = useParams()
   const roleId = Array.isArray(params.id) ? params.id[0] : (params.id as string)
 
   const [role, setRole] = useState<RoleData | null>(null)
-  const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
-  const [meId, setMeId] = useState('')
-  const [uploadFor, setUploadFor] = useState<RoleDeliverable | null>(null)
-  const [editFor, setEditFor] = useState<RoleDeliverable | null>(null)
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [uploadFor, setUploadFor] = useState<{ deliverable: RoleDeliverable; fromTeam: boolean } | null>(null)
+  const [showDelivered, setShowDelivered] = useState(false)
 
   async function load() {
-    const [r, t] = await Promise.all([
-      fetch(`/api/vendor-roles/${roleId}`).then((res) => res.json()),
-      fetch('/api/team').then((res) => res.json()),
-    ])
+    const r = await fetch(`/api/vendor-roles/${roleId}`).then((res) => res.json())
     setRole(r && !r.error ? r : null)
-    setTeam(Array.isArray(t) ? t : [])
     setLoading(false)
   }
 
@@ -198,31 +141,14 @@ export default function RoleWorkspacePage() {
     load()
   }
 
-  // Group deliverables by category (vendor_name).
-  const groups = useMemo(() => {
-    const map = new Map<string, { key: string; name: string; color: string | null; items: RoleDeliverable[] }>()
-    for (const d of role?.deliverables || []) {
-      const key = d.vendor_id || '__none__'
-      const name = d.vendor_name || 'Uncategorized'
-      if (!map.has(key)) map.set(key, { key, name, color: d.vendor_color, items: [] })
-      map.get(key)!.items.push(d)
+  // Split active vs delivered so the working list stays clean.
+  const { active, delivered } = useMemo(() => {
+    const all = role?.deliverables || []
+    return {
+      active: all.filter((d) => d.status !== 'delivered'),
+      delivered: all.filter((d) => d.status === 'delivered'),
     }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
   }, [role])
-
-  function toggleCollapse(key: string) {
-    setCollapsed((c) => ({ ...c, [key]: !c[key] }))
-  }
-
-  function collapseAll() {
-    const all: Record<string, boolean> = {}
-    for (const g of groups) all[g.key] = true
-    setCollapsed(all)
-  }
-
-  function expandAll() {
-    setCollapsed({})
-  }
 
   if (loading) {
     return (
@@ -235,9 +161,9 @@ export default function RoleWorkspacePage() {
   if (!role) {
     return (
       <div className="font-fira">
-        <PageHeader eyebrow="VENDOR WORKSPACE" title="Role not found" subtitle="This workspace could not be loaded." />
+        <PageHeader eyebrow="VENDOR PORTAL" title="Workspace not found" subtitle="This workspace could not be loaded." />
         <Link href="/vendors" className="text-[13px] font-fira text-fe-blue hover:underline">
-          ← Back to Vendors
+          ← Back to Vendor Portal
         </Link>
       </div>
     )
@@ -246,9 +172,9 @@ export default function RoleWorkspacePage() {
   return (
     <div className="font-fira">
       <PageHeader
-        eyebrow="VENDOR WORKSPACE"
+        eyebrow="VENDOR PORTAL"
         title={role.name}
-        subtitle={role.description || 'Deliverables for this role.'}
+        subtitle="Everything you need for your work here — deliverables, due dates, our notes, reference links, and files. This is our shared source of truth."
         actions={
           <Link
             href="/vendors"
@@ -258,189 +184,89 @@ export default function RoleWorkspacePage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back to Vendors
+            Back
           </Link>
         }
       />
 
-      {/* Controls bar with identity picker */}
-      <div className="bg-white border border-gray-100 p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+      {/* Summary bar */}
+      <div
+        className="bg-white border border-gray-100 p-4 mb-6 flex items-center gap-3"
+        style={{ borderLeftWidth: 6, borderLeftColor: role.color }}
+      >
+        <span className="text-[13px] font-fira text-fe-blue-gray">
+          <span className="font-bold text-fe-navy">{active.length}</span> active deliverable
+          {active.length === 1 ? '' : 's'}
+        </span>
+        {delivered.length > 0 && (
+          <>
+            <span className="text-fe-blue-gray/40">·</span>
             <span className="text-[13px] font-fira text-fe-blue-gray">
-              {role.deliverables.length} deliverable{role.deliverables.length === 1 ? '' : 's'} · {role.members.length} member
-              {role.members.length === 1 ? '' : 's'}
+              <span className="font-bold text-fe-navy">{delivered.length}</span> delivered
             </span>
-          </div>
-          <div className="flex items-center gap-2 text-[12px] font-fira">
-            <button
-              onClick={collapseAll}
-              data-testid="button-collapse-all"
-              className="px-2.5 py-1 border border-gray-200 text-fe-navy hover:bg-gray-50 transition-colors"
-            >
-              Collapse all
-            </button>
-            <button
-              onClick={expandAll}
-              data-testid="button-expand-all"
-              className="px-2.5 py-1 border border-gray-200 text-fe-navy hover:bg-gray-50 transition-colors"
-            >
-              Expand all
-            </button>
-          </div>
-        </div>
-        <label className="flex items-center gap-2">
-          <span className="text-[13px] font-fira text-fe-blue-gray">Viewing as:</span>
-          <select
-            value={meId}
-            onChange={(e) => setMeId(e.target.value)}
-            data-testid="select-identity"
-            className="px-3 py-2 text-[13px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue"
-          >
-            <option value="">— Select who you are —</option>
-            {team.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          </>
+        )}
       </div>
 
-      {role.deliverables.length === 0 ? (
+      {active.length === 0 && delivered.length === 0 ? (
         <div className="text-center py-20 text-fe-blue-gray font-fira text-sm">
-          No deliverables assigned to this role yet.
+          No deliverables here yet. When we assign work to this workspace, it will appear here.
         </div>
       ) : (
         <div className="space-y-5">
-          {groups.map((g) => {
-            const isCollapsed = !!collapsed[g.key]
-            const doneCount = g.items.filter((d) => d.review_state === 'approved').length
-            return (
-              <section
-                key={g.key}
-                data-testid={`group-category-${g.name}`}
-                className="bg-white border border-gray-100"
-              >
-                {/* Category header — click to collapse/expand */}
-                <button
-                  onClick={() => toggleCollapse(g.key)}
-                  data-testid={`toggle-category-${g.key}`}
-                  className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50/60 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <svg
-                      className={`w-4 h-4 text-fe-blue-gray transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: g.color || '#647692' }} />
-                    <h2 className="font-barlow font-bold text-base text-fe-navy">{g.name}</h2>
-                  </div>
-                  <span className="text-[12px] font-fira text-fe-blue-gray">
-                    {doneCount}/{g.items.length} approved
-                  </span>
-                </button>
+          {active.map((d) => (
+            <DeliverableCard
+              key={d.id}
+              d={d}
+              onPatch={patchDeliverable}
+              onUploadFinal={() => setUploadFor({ deliverable: d, fromTeam: false })}
+              onUploadTeam={() => setUploadFor({ deliverable: d, fromTeam: true })}
+            />
+          ))}
+        </div>
+      )}
 
-                {/* Deliverable table */}
-                {!isCollapsed && (
-                  <div className="border-t border-gray-100 overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-gray-50/60 border-b border-gray-100">
-                          <th className="px-5 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                            Deliverable
-                          </th>
-                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                            Assigned
-                          </th>
-                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                            Concepts
-                          </th>
-                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                            Due
-                          </th>
-                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                            Status
-                          </th>
-                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                            Review
-                          </th>
-                          <th className="px-3 py-2.5 text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray text-right">
-                            Assets
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const templateItems = g.items.filter((d) => d.source === 'template')
-                          const manualItems = g.items.filter((d) => d.source !== 'template')
-                          const renderRow = (d: RoleDeliverable) => (
-                            <DeliverableRow
-                              key={d.id}
-                              d={d}
-                              meId={meId}
-                              meName={team.find((m) => m.id === meId)?.name || null}
-                              team={team}
-                              roleMembers={role.members}
-                              expanded={expandedRow === d.id}
-                              onToggle={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
-                              onPatch={patchDeliverable}
-                              onUpload={() => setUploadFor(d)}
-                              onEdit={() => setEditFor(d)}
-                            />
-                          )
-                          const subHeader = (label: string, count: number) => (
-                            <tr className="bg-gray-50/40 border-b border-gray-100">
-                              <td colSpan={7} className="px-5 py-1.5">
-                                <span className="text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                                  {label} · {count}
-                                </span>
-                              </td>
-                            </tr>
-                          )
-                          // Only show sub-headers when BOTH kinds exist; otherwise a flat list.
-                          const showSplit = templateItems.length > 0 && manualItems.length > 0
-                          return (
-                            <>
-                              {showSplit && subHeader('From project templates', templateItems.length)}
-                              {templateItems.map(renderRow)}
-                              {showSplit && subHeader('Manually assigned', manualItems.length)}
-                              {manualItems.map(renderRow)}
-                            </>
-                          )
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            )
-          })}
+      {/* Delivered / archive */}
+      {delivered.length > 0 && (
+        <div className="mt-8">
+          <button
+            onClick={() => setShowDelivered((v) => !v)}
+            data-testid="button-toggle-delivered"
+            className="inline-flex items-center gap-2 text-[13px] font-fira text-fe-blue-gray hover:text-fe-navy transition-colors"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${showDelivered ? 'rotate-90' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {showDelivered ? 'Hide' : 'Show'} delivered ({delivered.length})
+          </button>
+          {showDelivered && (
+            <div className="space-y-5 mt-4">
+              {delivered.map((d) => (
+                <DeliverableCard
+                  key={d.id}
+                  d={d}
+                  onPatch={patchDeliverable}
+                  onUploadFinal={() => setUploadFor({ deliverable: d, fromTeam: false })}
+                  onUploadTeam={() => setUploadFor({ deliverable: d, fromTeam: true })}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {uploadFor && (
-        <UploadVersionModal
-          deliverable={uploadFor}
+        <UploadModal
+          deliverable={uploadFor.deliverable}
+          fromTeam={uploadFor.fromTeam}
           onClose={() => setUploadFor(null)}
           onUploaded={() => {
             setUploadFor(null)
-            load()
-          }}
-        />
-      )}
-
-      {editFor && (
-        <EditDeliverableModal
-          deliverable={editFor}
-          onClose={() => setEditFor(null)}
-          onSaved={() => {
-            setEditFor(null)
             load()
           }}
         />
@@ -449,345 +275,395 @@ export default function RoleWorkspacePage() {
   )
 }
 
-// ── Deliverable row (table) ─────────────────────────────────────────────────
+// ── Deliverable card ────────────────────────────────────────────────────────
 
-function DeliverableRow({
+function DeliverableCard({
   d,
-  meId,
-  meName,
-  team,
-  roleMembers,
-  expanded,
-  onToggle,
   onPatch,
-  onUpload,
-  onEdit,
+  onUploadFinal,
+  onUploadTeam,
 }: {
   d: RoleDeliverable
-  meId: string
-  meName: string | null
-  team: TeamMember[]
-  roleMembers: RoleMember[]
-  expanded: boolean
-  onToggle: () => void
   onPatch: (id: string, updates: Record<string, any>) => void
-  onUpload: () => void
-  onEdit: () => void
+  onUploadFinal: () => void
+  onUploadTeam: () => void
 }) {
-  const identityRequired = !meId
-  const [showActivity, setShowActivity] = useState(false)
-  const [activity, setActivity] = useState<ActivityEntry[] | null>(null)
-  const [loadingActivity, setLoadingActivity] = useState(false)
+  const days = daysUntil(d.due_date)
+  const teamFiles = d.assets.filter((a) => a.is_from_team)
+  const finalFiles = d.assets.filter((a) => !a.is_from_team)
 
-  async function loadActivity() {
-    setLoadingActivity(true)
-    const res = await fetch(`/api/vendors/deliverables/${d.id}/activity`).then((r) => r.json()).catch(() => [])
-    setActivity(Array.isArray(res) ? res : [])
-    setLoadingActivity(false)
+  let dueTone = 'text-fe-blue-gray'
+  if (days !== null && d.status !== 'delivered') {
+    if (days < 0) dueTone = 'text-fe-red font-bold'
+    else if (days <= 3) dueTone = 'text-fe-gold font-bold'
   }
-
-  function toggleActivity() {
-    const next = !showActivity
-    setShowActivity(next)
-    if (next && activity === null) loadActivity()
-  }
-
-  // Build the high-level "last updated per status" line from stored timestamps.
-  const statusLine: { label: string; who: string | null; at: string | null }[] = []
-  if (d.ready_at) statusLine.push({ label: 'Ready', who: d.ready_by_name, at: d.ready_at })
-  if (d.changes_requested_at)
-    statusLine.push({ label: 'Changes requested', who: d.changes_requested_by_name, at: d.changes_requested_at })
-  if (d.approved_at) statusLine.push({ label: 'Approved', who: d.approved_by_name, at: d.approved_at })
-
-  // Assign picker: role members first, then everyone else.
-  const roleMemberIds = new Set(roleMembers.map((m) => m.id))
-  const otherMembers = team.filter((m) => !roleMemberIds.has(m.id))
 
   return (
-    <>
-      <tr
-        data-testid={`deliverable-row-${d.id}`}
-        onClick={onToggle}
-        className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/40 cursor-pointer align-middle"
-      >
-        <td className="px-5 py-3">
-          <div className="flex items-center gap-2">
-            <svg
-              className={`w-3.5 h-3.5 text-fe-blue-gray shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            <span className="font-fira text-[13px] text-fe-navy">{d.deliverable}</span>
-            {d.project_name && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-fira font-bold bg-fe-blue-gray/15 text-fe-blue-gray uppercase tracking-wide">
-                {d.project_name}
-              </span>
-            )}
+    <section
+      data-testid={`deliverable-card-${d.id}`}
+      className="bg-white border border-gray-100"
+      style={{ borderLeftWidth: 6, borderLeftColor: d.vendor_color || role_color_fallback }}
+    >
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-barlow font-extrabold text-xl text-fe-navy leading-tight">{d.deliverable}</h2>
+              {d.recurring && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-fira font-bold bg-fe-blue-gray/15 text-fe-blue-gray uppercase tracking-wide">
+                  Recurring
+                </span>
+              )}
+            </div>
+            <div className="mt-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap text-[12px] font-fira text-fe-blue-gray">
+              {d.vendor_name && <span>{d.vendor_name}</span>}
+              {d.project_name && (
+                <>
+                  <span className="text-fe-blue-gray/40">·</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-fira font-bold bg-fe-navy/10 text-fe-navy uppercase tracking-wide">
+                    {d.project_name}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
-        </td>
-        <td className="px-3 py-3">
-          {d.assigned_to_id ? (
-            <span className="inline-flex items-center gap-1.5 text-[12px] font-fira text-fe-navy">
-              <span
-                className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-fira font-bold"
-                style={{ backgroundColor: d.assigned_to_color || '#647692' }}
-              >
-                {d.assigned_to_initials}
-              </span>
-              <span className="hidden sm:inline">{d.assigned_to_name}</span>
-            </span>
-          ) : (
-            <span className="text-[12px] font-fira text-fe-blue-gray italic">—</span>
-          )}
-        </td>
-        <td className="px-3 py-3 text-[12px] font-fira text-fe-blue-gray whitespace-nowrap">
-          {fmtDate(d.concepts_due)}
-        </td>
-        <td className="px-3 py-3 text-[12px] font-fira text-fe-blue-gray whitespace-nowrap">{fmtDate(d.due_date)}</td>
-        <td className="px-3 py-3">
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-fira font-bold whitespace-nowrap ${STATUS_PILL[d.status]}`}
-          >
-            {STATUS_LABELS[d.status]}
-          </span>
-        </td>
-        <td className="px-3 py-3">
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-fira font-bold whitespace-nowrap ${REVIEW_PILL[d.review_state]}`}
-          >
-            {REVIEW_LABELS[d.review_state]}
-          </span>
-        </td>
-        <td className="px-5 py-3 text-right text-[12px] font-fira text-fe-blue-gray whitespace-nowrap">
-          {d.assets.length > 0 ? `${d.assets.length}` : '—'}
-        </td>
-      </tr>
-
-      {/* Expanded detail row — actions + assets */}
-      {expanded && (
-        <tr className="border-b border-gray-100 bg-fe-offwhite/40" data-testid={`deliverable-detail-${d.id}`}>
-          <td colSpan={7} className="px-5 py-4">
-            <div className="flex flex-col gap-4">
-              {/* Action controls */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Edit deliverable */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onEdit()
-                  }}
-                  data-testid={`button-edit-${d.id}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </button>
-
-                {/* Assign */}
-                <select
-                  value={d.assigned_to_id || ''}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    const val = e.target.value || null
-                    const who = val ? team.find((m) => m.id === val)?.name || null : null
-                    onPatch(d.id, {
-                      assigned_to_id: val,
-                      activity: val
-                        ? { action: 'assigned', actor_id: meId, actor_name: meName, detail: `Assigned to ${who}` }
-                        : undefined,
-                    })
-                  }}
-                  data-testid={`button-assign-${d.id}`}
-                  className="px-2 py-1.5 text-[12px] font-fira text-fe-navy bg-white border border-gray-200 focus:outline-none focus:border-fe-blue"
-                >
-                  <option value="">Assign…</option>
-                  <optgroup label="This role">
-                    {roleMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  {otherMembers.length > 0 && (
-                    <optgroup label="Others">
-                      {otherMembers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-
-                {/* Ready — designer signals the document is ready for review */}
-                {d.review_state === 'ready' ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-fe-blue/10 text-fe-blue text-[12px] font-fira font-bold">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Ready for review
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <div className="text-[10px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">Due</div>
+              <div className={`text-[13px] font-fira ${dueTone}`}>
+                {fmtDate(d.due_date)}
+                {days !== null && d.status !== 'delivered' && (
+                  <span className="ml-1">
+                    {days < 0 ? `· ${Math.abs(days)}d overdue` : days === 0 ? '· today' : `· ${days}d`}
                   </span>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPatch(d.id, {
-                        review_state: 'ready',
-                        status: 'in_review',
-                        ready_by_id: meId,
-                        ready_at: new Date().toISOString(),
-                        activity: { action: 'ready', actor_id: meId, actor_name: meName },
-                      })
-                    }}
-                    disabled={identityRequired}
-                    data-testid={`button-ready-${d.id}`}
-                    title={identityRequired ? 'Select who you are first' : 'Mark ready for review'}
-                    className="px-3 py-1.5 bg-fe-blue text-white text-[12px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Mark ready
-                  </button>
-                )}
-
-                {/* Request changes — sends it back */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onPatch(d.id, {
-                      review_state: 'changes_requested',
-                      status: 'in_progress',
-                      changes_requested_by_id: meId,
-                      changes_requested_at: new Date().toISOString(),
-                      approved_by_id: null,
-                      approved_at: null,
-                      activity: { action: 'changes_requested', actor_id: meId, actor_name: meName },
-                    })
-                  }}
-                  disabled={identityRequired}
-                  data-testid={`button-request-changes-${d.id}`}
-                  title={identityRequired ? 'Select who you are first' : 'Request changes'}
-                  className="px-3 py-1.5 border border-fe-red text-fe-red text-[12px] font-fira font-bold hover:bg-fe-red/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Request changes
-                </button>
-
-                {/* Approve — completes + archives (moves out of sight) */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onPatch(d.id, {
-                      review_state: 'approved',
-                      status: 'delivered',
-                      approved_by_id: meId,
-                      approved_at: new Date().toISOString(),
-                      is_archived: true,
-                      archived_at: new Date().toISOString(),
-                      activity: { action: 'approved', actor_id: meId, actor_name: meName, detail: 'Approved → completed & archived' },
-                    })
-                  }}
-                  disabled={identityRequired}
-                  data-testid={`button-approve-${d.id}`}
-                  title={identityRequired ? 'Select who you are first' : 'Approve — marks complete and archives'}
-                  className="px-3 py-1.5 bg-fe-teal text-white text-[12px] font-fira font-bold hover:bg-fe-teal/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Approve &amp; complete
-                </button>
-
-                {identityRequired && (
-                  <span className="text-[11px] font-fira text-fe-blue-gray italic">Select who you are first</span>
-                )}
-              </div>
-
-              {/* High-level status timeline (last update per status) + hidden activity */}
-              {(statusLine.length > 0 || true) && (
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
-                    {statusLine.length === 0 ? (
-                      <span className="text-[11px] font-fira text-fe-blue-gray italic">No status updates yet</span>
-                    ) : (
-                      statusLine.map((s, i) => (
-                        <span key={i} className="text-[11px] font-fira text-fe-blue-gray">
-                          <span className="font-bold text-fe-navy">{s.label}</span>
-                          {s.who ? ` · ${s.who}` : ''} · {fmtDateTime(s.at)}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleActivity()
-                    }}
-                    data-testid={`button-activity-${d.id}`}
-                    className="text-[11px] font-fira text-fe-blue hover:underline"
-                  >
-                    {showActivity ? 'Hide activity' : 'View activity'}
-                  </button>
-                </div>
-              )}
-
-              {/* Hidden activity log drawer */}
-              {showActivity && (
-                <div className="border border-gray-100 bg-white p-3" data-testid={`activity-log-${d.id}`}>
-                  {loadingActivity ? (
-                    <p className="text-[12px] font-fira text-fe-blue-gray">Loading activity…</p>
-                  ) : activity && activity.length > 0 ? (
-                    <ul className="space-y-1.5">
-                      {activity.map((a) => (
-                        <li key={a.id} className="flex items-baseline gap-2 text-[12px] font-fira">
-                          <span className="w-1.5 h-1.5 rounded-full bg-fe-blue-gray shrink-0 translate-y-1" />
-                          <span className="text-fe-navy font-bold">{ACTION_LABELS[a.action] || a.action}</span>
-                          {a.actor_name && <span className="text-fe-blue-gray">by {a.actor_name}</span>}
-                          {a.detail && <span className="text-fe-blue-gray">— {a.detail}</span>}
-                          <span className="text-fe-blue-gray ml-auto">{fmtDateTime(a.created_at)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-[12px] font-fira text-fe-blue-gray">No activity recorded yet.</p>
-                  )}
-                </div>
-              )}
-
-              {/* Assets */}
-              <div className="border-t border-gray-100 pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
-                    Assets ({d.assets.length})
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onUpload()
-                    }}
-                    data-testid={`button-upload-${d.id}`}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Upload version
-                  </button>
-                </div>
-                {d.assets.length > 0 ? (
-                  <div className="flex flex-wrap gap-3">
-                    {d.assets.map((a) => (
-                      <AssetThumb key={a.id} asset={a} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[12px] font-fira text-fe-blue-gray">No assets uploaded yet.</p>
                 )}
               </div>
             </div>
-          </td>
-        </tr>
+            <StatusPicker d={d} onPatch={onPatch} />
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-5 py-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: notes + inspo links */}
+        <div className="space-y-5">
+          <NotesEditor d={d} onPatch={onPatch} />
+          <LinksEditor d={d} onPatch={onPatch} />
+        </div>
+
+        {/* Right: files */}
+        <div className="space-y-5">
+          <FileGroup
+            title="From the team"
+            hint="Docs, briefs & copy we've shared for you to use"
+            files={teamFiles}
+            onUpload={onUploadTeam}
+            uploadLabel="Add team file"
+          />
+          <FileGroup
+            title="Final uploads"
+            hint="Drop your finished work here — it flows into our asset library"
+            files={finalFiles}
+            onUpload={onUploadFinal}
+            uploadLabel="Upload final"
+            accent
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+const role_color_fallback = '#647692'
+
+// ── Status picker (inline) ──────────────────────────────────────────────────
+
+function StatusPicker({
+  d,
+  onPatch,
+}: {
+  d: RoleDeliverable
+  onPatch: (id: string, updates: Record<string, any>) => void
+}) {
+  return (
+    <select
+      value={d.status}
+      onChange={(e) => onPatch(d.id, { status: e.target.value })}
+      data-testid={`select-status-${d.id}`}
+      className={`px-3 py-1.5 text-[12px] font-fira font-bold border-0 focus:outline-none focus:ring-2 focus:ring-fe-blue/40 cursor-pointer ${STATUS_PILL[d.status]}`}
+    >
+      {(Object.keys(STATUS_LABELS) as DeliverableStatus[]).map((s) => (
+        <option key={s} value={s} className="bg-white text-fe-navy">
+          {STATUS_LABELS[s]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+// ── Notes editor ────────────────────────────────────────────────────────────
+
+function NotesEditor({
+  d,
+  onPatch,
+}: {
+  d: RoleDeliverable
+  onPatch: (id: string, updates: Record<string, any>) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(d.comments || '')
+  const [busy, setBusy] = useState(false)
+
+  async function save() {
+    setBusy(true)
+    await onPatch(d.id, { comments: text.trim() || null })
+    setBusy(false)
+    setEditing(false)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+          Notes &amp; direction
+        </span>
+        {!editing && (
+          <button
+            onClick={() => {
+              setText(d.comments || '')
+              setEditing(true)
+            }}
+            data-testid={`button-edit-notes-${d.id}`}
+            className="text-[11px] font-fira text-fe-blue hover:underline"
+          >
+            {d.comments ? 'Edit' : 'Add notes'}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={5}
+            autoFocus
+            data-testid={`textarea-notes-${d.id}`}
+            placeholder="Inspo, design direction, context, reminders — anything the vendor should refer back to."
+            className="w-full px-3 py-2.5 border border-gray-200 text-[13px] font-fira text-fe-navy focus:outline-none focus:border-fe-blue leading-relaxed"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={save}
+              disabled={busy}
+              data-testid={`button-save-notes-${d.id}`}
+              className="px-3 py-1.5 bg-fe-blue text-white text-[12px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              data-testid={`button-cancel-notes-${d.id}`}
+              className="px-3 py-1.5 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : d.comments ? (
+        <p className="text-[13px] font-fira text-fe-navy whitespace-pre-wrap leading-relaxed bg-fe-offwhite/60 border border-gray-100 px-3 py-2.5">
+          {d.comments}
+        </p>
+      ) : (
+        <p className="text-[12px] font-fira text-fe-blue-gray italic">No notes yet.</p>
       )}
-    </>
+    </div>
+  )
+}
+
+// ── Links editor ────────────────────────────────────────────────────────────
+
+function LinksEditor({
+  d,
+  onPatch,
+}: {
+  d: RoleDeliverable
+  onPatch: (id: string, updates: Record<string, any>) => void
+}) {
+  const links = Array.isArray(d.inspo_links) ? d.inspo_links : []
+  const [adding, setAdding] = useState(false)
+  const [label, setLabel] = useState('')
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function addLink() {
+    const clean = normalizeUrl(url)
+    if (!clean) return
+    setBusy(true)
+    const next = [...links, { label: label.trim() || clean.replace(/^https?:\/\//, ''), url: clean }]
+    await onPatch(d.id, { inspo_links: next })
+    setBusy(false)
+    setLabel('')
+    setUrl('')
+    setAdding(false)
+  }
+
+  async function removeLink(idx: number) {
+    const next = links.filter((_, i) => i !== idx)
+    await onPatch(d.id, { inspo_links: next })
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+          Reference &amp; inspo links
+        </span>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            data-testid={`button-add-link-${d.id}`}
+            className="text-[11px] font-fira text-fe-blue hover:underline"
+          >
+            Add link
+          </button>
+        )}
+      </div>
+
+      {links.length > 0 ? (
+        <ul className="space-y-1.5 mb-2">
+          {links.map((l, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-2 bg-fe-offwhite/60 border border-gray-100 px-3 py-2 group"
+              data-testid={`link-item-${d.id}-${i}`}
+            >
+              <svg className="w-3.5 h-3.5 text-fe-blue-gray shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5m8-3.828a4 4 0 00-5.656 0l-3 3"
+                />
+              </svg>
+              <a
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[13px] font-fira text-fe-blue hover:underline truncate flex-1"
+                title={l.url}
+              >
+                {l.label}
+              </a>
+              <button
+                onClick={() => removeLink(i)}
+                data-testid={`button-remove-link-${d.id}-${i}`}
+                className="text-fe-blue-gray hover:text-fe-red transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                title="Remove link"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        !adding && <p className="text-[12px] font-fira text-fe-blue-gray italic">No links yet.</p>
+      )}
+
+      {adding && (
+        <div className="space-y-2 border border-gray-100 p-3 bg-fe-offwhite/40">
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Label (e.g. Brand guidelines)"
+            data-testid={`input-link-label-${d.id}`}
+            className="w-full px-3 py-2 border border-gray-200 text-[13px] font-fira text-fe-navy focus:outline-none focus:border-fe-blue"
+          />
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Paste URL"
+            data-testid={`input-link-url-${d.id}`}
+            className="w-full px-3 py-2 border border-gray-200 text-[13px] font-fira text-fe-navy focus:outline-none focus:border-fe-blue"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={addLink}
+              disabled={busy || !url.trim()}
+              data-testid={`button-save-link-${d.id}`}
+              className="px-3 py-1.5 bg-fe-blue text-white text-[12px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40"
+            >
+              {busy ? 'Adding…' : 'Add'}
+            </button>
+            <button
+              onClick={() => {
+                setAdding(false)
+                setLabel('')
+                setUrl('')
+              }}
+              className="px-3 py-1.5 border border-gray-200 text-[12px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── File group ──────────────────────────────────────────────────────────────
+
+function FileGroup({
+  title,
+  hint,
+  files,
+  onUpload,
+  uploadLabel,
+  accent,
+}: {
+  title: string
+  hint: string
+  files: DeliverableAsset[]
+  onUpload: () => void
+  uploadLabel: string
+  accent?: boolean
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray">
+          {title} ({files.length})
+        </span>
+        <button
+          onClick={onUpload}
+          data-testid={`button-upload-${accent ? 'final' : 'team'}`}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-fira font-bold transition-colors ${
+            accent
+              ? 'bg-fe-blue text-white hover:bg-fe-blue/90'
+              : 'border border-gray-200 text-fe-navy hover:bg-gray-50'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          {uploadLabel}
+        </button>
+      </div>
+      <p className="text-[11px] font-fira text-fe-blue-gray mb-2">{hint}</p>
+      {files.length > 0 ? (
+        <div className="flex flex-wrap gap-3">
+          {files.map((a) => (
+            <AssetThumb key={a.id} asset={a} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12px] font-fira text-fe-blue-gray italic">No files yet.</p>
+      )}
+    </div>
   )
 }
 
@@ -801,15 +677,14 @@ function AssetThumb({ asset }: { asset: DeliverableAsset }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
       data-testid={`asset-thumb-${asset.id}`}
-      className={`relative block w-32 shrink-0 bg-white border border-gray-100 ${!asset.is_current ? 'opacity-70' : ''}`}
+      className={`relative block w-32 shrink-0 bg-white border border-gray-100 hover:shadow-md transition-shadow ${!asset.is_current && !asset.is_from_team ? 'opacity-70' : ''}`}
     >
       <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
-        {asset.is_current && (
+        {asset.is_current && !asset.is_from_team && (
           <span className="px-1.5 py-0.5 rounded-full bg-fe-teal text-white text-[9px] font-fira font-bold">Current</span>
         )}
-        {asset.version > 1 && (
+        {!asset.is_from_team && asset.version > 1 && (
           <span className="px-1 py-0.5 bg-fe-navy text-white text-[9px] font-fira font-bold">v{asset.version}</span>
         )}
       </div>
@@ -838,14 +713,16 @@ function AssetThumb({ asset }: { asset: DeliverableAsset }) {
   )
 }
 
-// ── Upload version modal ────────────────────────────────────────────────────
+// ── Upload modal ────────────────────────────────────────────────────────────
 
-function UploadVersionModal({
+function UploadModal({
   deliverable,
+  fromTeam,
   onClose,
   onUploaded,
 }: {
   deliverable: RoleDeliverable
+  fromTeam: boolean
   onClose: () => void
   onUploaded: () => void
 }) {
@@ -854,7 +731,8 @@ function UploadVersionModal({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const nextVersion = (deliverable.assets.reduce((max, a) => Math.max(max, a.version || 0), 0) || 0) + 1
+  const finalFiles = deliverable.assets.filter((a) => !a.is_from_team)
+  const nextVersion = (finalFiles.reduce((max, a) => Math.max(max, a.version || 0), 0) || 0) + 1
 
   const inputClass =
     'w-full px-3 py-2.5 border border-gray-200 text-sm font-fira text-fe-navy focus:outline-none focus:border-fe-blue'
@@ -869,8 +747,12 @@ function UploadVersionModal({
     fd.append('deliverable_id', deliverable.id)
     fd.append('vendor_id', deliverable.vendor_id)
     if (notes.trim()) fd.append('notes', notes.trim())
-    fd.append('version', String(nextVersion))
-    fd.append('is_current', 'true')
+    if (fromTeam) {
+      fd.append('is_from_team', 'true')
+    } else {
+      fd.append('version', String(nextVersion))
+      fd.append('is_current', 'true')
+    }
     const res = await fetch('/api/vendors/assets', { method: 'POST', body: fd })
     setBusy(false)
     if (res.ok) onUploaded()
@@ -886,9 +768,12 @@ function UploadVersionModal({
         className="bg-white border border-gray-100 shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-1">Upload new version</h2>
+        <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-1">
+          {fromTeam ? 'Add team file' : 'Upload final'}
+        </h2>
         <p className="text-[13px] font-fira text-fe-blue-gray mb-4">
-          {deliverable.deliverable} · v{nextVersion}
+          {deliverable.deliverable}
+          {!fromTeam ? ` · v${nextVersion}` : ''}
         </p>
 
         <div className="space-y-4">
@@ -896,7 +781,7 @@ function UploadVersionModal({
             <label className={labelClass}>File</label>
             <input
               type="file"
-              accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv"
+              accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.mp4,.mov"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               data-testid="input-upload-file"
               className="w-full text-sm font-fira file:mr-3 file:px-3 file:py-2 file:border-0 file:bg-fe-navy file:text-white file:text-sm file:font-fira"
@@ -915,7 +800,7 @@ function UploadVersionModal({
               rows={2}
               data-testid="input-upload-notes"
               className={inputClass}
-              placeholder="Designer / reviewer notes"
+              placeholder={fromTeam ? 'What is this file for?' : 'Notes for the team'}
             />
           </div>
           {error && <p className="text-[12px] font-fira text-fe-red">{error}</p>}
@@ -936,189 +821,6 @@ function UploadVersionModal({
             className="px-4 py-2 bg-fe-blue text-white text-[13px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy ? 'Uploading…' : 'Upload'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Edit deliverable modal ──────────────────────────────────────────────────
-
-function EditDeliverableModal({
-  deliverable,
-  onClose,
-  onSaved,
-}: {
-  deliverable: RoleDeliverable
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [text, setText] = useState(deliverable.deliverable || '')
-  const [status, setStatus] = useState<DeliverableStatus>(deliverable.status || 'not_started')
-  const [recurring, setRecurring] = useState(!!deliverable.recurring)
-  const [dateAssigned, setDateAssigned] = useState(deliverable.date_assigned || '')
-  const [conceptsDue, setConceptsDue] = useState(deliverable.concepts_due || '')
-  const [dueDate, setDueDate] = useState(deliverable.due_date || '')
-  const [externalLink, setExternalLink] = useState(deliverable.external_link || '')
-  const [comments, setComments] = useState(deliverable.comments || '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  const inputClass =
-    'w-full px-3 py-2.5 border border-gray-200 text-sm font-fira text-fe-navy focus:outline-none focus:border-fe-blue'
-  const labelClass = 'block text-[11px] font-barlow font-bold uppercase tracking-wider text-fe-blue-gray mb-1'
-
-  async function save() {
-    if (!text.trim()) return
-    setBusy(true)
-    setError('')
-    const res = await fetch(`/api/vendors/deliverables/${deliverable.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deliverable: text.trim(),
-        status,
-        recurring,
-        date_assigned: dateAssigned || null,
-        concepts_due: conceptsDue || null,
-        due_date: dueDate || null,
-        external_link: externalLink.trim() || null,
-        comments: comments.trim() || null,
-      }),
-    })
-    setBusy(false)
-    if (res.ok) onSaved()
-    else {
-      const d = await res.json().catch(() => ({}))
-      setError(d.error || 'Save failed')
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className="bg-white border border-gray-100 shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="font-barlow font-extrabold text-lg text-fe-navy mb-1">Edit deliverable</h2>
-        <p className="text-[13px] font-fira text-fe-blue-gray mb-4">{deliverable.vendor_name}</p>
-
-        <div className="space-y-4">
-          <div>
-            <label className={labelClass}>Deliverable name</label>
-            <input
-              className={inputClass}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              data-testid="input-edit-name"
-              autoFocus
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Status</label>
-              <select
-                className={inputClass}
-                value={status}
-                onChange={(e) => setStatus(e.target.value as DeliverableStatus)}
-                data-testid="select-edit-status"
-              >
-                {(Object.keys(STATUS_LABELS) as DeliverableStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end pb-2">
-              <label className="inline-flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={recurring}
-                  onChange={(e) => setRecurring(e.target.checked)}
-                  data-testid="checkbox-edit-recurring"
-                  className="w-4 h-4 accent-fe-blue"
-                />
-                <span className="text-sm font-fira text-fe-navy">Recurring</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className={labelClass}>Date Assigned</label>
-              <input
-                type="date"
-                className={inputClass}
-                value={dateAssigned}
-                onChange={(e) => setDateAssigned(e.target.value)}
-                data-testid="input-edit-date-assigned"
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Concepts Due</label>
-              <input
-                type="date"
-                className={inputClass}
-                value={conceptsDue}
-                onChange={(e) => setConceptsDue(e.target.value)}
-                data-testid="input-edit-concepts-due"
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Due Date</label>
-              <input
-                type="date"
-                className={inputClass}
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                data-testid="input-edit-due-date"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className={labelClass}>External Link</label>
-            <input
-              className={inputClass}
-              value={externalLink}
-              onChange={(e) => setExternalLink(e.target.value)}
-              data-testid="input-edit-link"
-              placeholder="https://…"
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>Comments</label>
-            <textarea
-              className={inputClass}
-              rows={3}
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              data-testid="input-edit-comments"
-            />
-          </div>
-
-          {error && <p className="text-[12px] font-fira text-fe-red">{error}</p>}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 mt-6">
-          <button
-            onClick={onClose}
-            data-testid="button-edit-cancel"
-            className="px-4 py-2 border border-gray-200 text-[13px] font-fira text-fe-navy hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={save}
-            disabled={!text.trim() || busy}
-            data-testid="button-edit-save"
-            className="px-4 py-2 bg-fe-blue text-white text-[13px] font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {busy ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>

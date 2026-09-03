@@ -23,6 +23,7 @@ export async function PATCH(
     const allowedFields = [
       'vendor_id', 'project_id', 'deliverable', 'recurring', 'date_assigned',
       'concepts_due', 'due_date', 'status', 'comments', 'external_link', 'sort_order',
+      'inspo_links',
       'is_archived', 'archived_at',
       // Role workspace: assignment, claim, approval, manual role tag.
       'assigned_to_id', 'claimed_by_id', 'claimed_at',
