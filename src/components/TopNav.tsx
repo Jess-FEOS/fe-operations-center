@@ -20,7 +20,6 @@ const PRIMARY: NavItem[] = [
       { href: '/marketing/strategy', label: 'Marketing Strategy', hint: 'Plan assets by program' },
     ],
   },
-  { href: '/program-timeline', label: 'Planning' },
   { href: '/team', label: 'Team' },
 ]
 

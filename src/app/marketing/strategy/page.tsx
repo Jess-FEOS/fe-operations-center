@@ -5,6 +5,8 @@ import Link from 'next/link'
 import PageHeader from '@/components/PageHeader'
 import Avatar from '@/components/Avatar'
 import AssetModal from '@/components/marketing/AssetModal'
+import ProjectRequirements from '@/components/marketing/ProjectRequirements'
+import { MarketingRequirement } from '@/lib/marketing-requirements'
 import {
   ASSET_TYPE_LABEL, ContentItem, Program, READINESS, Readiness, STATUS_LABEL,
   addDays, daysBetween, fmtLong, fmtShort, parseDate, readinessOf, startOfWeek, toISO, windowFit, marketingRequest, marketingWeeks,
@@ -28,6 +30,9 @@ export default function MarketingStrategyPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [requirements, setRequirements] = useState<MarketingRequirement[]>([])
+  const [requirementsLoading, setRequirementsLoading] = useState(true)
+  const [requirementsError, setRequirementsError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ item: ContentItem | null; defaults?: any } | null>(null)
 
   const load = useCallback(() => {
@@ -44,6 +49,24 @@ export default function MarketingStrategyPage() {
       .finally(() => setLoading(false))
   }, [])
   useEffect(() => { load() }, [load])
+
+  const loadRequirements = useCallback(async () => {
+    setRequirementsLoading(true)
+    try {
+      const data = await marketingRequest<MarketingRequirement[]>('/api/marketing/requirements')
+      setRequirements(data)
+      setRequirementsError(null)
+    } catch (err) {
+      setRequirementsError(err instanceof Error ? err.message : 'Could not load project requirements.')
+    } finally { setRequirementsLoading(false) }
+  }, [])
+  useEffect(() => {
+    loadRequirements()
+    // Returning from another tab with edited project tasks refreshes this projection.
+    const onFocus = () => { loadRequirements() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [loadRequirements])
 
   const visiblePrograms = useMemo(
     () => programs.filter((p) => showAll || p.project_status === 'active' || items.some((i) => i.project_id === p.project_id)),
@@ -98,6 +121,13 @@ export default function MarketingStrategyPage() {
 
       {error && <div role="alert" className="mb-4 border border-fe-red p-3 text-sm text-fe-red">{error} <button onClick={load} className="underline">Retry</button></div>}
       {saving && <p role="status" className="mb-2 text-xs text-fe-blue-gray">Saving changes…</p>}
+      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap text-xs text-fe-blue-gray">
+        <span>Project requirements are read directly from Projects. Assets share one Pipeline and Calendar.</span>
+        <button onClick={loadRequirements} disabled={requirementsLoading} className="text-fe-blue font-bold hover:underline disabled:opacity-50">
+          {requirementsLoading ? 'Refreshing project requirements…' : 'Refresh project requirements'}
+        </button>
+      </div>
+      {requirementsError && <p role="alert" className="mb-4 text-sm text-fe-red">Project requirements could not be loaded: {requirementsError}. Your asset plan is still available.</p>}
       <fieldset disabled={saving} className="min-w-0">
       {loading ? (
         <div className="flex items-center justify-center h-64">
@@ -114,6 +144,10 @@ export default function MarketingStrategyPage() {
                 key={p.project_id}
                 program={p}
                 items={items.filter((i) => i.project_id === p.project_id)}
+                requirements={requirements.filter(t => t.project_id === p.project_id)}
+                team={team}
+                requirementsLoading={requirementsLoading}
+                requirementsError={requirementsError}
                 onSaveProgram={(patch) => saveProgram(p.project_id, patch)}
                 onOpen={(it) => setModal({ item: it })}
                 onAdd={() => setModal({ item: null, defaults: { project_id: p.project_id } })}
@@ -270,10 +304,14 @@ function Timeline({ programs, items }: { programs: Program[]; items: ContentItem
 
 // ── One program ────────────────────────────────────────────────────────
 function ProgramCard({
-  program: p, items, onSaveProgram, onOpen, onAdd, onPatch,
+  program: p, items, requirements, team, requirementsLoading, requirementsError, onSaveProgram, onOpen, onAdd, onPatch,
 }: {
   program: Program
   items: ContentItem[]
+  requirements: MarketingRequirement[]
+  team: TeamMember[]
+  requirementsLoading: boolean
+  requirementsError: string | null
   onSaveProgram: (patch: Partial<Program>) => void
   onOpen: (it: ContentItem) => void
   onAdd: () => void
@@ -333,6 +371,8 @@ function ProgramCard({
           </MiniField>
         </div>
       </div>
+
+      <ProjectRequirements projectId={p.project_id} tasks={requirements} team={team} loading={requirementsLoading} error={requirementsError} />
 
       {/* Weekly volume */}
       <WeeklyVolume program={p} items={items} />
