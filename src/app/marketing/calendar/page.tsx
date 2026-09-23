@@ -133,7 +133,7 @@ export default function MarketingCalendarPage() {
           <button onClick={() => shift(-1)} className="px-2.5 py-1.5 border border-fe-line bg-white text-fe-navy hover:bg-gray-50" aria-label="Previous">‹</button>
           <button onClick={() => setAnchor(new Date())} className="px-3 py-1.5 border border-fe-line bg-white text-sm text-fe-navy hover:bg-gray-50">Today</button>
           <button onClick={() => shift(1)} className="px-2.5 py-1.5 border border-fe-line bg-white text-fe-navy hover:bg-gray-50" aria-label="Next">›</button>
-          <h2 className="font-barlow font-bold text-lg text-fe-navy ml-2" data-testid="cal-title">{title}</h2>
+          <h2 className="font-barlow font-bold text-lg text-fe-navy sm:ml-2 w-full sm:w-auto" data-testid="cal-title">{title}</h2>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select className="fe-input !w-auto py-1.5" value={fProgram} onChange={(e) => setFProgram(e.target.value)} data-testid="filter-program">

@@ -31,6 +31,7 @@ Confirmed with Jessica during review on September 23, 2026:
 - Scrollable timeline/month grid and wrapping calendar toolbar for narrow screens.
 - Failed asset deletion is visible; shared modal has dialog semantics.
 - Marketing dropdown exposes expanded state and Escape handling.
+- Narrow-screen primary navigation moves under More so the Marketing dropdown remains reachable.
 
 ## QA inventory
 
@@ -49,3 +50,14 @@ Confirmed with Jessica during review on September 23, 2026:
 - Supply actual marketing launch dates for the four active programs.
 - Optional deny-by-default RLS hardening requires separate review of API authorization. Service-role access bypasses RLS; RLS alone does not protect an unauthenticated server API.
 - Dependency install reports an existing security advisory for Next.js 14.1.0. Framework upgrade is outside this focused PR.
+
+## Verification outcome
+
+- Production build and five automated regression groups passed.
+- Vercel Git integration successfully deployed the feature branch.
+- Direct Supabase read checks confirmed four active projects, zero marketing assets, zero marketing-program overrides, and four null project launch dates.
+- Live preview UI verification is **blocked**: Vercel requires authentication; the connected management CLI has a certificate-signature failure; this session cannot reach the user's local browser even after they opened it.
+- No live test assets or program dates were written. Supabase counts were rechecked unchanged.
+- Local browser QA uses intercepted API responses with a snapshot of the real project names/dates and isolated temporary assets. This validates frontend behavior only, not live API persistence.
+- Local flow checked Strategy create → Calendar edit → Pipeline visibility, readiness colors/outlines, retained FE drafter controls, filters, month/week navigation, and cell date/platform defaults.
+- Do not treat this PR as live-data QA signoff until the protected Vercel preview can be tested.

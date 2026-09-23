@@ -102,7 +102,7 @@ export default function TopNav() {
           item.children ? (
             <NavDropdown key={item.href} item={item} active={isActive(item.href)} pathname={pathname} />
           ) : (
-            <Link key={item.href} href={item.href} className={navLinkClass(item.href)}>
+            <Link key={item.href} href={item.href} className={`hidden lg:inline-flex ${navLinkClass(item.href)}`}>
               {item.label}
             </Link>
           )
@@ -112,6 +112,7 @@ export default function TopNav() {
         <div className="relative" ref={moreRef}>
           <button
             onClick={() => setMoreOpen((o) => !o)}
+            aria-expanded={moreOpen}
             className={`flex items-center gap-1 px-3 py-2 text-[13px] font-fira whitespace-nowrap transition-colors border-b-2 ${
               moreActive || moreOpen
                 ? 'text-white font-bold border-fe-blue'
@@ -128,7 +129,13 @@ export default function TopNav() {
             </svg>
           </button>
           {moreOpen && (
-            <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-[#E4E7EC] shadow-lg py-1 z-50">
+            <div className="absolute top-full right-0 lg:left-0 lg:right-auto mt-1 w-52 bg-white border border-[#E4E7EC] shadow-lg py-1 z-50">
+              <div className="lg:hidden border-b border-fe-line">
+                {PRIMARY.filter(item => !item.children).map(item => (
+                  <Link key={item.href} href={item.href} className={`block px-4 py-2 text-[13px] font-fira ${isActive(item.href) ? 'bg-fe-blue text-white' : 'text-fe-navy hover:bg-[#F4F5F7]'}`}>{item.label}</Link>
+                ))}
+                <Link href="/projects/new" className="block px-4 py-2 text-[13px] font-fira text-fe-blue">New Project</Link>
+              </div>
               {MORE.map((item) => (
                 <Link
                   key={item.href}
