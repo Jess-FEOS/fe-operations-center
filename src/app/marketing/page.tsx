@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Avatar from '@/components/Avatar'
 import PageHeader from '@/components/PageHeader'
+import { readinessOf, READINESS } from '@/lib/marketing'
 
 // ------------------------------------------------------------------
 // Marketing content pipeline. Backed by marketing_content — the SAME
@@ -47,6 +48,10 @@ interface ContentItem {
   content_kind: 'clip' | 'episode'
   hashtags: string | null
   video_link: string | null
+  asset_type: string | null
+  target_audience: string | null
+  copy_ready: boolean
+  creative_ready: boolean
 }
 interface TeamMember { id: string; name: string; initials: string; color: string }
 interface ProjectLite { id: string; name: string }
@@ -55,6 +60,7 @@ const EMPTY: Omit<ContentItem, 'owner' | 'project_name'> = {
   id: '', title: '', channels: [], status: 'ready', scheduled_date: null,
   asset_link: null, caption: null, owner_id: null, project_id: null,
   transcript: null, content_kind: 'clip', hashtags: null, video_link: null,
+  asset_type: null, target_audience: null, copy_ready: false, creative_ready: false,
 }
 
 function fmtDate(s: string | null) {
@@ -105,6 +111,8 @@ export default function MarketingPage() {
       owner_id: it.owner_id, project_id: it.project_id,
       transcript: it.transcript, content_kind: it.content_kind || 'clip',
       hashtags: it.hashtags, video_link: it.video_link,
+      asset_type: it.asset_type, target_audience: it.target_audience,
+      copy_ready: !!it.copy_ready, creative_ready: !!it.creative_ready,
     })
     setFormOpen(true)
   }
@@ -182,8 +190,9 @@ export default function MarketingPage() {
   return (
     <div className="font-fira">
       <PageHeader
-        title="Marketing"
-        subtitle="Content pipeline — plans here flow onto the calendar"
+        eyebrow="Marketing"
+        title="Content Pipeline"
+        subtitle="Draft and move content through stages — it all shows on the Marketing Calendar"
         actions={
           <div className="flex items-center gap-2">
             <div className="flex border border-fe-line">
@@ -236,11 +245,12 @@ export default function MarketingPage() {
                     <div
                       key={it.id}
                       className="bg-white border border-fe-line p-2.5 cursor-pointer hover:border-fe-line-strong transition-colors"
-                      style={{ borderLeft: `3px solid ${col.color}` }}
+                      style={{ borderLeft: `3px solid ${READINESS[readinessOf(it)].color}` }}
                       onClick={() => openEdit(it)}
                       data-testid={`card-${it.id}`}
                     >
                       <p className="font-fira text-sm text-fe-anthracite font-medium leading-snug mb-1.5">{it.title}</p>
+                      <p className="text-[10px] mb-1.5" style={{ color: READINESS[readinessOf(it)].color }}>{READINESS[readinessOf(it)].label}</p>
                       {it.channels.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-1.5">
                           {it.channels.map((ch) => (
@@ -278,7 +288,7 @@ export default function MarketingPage() {
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-xs text-fe-blue-gray font-fira uppercase tracking-wider mr-1">Filter</span>
             <select
-              className="fe-input w-auto py-1.5"
+              className="fe-input !w-auto py-1.5"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as any)}
               data-testid="filter-status"
@@ -287,7 +297,7 @@ export default function MarketingPage() {
               {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
             <select
-              className="fe-input w-auto py-1.5"
+              className="fe-input !w-auto py-1.5"
               value={filterChannel}
               onChange={(e) => setFilterChannel(e.target.value)}
               data-testid="filter-channel"
@@ -332,11 +342,11 @@ export default function MarketingPage() {
                       <button
                         onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
                         className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-fira"
-                        style={{ backgroundColor: `${STATUS_COLOR[it.status]}18`, color: STATUS_COLOR[it.status] }}
+                        style={{ backgroundColor: READINESS[readinessOf(it)].bg, color: READINESS[readinessOf(it)].color }}
                         title="Click to advance"
                         data-testid={`status-${it.id}`}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_COLOR[it.status] }} />
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: READINESS[readinessOf(it)].color }} />
                         {STATUS_LABEL[it.status]}
                       </button>
                     </td>
@@ -368,8 +378,9 @@ export default function MarketingPage() {
       {/* Connectedness note */}
       <p className="mt-3 text-xs font-fira text-fe-blue-gray">
         Scheduled items appear on the{' '}
-        <Link href="/calendar" className="text-fe-blue hover:underline">master calendar</Link>{' '}
-        under the Marketing layer on their scheduled date.
+        <Link href="/marketing/calendar" className="text-fe-blue hover:underline">Marketing Calendar</Link>{' '}
+        on their scheduled date. Plan assets by program on{' '}
+        <Link href="/marketing/strategy" className="text-fe-blue hover:underline">Marketing Strategy</Link>.
       </p>
 
       {/* Add / edit modal */}
@@ -462,6 +473,17 @@ export default function MarketingPage() {
                     {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </Field>
+              </div>
+
+              <div className="flex flex-wrap gap-4 border border-fe-line bg-fe-offwhite px-3 py-2.5">
+                <label className="inline-flex items-center gap-2 text-sm text-fe-anthracite cursor-pointer">
+                  <input type="checkbox" className="w-4 h-4 accent-[#046A38]" checked={form.copy_ready} onChange={(e) => setForm({ ...form, copy_ready: e.target.checked })} data-testid="input-copy-ready" />
+                  Copy written
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-fe-anthracite cursor-pointer">
+                  <input type="checkbox" className="w-4 h-4 accent-[#046A38]" checked={form.creative_ready} onChange={(e) => setForm({ ...form, creative_ready: e.target.checked })} data-testid="input-creative-ready" />
+                  Creative done
+                </label>
               </div>
 
               <Field label="Asset / Drive link">

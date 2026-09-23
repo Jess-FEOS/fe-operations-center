@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 // Fields: title (required), channels text[], status, scheduled_date,
 //         asset_link, caption, owner_id, project_id.
 
-const ALLOWED = ['title', 'channels', 'status', 'scheduled_date', 'asset_link', 'caption', 'owner_id', 'project_id', 'transcript', 'content_kind', 'hashtags', 'video_link']
+const ALLOWED = ['title', 'channels', 'status', 'scheduled_date', 'asset_link', 'caption', 'owner_id', 'project_id', 'transcript', 'content_kind', 'hashtags', 'video_link', 'asset_type', 'target_audience', 'copy_ready', 'creative_ready']
 
 // GET /api/marketing  → all items with owner + project joined, newest first
 export async function GET() {
@@ -33,6 +33,10 @@ export async function GET() {
       content_kind: r.content_kind || 'clip',
       hashtags: r.hashtags,
       video_link: r.video_link,
+      asset_type: r.asset_type || null,
+      target_audience: r.target_audience || null,
+      copy_ready: !!r.copy_ready,
+      creative_ready: !!r.creative_ready,
       owner_id: r.owner_id,
       owner: r.team_members
         ? { id: r.team_members.id, name: r.team_members.name, initials: r.team_members.initials, color: r.team_members.color }
@@ -52,8 +56,10 @@ function cleanRow(body: any) {
     if (!(f in body)) continue
     let v = body[f]
     if (f === 'channels') v = Array.isArray(v) ? v : []
-    else if (f === 'owner_id' || f === 'project_id' || f === 'scheduled_date' || f === 'asset_link' || f === 'caption' || f === 'transcript' || f === 'hashtags' || f === 'video_link') {
+    else if (f === 'owner_id' || f === 'project_id' || f === 'scheduled_date' || f === 'asset_link' || f === 'caption' || f === 'transcript' || f === 'hashtags' || f === 'video_link' || f === 'asset_type' || f === 'target_audience') {
       v = v === '' ? null : v
+    } else if (f === 'copy_ready' || f === 'creative_ready') {
+      v = !!v
     }
     row[f] = v
   }
