@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Avatar from '@/components/Avatar'
 import PageHeader from '@/components/PageHeader'
-import { readinessOf, READINESS } from '@/lib/marketing'
+import { readinessOf, READINESS, marketingRequest } from '@/lib/marketing'
+import PipelineBoard from '@/components/marketing/PipelineBoard'
 
 // ------------------------------------------------------------------
 // Marketing content pipeline. Backed by marketing_content — the SAME
@@ -75,6 +76,10 @@ export default function MarketingPage() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [projects, setProjects] = useState<ProjectLite[]>([])
   const [loading, setLoading] = useState(true)
+  const [movingId, setMovingId] = useState<string | null>(null)
+  const moveLock = useRef(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  const [moveMessage, setMoveMessage] = useState('')
 
   // filters (table view)
   const [filterStatus, setFilterStatus] = useState<'' | Status>('')
@@ -105,6 +110,7 @@ export default function MarketingPage() {
 
   const openNew = () => { setForm({ ...EMPTY }); setFormOpen(true) }
   const openEdit = (it: ContentItem) => {
+    if (moveLock.current) return
     setForm({
       id: it.id, title: it.title, channels: it.channels || [], status: it.status,
       scheduled_date: it.scheduled_date, asset_link: it.asset_link, caption: it.caption,
@@ -169,16 +175,34 @@ export default function MarketingPage() {
     if (res && res.ok) { closeForm(); load() }
   }
 
-  // advance status inline (board card + table). Cycles forward, wraps at posted.
+  // Dragging and inline advancement use the same persisted status transition.
+  const moveStatus = async (it: ContentItem, next: Status) => {
+    if (moveLock.current || it.status === next) return
+    moveLock.current = true
+    setMovingId(it.id)
+    setMoveError(null)
+    setMoveMessage('')
+    setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: next } : x))
+    try {
+      await marketingRequest('/api/marketing', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: it.id, status: next }),
+      })
+      setMoveMessage(`${it.title} moved to ${STATUS_LABEL[next]}.`)
+    } catch {
+      setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: it.status } : x))
+      setMoveError(`Could not move "${it.title}". It has been returned to ${STATUS_LABEL[it.status]}. Please try again.`)
+    } finally {
+      moveLock.current = false
+      setMovingId(null)
+    }
+  }
+
+  // Advance status inline (board card + table). Cycles forward, wraps at posted.
   const advanceStatus = async (it: ContentItem) => {
     const order: Status[] = ['ready', 'idea', 'drafted', 'scheduled', 'posted']
     const next = order[(order.indexOf(it.status) + 1) % order.length]
-    // optimistic
-    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, status: next } : x)))
-    await fetch('/api/marketing', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: it.id, status: next }),
-    }).catch(() => null)
+    await moveStatus(it, next)
   }
 
   const filtered = items.filter((it) => {
@@ -216,6 +240,8 @@ export default function MarketingPage() {
         }
       />
 
+      {moveError && <p role="alert" className="mb-4 border border-fe-red bg-white p-3 text-sm text-fe-red" data-testid="move-error">{moveError}</p>}
+      <p role="status" aria-live="polite" className="sr-only">{moveMessage}</p>
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-fe-blue border-t-transparent rounded-full animate-spin" />
@@ -228,60 +254,7 @@ export default function MarketingPage() {
         </div>
       ) : view === 'board' ? (
         // ---------------- Kanban board ----------------
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3" data-testid="board">
-          {STATUSES.map((col) => {
-            const colItems = items.filter((it) => it.status === col.key)
-            return (
-              <div key={col.key} className="bg-fe-offwhite border border-fe-line" data-testid={`col-${col.key}`}>
-                <div className="flex items-center justify-between px-3 py-2.5 border-b border-fe-line bg-white">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5" style={{ backgroundColor: col.color }} />
-                    <span className="font-barlow font-bold text-sm text-fe-navy">{col.label}</span>
-                  </div>
-                  <span className="text-xs font-fira text-fe-blue-gray">{colItems.length}</span>
-                </div>
-                <div className="p-2 space-y-2 min-h-[80px]">
-                  {colItems.map((it) => (
-                    <div
-                      key={it.id}
-                      className="bg-white border border-fe-line p-2.5 cursor-pointer hover:border-fe-line-strong transition-colors"
-                      style={{ borderLeft: `3px solid ${READINESS[readinessOf(it)].color}` }}
-                      onClick={() => openEdit(it)}
-                      data-testid={`card-${it.id}`}
-                    >
-                      <p className="font-fira text-sm text-fe-anthracite font-medium leading-snug mb-1.5">{it.title}</p>
-                      <p className="text-[10px] mb-1.5" style={{ color: READINESS[readinessOf(it)].color }}>{READINESS[readinessOf(it)].label}</p>
-                      {it.channels.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-1.5">
-                          {it.channels.map((ch) => (
-                            <span key={ch} className="text-[10px] font-fira px-1.5 py-0.5 bg-fe-offwhite border border-fe-line text-fe-blue-gray uppercase tracking-wide">{ch}</span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-fira text-fe-blue-gray">{fmtDate(it.scheduled_date)}</span>
-                        <div className="flex items-center gap-1.5">
-                          {it.owner && <Avatar initials={it.owner.initials} color={it.owner.color} size="sm" title={it.owner.name} />}
-                          {col.key !== 'posted' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
-                              className="text-xs font-fira text-fe-blue hover:underline"
-                              data-testid={`advance-${it.id}`}
-                              title="Move to next stage"
-                            >→</button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {colItems.length === 0 && (
-                    <p className="text-xs font-fira text-fe-blue-gray/60 text-center py-4">Nothing here</p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <PipelineBoard items={items} movingId={movingId} onMove={moveStatus} onOpen={openEdit} onAdvance={advanceStatus} />
       ) : (
         // ---------------- Table ----------------
         <div>
@@ -340,6 +313,7 @@ export default function MarketingPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <button
+                        disabled={!!movingId}
                         onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
                         className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-fira"
                         style={{ backgroundColor: READINESS[readinessOf(it)].bg, color: READINESS[readinessOf(it)].color }}
