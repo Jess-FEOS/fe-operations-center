@@ -80,6 +80,19 @@ export async function PATCH(
     const { id } = params;
     const body = await request.json();
 
+    let oldStatus: string | null = null;
+    if (body.status !== undefined) {
+      if (!['active', 'completed', 'paused', 'archived'].includes(body.status)) {
+        return NextResponse.json({ error: 'Invalid project status' }, { status: 400 });
+      }
+      const { data: existing, error } = await supabase
+        .from('projects').select('status').eq('id', id).single();
+      if (error || !existing) {
+        return NextResponse.json({ error: error?.message || 'Project not found' }, { status: error?.code === 'PGRST116' || !error ? 404 : 500 });
+      }
+      oldStatus = existing.status;
+    }
+
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.start_date !== undefined) updates.start_date = body.start_date;
@@ -206,12 +219,6 @@ export async function PATCH(
 
     // --- Activity log: status change ---
     if (body.status !== undefined) {
-      const { data: oldProject } = await supabase
-        .from('projects')
-        .select('status')
-        .eq('id', id)
-        .single();
-      const oldStatus = oldProject?.status;
       if (oldStatus && oldStatus !== body.status) {
         await supabase.from('activity_log').insert({
           project_id: id,
@@ -289,7 +296,8 @@ export async function PATCH(
     }
 
     // --- Sync: when project status changes, cascade to priority and campaigns ---
-    if (body.status !== undefined) {
+    // Archive/restore are visibility changes, not changes to linked work.
+    if (body.status !== undefined && body.status !== 'archived' && oldStatus !== 'archived') {
       // Sync priority status if project has a priority_id
       const priorityId = data.priority_id;
       if (priorityId) {
