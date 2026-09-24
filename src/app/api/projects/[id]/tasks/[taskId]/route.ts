@@ -15,7 +15,17 @@ export async function PATCH(
     if (body.task_name !== undefined) updates.task_name = body.task_name;
     if (body.owner_ids !== undefined) updates.owner_ids = body.owner_ids;
     if (body.role_id !== undefined) updates.role_id = body.role_id;
-    if (body.due_date !== undefined) updates.due_date = body.due_date;
+    if (body.due_date !== undefined) {
+      updates.due_date = body.due_date;
+      // Only an actual manual date change detaches the task from its anchor.
+      const { data: current, error } = await supabase.from('project_tasks')
+        .select('due_date').eq('id', taskId).eq('project_id', id).single();
+      if (error || !current) return NextResponse.json({ error: 'Could not read task deadline.' }, { status: 500 });
+      if (current.due_date !== body.due_date) {
+        updates.schedule_anchor = 'fixed';
+        updates.schedule_offset_days = null;
+      }
+    }
     if (body.on_hold !== undefined) updates.on_hold = body.on_hold;
     if (body.follow_up_date !== undefined) updates.follow_up_date = body.follow_up_date;
     if (body.phase !== undefined) updates.phase = body.phase;

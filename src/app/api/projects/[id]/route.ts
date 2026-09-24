@@ -4,18 +4,6 @@ import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-/** Parse YYYY-MM-DD at noon local time to avoid UTC offset issues */
-function parseDate(dateStr: string): Date {
-  return new Date(dateStr + 'T12:00:00');
-}
-
-/** Shift a YYYY-MM-DD date string by a number of milliseconds, return YYYY-MM-DD */
-function shiftDate(dateStr: string, deltaMs: number): string {
-  const d = parseDate(dateStr);
-  d.setTime(d.getTime() + deltaMs);
-  return d.toISOString().split('T')[0];
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -80,6 +68,18 @@ export async function PATCH(
     const { id } = params;
     const body = await request.json();
 
+    // Date edits must use the reviewed, atomic schedule endpoint. Even first-set
+    // launch dates and start-only edits follow this path; no legacy cascade.
+    if (body.start_date !== undefined || body.launch_date !== undefined) {
+      const { data: current, error } = await supabase.from('projects')
+        .select('start_date, launch_date').eq('id', id).single();
+      if (error || !current) return NextResponse.json({ error: 'Could not read project dates.' }, { status: 500 });
+      if ((body.start_date !== undefined && body.start_date !== current.start_date) ||
+          (body.launch_date !== undefined && body.launch_date !== current.launch_date)) {
+        return NextResponse.json({ error: 'Review the task schedule before saving new project dates.', code: 'SCHEDULE_REVIEW_REQUIRED' }, { status: 409 });
+      }
+    }
+
     let oldStatus: string | null = null;
     if (body.status !== undefined) {
       if (!['active', 'completed', 'paused', 'archived'].includes(body.status)) {
@@ -95,10 +95,10 @@ export async function PATCH(
 
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
-    if (body.start_date !== undefined) updates.start_date = body.start_date;
+    // Dates are written only by save_project_schedule. Even unchanged dates
+    // are omitted here so metadata edits cannot race and overwrite a schedule.
     if (body.status !== undefined) updates.status = body.status;
     if (body.notes !== undefined) updates.notes = body.notes;
-    if (body.launch_date !== undefined) updates.launch_date = body.launch_date;
     if (body.revenue_goal !== undefined) updates.revenue_goal = body.revenue_goal;
     if (body.enrollment_goal !== undefined) updates.enrollment_goal = body.enrollment_goal;
     if (body.priority_id !== undefined) updates.priority_id = body.priority_id;
@@ -110,17 +110,6 @@ export async function PATCH(
         { error: 'No valid fields to update' },
         { status: 400 }
       );
-    }
-
-    // Fetch old launch_date BEFORE updating so we can compute shift delta
-    let oldLaunchDate: string | null = null;
-    if (body.launch_date !== undefined && !body.workflow_template_id) {
-      const { data: existing } = await supabase
-        .from('projects')
-        .select('launch_date')
-        .eq('id', id)
-        .single();
-      oldLaunchDate = existing?.launch_date ?? null;
     }
 
     // If workflow template is changing, regenerate tasks
@@ -198,100 +187,16 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // --- Activity log: launch_date change ---
-    if (
-      body.launch_date !== undefined &&
-      body.launch_date !== oldLaunchDate
-    ) {
-      const oldVal = oldLaunchDate || 'unset';
-      const newVal = body.launch_date || 'unset';
-      const desc = oldLaunchDate
-        ? `Launch date changed from ${oldVal} to ${newVal}`
-        : `Launch date set to ${newVal}`;
-      await supabase.from('activity_log').insert({
-        project_id: id,
-        action: 'launch_date_changed',
-        description: desc,
-        old_value: oldLaunchDate,
-        new_value: body.launch_date,
-      });
-    }
-
     // --- Activity log: status change ---
     if (body.status !== undefined) {
       if (oldStatus && oldStatus !== body.status) {
         await supabase.from('activity_log').insert({
           project_id: id,
-          action: 'status_changed',
+          change_type: 'status_changed',
           description: `Status changed from ${oldStatus} to ${body.status}`,
           old_value: oldStatus,
           new_value: body.status,
         });
-      }
-    }
-
-    // --- Cascade: shift all task due_dates when launch_date changes ---
-    if (
-      body.launch_date !== undefined &&
-      body.launch_date !== null &&
-      oldLaunchDate !== null &&
-      body.launch_date !== oldLaunchDate &&
-      !body.workflow_template_id
-    ) {
-      const deltaMs = parseDate(body.launch_date).getTime() - parseDate(oldLaunchDate).getTime();
-      const deltaDays = Math.round(deltaMs / 86_400_000);
-      console.log(`[cascade] launch_date changed: ${oldLaunchDate} -> ${body.launch_date} (delta: ${deltaDays} days)`);
-
-      // Fetch ALL tasks for this project
-      const { data: cascadeTasks, error: cascadeTasksError } = await supabase
-        .from('project_tasks')
-        .select('id, due_date, week_number')
-        .eq('project_id', id);
-
-      if (cascadeTasksError) {
-        console.error(`[cascade] Error fetching tasks:`, cascadeTasksError.message);
-      } else if (!cascadeTasks || cascadeTasks.length === 0) {
-        console.log(`[cascade] No tasks found for project ${id}`);
-      } else {
-        console.log(`[cascade] Shifting ${cascadeTasks.length} tasks by ${deltaDays} days`);
-
-        let earliestDueDate: string | null = null;
-
-        for (const task of cascadeTasks) {
-          const newDueDate = shiftDate(task.due_date, deltaMs);
-          console.log(`[cascade] Task ${task.id}: ${task.due_date} -> ${newDueDate} (week ${task.week_number})`);
-
-          const { error: updateError } = await supabase
-            .from('project_tasks')
-            .update({ due_date: newDueDate })
-            .eq('id', task.id);
-
-          if (updateError) {
-            console.error(`[cascade] Failed to update task ${task.id}:`, updateError.message);
-          }
-
-          // Track earliest due_date for start_date
-          if (!earliestDueDate || newDueDate < earliestDueDate) {
-            earliestDueDate = newDueDate;
-          }
-        }
-
-        // Update project start_date to the earliest task due_date
-        if (earliestDueDate) {
-          console.log(`[cascade] Updating project start_date to ${earliestDueDate}`);
-          const { error: startDateError } = await supabase
-            .from('projects')
-            .update({ start_date: earliestDueDate })
-            .eq('id', id);
-
-          if (startDateError) {
-            console.error(`[cascade] Failed to update start_date:`, startDateError.message);
-          } else {
-            data.start_date = earliestDueDate;
-          }
-        }
-
-        console.log(`[cascade] Done. ${cascadeTasks.length} tasks shifted.`);
       }
     }
 
