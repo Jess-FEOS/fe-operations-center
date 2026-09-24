@@ -35,6 +35,7 @@ const CHANNELS = ['YouTube', 'TikTok', 'Instagram', 'LinkedIn', 'X', 'Email', 'B
 interface Owner { id: string; name: string; initials: string; color: string }
 interface ContentItem {
   id: string
+  source_task_id?: string | null
   title: string
   channels: string[]
   status: Status
@@ -113,6 +114,7 @@ export default function MarketingPage() {
     if (moveLock.current) return
     setForm({
       id: it.id, title: it.title, channels: it.channels || [], status: it.status,
+      source_task_id: it.source_task_id || null,
       scheduled_date: it.scheduled_date, asset_link: it.asset_link, caption: it.caption,
       owner_id: it.owner_id, project_id: it.project_id,
       transcript: it.transcript, content_kind: it.content_kind || 'clip',
@@ -166,6 +168,10 @@ export default function MarketingPage() {
     }).catch(() => null)
     setSaving(false)
     if (res && res.ok) { closeForm(); load() }
+    else {
+      const data = res ? await res.json().catch(() => null) : null
+      setDraftErr(data?.error || 'Could not save. Try again.')
+    }
   }
   const remove = async () => {
     if (!form.id) return
@@ -442,7 +448,7 @@ export default function MarketingPage() {
                   </select>
                 </Field>
                 <Field label="Project (optional)">
-                  <select className="fe-input" value={form.project_id || ''} onChange={(e) => setForm({ ...form, project_id: e.target.value || null })} data-testid="input-project">
+                  <select disabled={!!form.source_task_id} className="fe-input" value={form.project_id || ''} onChange={(e) => setForm({ ...form, project_id: e.target.value || null })} data-testid="input-project">
                     <option value="">None</option>
                     {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>

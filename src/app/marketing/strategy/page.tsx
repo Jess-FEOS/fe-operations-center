@@ -6,7 +6,7 @@ import PageHeader from '@/components/PageHeader'
 import Avatar from '@/components/Avatar'
 import AssetModal from '@/components/marketing/AssetModal'
 import ProjectRequirements from '@/components/marketing/ProjectRequirements'
-import { MarketingRequirement } from '@/lib/marketing-requirements'
+import { MarketingRequirement, assetDefaultsFromRequirement } from '@/lib/marketing-requirements'
 import {
   ASSET_TYPE_LABEL, ContentItem, Program, READINESS, Readiness, STATUS_LABEL,
   addDays, daysBetween, fmtLong, fmtShort, parseDate, readinessOf, startOfWeek, toISO, windowFit, marketingRequest, marketingWeeks,
@@ -63,10 +63,10 @@ export default function MarketingStrategyPage() {
   useEffect(() => {
     loadRequirements()
     // Returning from another tab with edited project tasks refreshes this projection.
-    const onFocus = () => { loadRequirements() }
+    const onFocus = () => { loadRequirements(); load() }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [loadRequirements])
+  }, [loadRequirements, load])
 
   const visiblePrograms = useMemo(
     () => programs.filter((p) => showAll || p.project_status === 'active' || items.some((i) => i.project_id === p.project_id)),
@@ -123,7 +123,7 @@ export default function MarketingStrategyPage() {
       {saving && <p role="status" className="mb-2 text-xs text-fe-blue-gray">Saving changes…</p>}
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap text-xs text-fe-blue-gray">
         <span>Project requirements are read directly from Projects. Assets share one Pipeline and Calendar.</span>
-        <button onClick={loadRequirements} disabled={requirementsLoading} className="text-fe-blue font-bold hover:underline disabled:opacity-50">
+        <button onClick={() => { loadRequirements(); load() }} disabled={requirementsLoading} className="text-fe-blue font-bold hover:underline disabled:opacity-50">
           {requirementsLoading ? 'Refreshing project requirements…' : 'Refresh project requirements'}
         </button>
       </div>
@@ -151,6 +151,7 @@ export default function MarketingStrategyPage() {
                 onSaveProgram={(patch) => saveProgram(p.project_id, patch)}
                 onOpen={(it) => setModal({ item: it })}
                 onAdd={() => setModal({ item: null, defaults: { project_id: p.project_id } })}
+                onCreateRequirement={(task) => setModal({ item: null, defaults: assetDefaultsFromRequirement(task) })}
                 onPatch={patchItem}
               />
             ))}
@@ -180,7 +181,7 @@ export default function MarketingStrategyPage() {
           programs={programs}
           team={team}
           onClose={() => setModal(null)}
-          onSaved={load}
+          onSaved={() => { load(); loadRequirements() }}
         />
       )}
     </div>
@@ -304,7 +305,7 @@ function Timeline({ programs, items }: { programs: Program[]; items: ContentItem
 
 // ── One program ────────────────────────────────────────────────────────
 function ProgramCard({
-  program: p, items, requirements, team, requirementsLoading, requirementsError, onSaveProgram, onOpen, onAdd, onPatch,
+  program: p, items, requirements, team, requirementsLoading, requirementsError, onSaveProgram, onOpen, onAdd, onPatch, onCreateRequirement,
 }: {
   program: Program
   items: ContentItem[]
@@ -315,6 +316,7 @@ function ProgramCard({
   onSaveProgram: (patch: Partial<Program>) => void
   onOpen: (it: ContentItem) => void
   onAdd: () => void
+  onCreateRequirement: (task: MarketingRequirement) => void
   onPatch: (it: ContentItem, patch: Partial<ContentItem>) => void
 }) {
   const [audience, setAudience] = useState(p.target_audience || '')
@@ -372,7 +374,7 @@ function ProgramCard({
         </div>
       </div>
 
-      <ProjectRequirements projectId={p.project_id} tasks={requirements} team={team} loading={requirementsLoading} error={requirementsError} />
+      <ProjectRequirements projectId={p.project_id} tasks={requirements} items={items} team={team} loading={requirementsLoading} error={requirementsError} onCreate={onCreateRequirement} onOpen={onOpen} />
 
       {/* Weekly volume */}
       <WeeklyVolume program={p} items={items} />

@@ -1,5 +1,7 @@
 # Projects to Marketing Strategy
 
+Historical implementation notes. The later `content-requirement-conversion.md` supersedes selection, completed-task visibility, and task-to-asset linkage behavior.
+
 ## Scope
 
 Planning is removed from desktop and mobile navigation. Its existing route and data remain intact.

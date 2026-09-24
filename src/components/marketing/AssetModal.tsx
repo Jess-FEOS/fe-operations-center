@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   ASSET_TYPES, CHANNELS, STATUSES, ContentItem, Program, Status,
   emptyItem, readinessOf, READINESS, windowFit, fmtShort,
@@ -65,7 +66,10 @@ export default function AssetModal({
     }).catch(() => null)
     setSaving(false)
     if (res && res.ok) { onSaved(); onClose() }
-    else setErr('Could not save. Try again.')
+    else {
+      const data = res ? await res.json().catch(() => null) : null
+      setErr(data?.error || 'Could not save. Try again.')
+    }
   }
   const remove = async () => {
     if (!form.id || !confirm('Delete this asset?')) return
@@ -88,13 +92,20 @@ export default function AssetModal({
         </div>
 
         <div className="p-5 space-y-3">
+          {form.source_task_id && (
+            <div className="border border-fe-blue/30 bg-fe-blue/5 p-3 text-xs text-fe-navy" data-testid="asset-source-note">
+              {form.id ? 'Linked to a project content requirement. ' : 'Created from a project content requirement. Its deadline is prefilled as the proposed post date; confirm or change it before saving. '}
+              Saving this asset does not complete or reschedule the task.{' '}
+              <Link href={`/projects/${form.project_id}`} className="text-fe-blue underline">View project</Link>
+            </div>
+          )}
           <Field label="Asset">
             <input className="fe-input" autoFocus value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Early-bird announcement graphic" data-testid="asset-title" />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Program">
-              <select className="fe-input" value={form.project_id || ''} onChange={(e) => set('project_id', e.target.value || null)} data-testid="asset-program">
+              <select disabled={!!form.source_task_id} className="fe-input" value={form.project_id || ''} onChange={(e) => set('project_id', e.target.value || null)} data-testid="asset-program">
                 <option value="">No program</option>
                 {programs.map((p) => <option key={p.project_id} value={p.project_id}>{p.name}</option>)}
               </select>
@@ -165,7 +176,7 @@ export default function AssetModal({
           <Field label="Copy / caption">
             <textarea className="fe-input min-h-[90px] resize-y" value={form.caption || ''} onChange={(e) => set('caption', e.target.value || null)} placeholder="Post copy…" />
           </Field>
-          {err && <p className="text-xs text-fe-red">{err}</p>}
+          {err && <p role="alert" className="text-xs text-fe-red">{err}</p>}
         </div>
 
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-fe-line sticky bottom-0 bg-white">
@@ -174,7 +185,7 @@ export default function AssetModal({
           ) : <span />}
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 border border-fe-line bg-white hover:bg-gray-50 text-sm text-fe-anthracite">Cancel</button>
-            <button onClick={save} disabled={saving || !form.title.trim()} className="px-4 py-1.5 bg-fe-blue text-white text-sm font-bold hover:opacity-90 disabled:opacity-50" data-testid="asset-save">
+            <button onClick={save} disabled={saving || !form.title.trim() || (!!form.source_task_id && !form.id && !form.scheduled_date)} className="px-4 py-1.5 bg-fe-blue text-white text-sm font-bold hover:opacity-90 disabled:opacity-50" data-testid="asset-save">
               {saving ? 'Saving…' : form.id ? 'Save' : 'Add asset'}
             </button>
           </div>

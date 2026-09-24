@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { isMarketingRequirement } from '@/lib/marketing-requirements'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,7 @@ export async function GET() {
 
     const items = (data || []).map((r: any) => ({
       id: r.id,
+      source_task_id: r.source_task_id || null,
       title: r.title,
       channels: Array.isArray(r.channels) ? r.channels : [],
       status: r.status || 'idea',
@@ -73,7 +75,26 @@ export async function POST(request: NextRequest) {
     if (!body?.title) return NextResponse.json({ error: 'title is required' }, { status: 400 })
     const row = cleanRow(body)
     if (!row.status) row.status = 'idea'
+    if (body.source_task_id) {
+      const { data: task, error: taskError } = await supabase.from('project_tasks')
+        .select('id, project_id, task_name, phase, status, role_id').eq('id', body.source_task_id).maybeSingle()
+      if (taskError) throw taskError
+      if (!task) return NextResponse.json({ error: 'This project task no longer exists. Refresh requirements.' }, { status: 404 })
+      if (task.project_id !== row.project_id) return NextResponse.json({ error: 'The asset must stay in its source task’s project.' }, { status: 400 })
+      const { data: role, error: roleError } = task.role_id
+        ? await supabase.from('roles').select('name').eq('id', task.role_id).maybeSingle()
+        : { data: null, error: null }
+      if (roleError) throw roleError
+      if (!isMarketingRequirement({ ...task, role_name: role?.name || null })) {
+        return NextResponse.json({ error: 'This task is completed or is not a content requirement. Refresh requirements.' }, { status: 409 })
+      }
+      if (!row.scheduled_date) return NextResponse.json({ error: 'Choose a planned post date for this asset.' }, { status: 400 })
+      row.source_task_id = task.id
+    }
     const { data, error } = await supabase.from('marketing_content').insert(row).select().single()
+    if (error?.code === '23505' && row.source_task_id) {
+      return NextResponse.json({ error: 'An asset already exists for this requirement. Close this form and refresh to open it.' }, { status: 409 })
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
   } catch (err: any) {
@@ -87,6 +108,20 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     if (!body?.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     const row = cleanRow(body)
+    // Source links cannot be changed by a generic asset edit, including legacy
+    // Pipeline forms. Prevent moving a linked asset to a different project.
+    if ('project_id' in body || 'source_task_id' in body) {
+      const { data: current, error: currentError } = await supabase.from('marketing_content')
+        .select('source_task_id, project_id').eq('id', body.id).maybeSingle()
+      if (currentError) throw currentError
+      if (!current) return NextResponse.json({ error: 'Asset not found.' }, { status: 404 })
+      if ('source_task_id' in body && (body.source_task_id || null) !== current.source_task_id) {
+        return NextResponse.json({ error: 'The source task link cannot be changed here.' }, { status: 400 })
+      }
+      if (current.source_task_id && 'project_id' in row && row.project_id !== current.project_id) {
+        return NextResponse.json({ error: 'The asset must stay in its source task’s project.' }, { status: 400 })
+      }
+    }
     row.updated_at = new Date().toISOString()
     const { data, error } = await supabase.from('marketing_content').update(row).eq('id', body.id).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

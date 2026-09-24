@@ -35,6 +35,7 @@ export interface Owner { id: string; name: string; initials: string; color: stri
 
 export interface ContentItem {
   id: string
+  source_task_id?: string | null
   title: string
   channels: string[]
   status: Status
@@ -131,7 +132,7 @@ export function windowFit(date: string | null, p: Program | undefined): 'inside'
 /** Empty form for a new asset. */
 export function emptyItem(): Omit<ContentItem, 'owner' | 'project_name'> {
   return {
-    id: '', title: '', channels: [], status: 'idea', scheduled_date: null,
+    id: '', source_task_id: null, title: '', channels: [], status: 'idea', scheduled_date: null,
     asset_link: null, caption: null, owner_id: null, project_id: null,
     transcript: null, content_kind: 'clip', hashtags: null, video_link: null,
     asset_type: null, target_audience: null, copy_ready: false, creative_ready: false,
