@@ -5,12 +5,21 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 
 // Primary destinations shown inline; secondary ones tuck under "More".
-const PRIMARY = [
+type NavItem = { href: string; label: string; children?: { href: string; label: string; hint?: string }[] }
+
+const PRIMARY: NavItem[] = [
   { href: '/', label: 'Dashboard' },
   { href: '/projects', label: 'Projects' },
   { href: '/vendors', label: 'Vendors' },
-  { href: '/marketing', label: 'Marketing' },
-  { href: '/program-timeline', label: 'Planning' },
+  {
+    href: '/marketing',
+    label: 'Marketing',
+    children: [
+      { href: '/marketing', label: 'Content Pipeline', hint: 'Draft & move content through stages' },
+      { href: '/marketing/calendar', label: 'Marketing Calendar', hint: 'What posts where, and when' },
+      { href: '/marketing/strategy', label: 'Marketing Strategy', hint: 'Plan assets by program' },
+    ],
+  },
   { href: '/team', label: 'Team' },
 ]
 
@@ -88,16 +97,21 @@ export default function TopNav() {
 
       {/* Primary nav */}
       <nav className="flex items-center gap-0.5 flex-1 min-w-0">
-        {PRIMARY.map((item) => (
-          <Link key={item.href} href={item.href} className={navLinkClass(item.href)}>
-            {item.label}
-          </Link>
-        ))}
+        {PRIMARY.map((item) =>
+          item.children ? (
+            <NavDropdown key={item.href} item={item} active={isActive(item.href)} pathname={pathname} />
+          ) : (
+            <Link key={item.href} href={item.href} className={`hidden lg:inline-flex ${navLinkClass(item.href)}`}>
+              {item.label}
+            </Link>
+          )
+        )}
 
         {/* More dropdown */}
         <div className="relative" ref={moreRef}>
           <button
             onClick={() => setMoreOpen((o) => !o)}
+            aria-expanded={moreOpen}
             className={`flex items-center gap-1 px-3 py-2 text-[13px] font-fira whitespace-nowrap transition-colors border-b-2 ${
               moreActive || moreOpen
                 ? 'text-white font-bold border-fe-blue'
@@ -114,7 +128,13 @@ export default function TopNav() {
             </svg>
           </button>
           {moreOpen && (
-            <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-[#E4E7EC] shadow-lg py-1 z-50">
+            <div className="absolute top-full right-0 lg:left-0 lg:right-auto mt-1 w-52 bg-white border border-[#E4E7EC] shadow-lg py-1 z-50">
+              <div className="lg:hidden border-b border-fe-line">
+                {PRIMARY.filter(item => !item.children).map(item => (
+                  <Link key={item.href} href={item.href} className={`block px-4 py-2 text-[13px] font-fira ${isActive(item.href) ? 'bg-fe-blue text-white' : 'text-fe-navy hover:bg-[#F4F5F7]'}`}>{item.label}</Link>
+                ))}
+                <Link href="/projects/new" className="block px-4 py-2 text-[13px] font-fira text-fe-blue">New Project</Link>
+              </div>
               {MORE.map((item) => (
                 <Link
                   key={item.href}
@@ -148,6 +168,59 @@ export default function TopNav() {
         New Project
       </Link>
     </header>
+  )
+}
+
+// ── Primary-nav dropdown (e.g. Marketing) ──────────────────────────────────
+
+function NavDropdown({ item, active, pathname }: { item: NavItem; active: boolean; pathname: string }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+  useEffect(() => { setOpen(false) }, [pathname])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false) }}
+        className={`flex items-center gap-1 px-3 py-2 text-[13px] font-fira whitespace-nowrap transition-colors border-b-2 ${
+          active || open ? 'text-white font-bold border-fe-blue' : 'text-white/70 hover:text-white border-transparent'
+        }`}
+        data-testid={`nav-${item.label.toLowerCase()}`}
+      >
+        {item.label}
+        <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-[#E4E7EC] shadow-lg py-1 z-50">
+          {item.children!.map((c) => {
+            const on = pathname === c.href
+            return (
+              <Link
+                key={c.href}
+                href={c.href}
+                className={`block px-4 py-2 transition-colors ${on ? 'bg-fe-blue text-white' : 'text-fe-navy hover:bg-[#F4F5F7]'}`}
+                data-testid={`nav-link-${c.href.replace(/\//g, '-')}`}
+              >
+                <span className="block text-[13px] font-fira font-bold">{c.label}</span>
+                {c.hint && <span className={`block text-[11px] font-fira ${on ? 'text-white/80' : 'text-fe-blue-gray'}`}>{c.hint}</span>}
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 

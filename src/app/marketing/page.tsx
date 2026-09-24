@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Avatar from '@/components/Avatar'
 import PageHeader from '@/components/PageHeader'
+import { readinessOf, READINESS, marketingRequest } from '@/lib/marketing'
+import PipelineBoard from '@/components/marketing/PipelineBoard'
 
 // ------------------------------------------------------------------
 // Marketing content pipeline. Backed by marketing_content — the SAME
@@ -33,6 +35,7 @@ const CHANNELS = ['YouTube', 'TikTok', 'Instagram', 'LinkedIn', 'X', 'Email', 'B
 interface Owner { id: string; name: string; initials: string; color: string }
 interface ContentItem {
   id: string
+  source_task_id?: string | null
   title: string
   channels: string[]
   status: Status
@@ -47,6 +50,10 @@ interface ContentItem {
   content_kind: 'clip' | 'episode'
   hashtags: string | null
   video_link: string | null
+  asset_type: string | null
+  target_audience: string | null
+  copy_ready: boolean
+  creative_ready: boolean
 }
 interface TeamMember { id: string; name: string; initials: string; color: string }
 interface ProjectLite { id: string; name: string }
@@ -55,6 +62,7 @@ const EMPTY: Omit<ContentItem, 'owner' | 'project_name'> = {
   id: '', title: '', channels: [], status: 'ready', scheduled_date: null,
   asset_link: null, caption: null, owner_id: null, project_id: null,
   transcript: null, content_kind: 'clip', hashtags: null, video_link: null,
+  asset_type: null, target_audience: null, copy_ready: false, creative_ready: false,
 }
 
 function fmtDate(s: string | null) {
@@ -69,6 +77,10 @@ export default function MarketingPage() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [projects, setProjects] = useState<ProjectLite[]>([])
   const [loading, setLoading] = useState(true)
+  const [movingId, setMovingId] = useState<string | null>(null)
+  const moveLock = useRef(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  const [moveMessage, setMoveMessage] = useState('')
 
   // filters (table view)
   const [filterStatus, setFilterStatus] = useState<'' | Status>('')
@@ -99,12 +111,16 @@ export default function MarketingPage() {
 
   const openNew = () => { setForm({ ...EMPTY }); setFormOpen(true) }
   const openEdit = (it: ContentItem) => {
+    if (moveLock.current) return
     setForm({
       id: it.id, title: it.title, channels: it.channels || [], status: it.status,
+      source_task_id: it.source_task_id || null,
       scheduled_date: it.scheduled_date, asset_link: it.asset_link, caption: it.caption,
       owner_id: it.owner_id, project_id: it.project_id,
       transcript: it.transcript, content_kind: it.content_kind || 'clip',
       hashtags: it.hashtags, video_link: it.video_link,
+      asset_type: it.asset_type, target_audience: it.target_audience,
+      copy_ready: !!it.copy_ready, creative_ready: !!it.creative_ready,
     })
     setFormOpen(true)
   }
@@ -152,6 +168,10 @@ export default function MarketingPage() {
     }).catch(() => null)
     setSaving(false)
     if (res && res.ok) { closeForm(); load() }
+    else {
+      const data = res ? await res.json().catch(() => null) : null
+      setDraftErr(data?.error || 'Could not save. Try again.')
+    }
   }
   const remove = async () => {
     if (!form.id) return
@@ -161,16 +181,34 @@ export default function MarketingPage() {
     if (res && res.ok) { closeForm(); load() }
   }
 
-  // advance status inline (board card + table). Cycles forward, wraps at posted.
+  // Dragging and inline advancement use the same persisted status transition.
+  const moveStatus = async (it: ContentItem, next: Status) => {
+    if (moveLock.current || it.status === next) return
+    moveLock.current = true
+    setMovingId(it.id)
+    setMoveError(null)
+    setMoveMessage('')
+    setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: next } : x))
+    try {
+      await marketingRequest('/api/marketing', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: it.id, status: next }),
+      })
+      setMoveMessage(`${it.title} moved to ${STATUS_LABEL[next]}.`)
+    } catch {
+      setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: it.status } : x))
+      setMoveError(`Could not move "${it.title}". It has been returned to ${STATUS_LABEL[it.status]}. Please try again.`)
+    } finally {
+      moveLock.current = false
+      setMovingId(null)
+    }
+  }
+
+  // Advance status inline (board card + table). Cycles forward, wraps at posted.
   const advanceStatus = async (it: ContentItem) => {
     const order: Status[] = ['ready', 'idea', 'drafted', 'scheduled', 'posted']
     const next = order[(order.indexOf(it.status) + 1) % order.length]
-    // optimistic
-    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, status: next } : x)))
-    await fetch('/api/marketing', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: it.id, status: next }),
-    }).catch(() => null)
+    await moveStatus(it, next)
   }
 
   const filtered = items.filter((it) => {
@@ -182,8 +220,9 @@ export default function MarketingPage() {
   return (
     <div className="font-fira">
       <PageHeader
-        title="Marketing"
-        subtitle="Content pipeline — plans here flow onto the calendar"
+        eyebrow="Marketing"
+        title="Content Pipeline"
+        subtitle="Draft and move content through stages — it all shows on the Marketing Calendar"
         actions={
           <div className="flex items-center gap-2">
             <div className="flex border border-fe-line">
@@ -207,6 +246,8 @@ export default function MarketingPage() {
         }
       />
 
+      {moveError && <p role="alert" className="mb-4 border border-fe-red bg-white p-3 text-sm text-fe-red" data-testid="move-error">{moveError}</p>}
+      <p role="status" aria-live="polite" className="sr-only">{moveMessage}</p>
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-fe-blue border-t-transparent rounded-full animate-spin" />
@@ -219,66 +260,14 @@ export default function MarketingPage() {
         </div>
       ) : view === 'board' ? (
         // ---------------- Kanban board ----------------
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3" data-testid="board">
-          {STATUSES.map((col) => {
-            const colItems = items.filter((it) => it.status === col.key)
-            return (
-              <div key={col.key} className="bg-fe-offwhite border border-fe-line" data-testid={`col-${col.key}`}>
-                <div className="flex items-center justify-between px-3 py-2.5 border-b border-fe-line bg-white">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5" style={{ backgroundColor: col.color }} />
-                    <span className="font-barlow font-bold text-sm text-fe-navy">{col.label}</span>
-                  </div>
-                  <span className="text-xs font-fira text-fe-blue-gray">{colItems.length}</span>
-                </div>
-                <div className="p-2 space-y-2 min-h-[80px]">
-                  {colItems.map((it) => (
-                    <div
-                      key={it.id}
-                      className="bg-white border border-fe-line p-2.5 cursor-pointer hover:border-fe-line-strong transition-colors"
-                      style={{ borderLeft: `3px solid ${col.color}` }}
-                      onClick={() => openEdit(it)}
-                      data-testid={`card-${it.id}`}
-                    >
-                      <p className="font-fira text-sm text-fe-anthracite font-medium leading-snug mb-1.5">{it.title}</p>
-                      {it.channels.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-1.5">
-                          {it.channels.map((ch) => (
-                            <span key={ch} className="text-[10px] font-fira px-1.5 py-0.5 bg-fe-offwhite border border-fe-line text-fe-blue-gray uppercase tracking-wide">{ch}</span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-fira text-fe-blue-gray">{fmtDate(it.scheduled_date)}</span>
-                        <div className="flex items-center gap-1.5">
-                          {it.owner && <Avatar initials={it.owner.initials} color={it.owner.color} size="sm" title={it.owner.name} />}
-                          {col.key !== 'posted' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
-                              className="text-xs font-fira text-fe-blue hover:underline"
-                              data-testid={`advance-${it.id}`}
-                              title="Move to next stage"
-                            >→</button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {colItems.length === 0 && (
-                    <p className="text-xs font-fira text-fe-blue-gray/60 text-center py-4">Nothing here</p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <PipelineBoard items={items} movingId={movingId} onMove={moveStatus} onOpen={openEdit} onAdvance={advanceStatus} />
       ) : (
         // ---------------- Table ----------------
         <div>
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-xs text-fe-blue-gray font-fira uppercase tracking-wider mr-1">Filter</span>
             <select
-              className="fe-input w-auto py-1.5"
+              className="fe-input !w-auto py-1.5"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as any)}
               data-testid="filter-status"
@@ -287,7 +276,7 @@ export default function MarketingPage() {
               {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
             <select
-              className="fe-input w-auto py-1.5"
+              className="fe-input !w-auto py-1.5"
               value={filterChannel}
               onChange={(e) => setFilterChannel(e.target.value)}
               data-testid="filter-channel"
@@ -330,13 +319,14 @@ export default function MarketingPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <button
+                        disabled={!!movingId}
                         onClick={(e) => { e.stopPropagation(); advanceStatus(it) }}
                         className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-fira"
-                        style={{ backgroundColor: `${STATUS_COLOR[it.status]}18`, color: STATUS_COLOR[it.status] }}
+                        style={{ backgroundColor: READINESS[readinessOf(it)].bg, color: READINESS[readinessOf(it)].color }}
                         title="Click to advance"
                         data-testid={`status-${it.id}`}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_COLOR[it.status] }} />
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: READINESS[readinessOf(it)].color }} />
                         {STATUS_LABEL[it.status]}
                       </button>
                     </td>
@@ -368,8 +358,9 @@ export default function MarketingPage() {
       {/* Connectedness note */}
       <p className="mt-3 text-xs font-fira text-fe-blue-gray">
         Scheduled items appear on the{' '}
-        <Link href="/calendar" className="text-fe-blue hover:underline">master calendar</Link>{' '}
-        under the Marketing layer on their scheduled date.
+        <Link href="/marketing/calendar" className="text-fe-blue hover:underline">Marketing Calendar</Link>{' '}
+        on their scheduled date. Plan assets by program on{' '}
+        <Link href="/marketing/strategy" className="text-fe-blue hover:underline">Marketing Strategy</Link>.
       </p>
 
       {/* Add / edit modal */}
@@ -457,11 +448,22 @@ export default function MarketingPage() {
                   </select>
                 </Field>
                 <Field label="Project (optional)">
-                  <select className="fe-input" value={form.project_id || ''} onChange={(e) => setForm({ ...form, project_id: e.target.value || null })} data-testid="input-project">
+                  <select disabled={!!form.source_task_id} className="fe-input" value={form.project_id || ''} onChange={(e) => setForm({ ...form, project_id: e.target.value || null })} data-testid="input-project">
                     <option value="">None</option>
                     {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </Field>
+              </div>
+
+              <div className="flex flex-wrap gap-4 border border-fe-line bg-fe-offwhite px-3 py-2.5">
+                <label className="inline-flex items-center gap-2 text-sm text-fe-anthracite cursor-pointer">
+                  <input type="checkbox" className="w-4 h-4 accent-[#046A38]" checked={form.copy_ready} onChange={(e) => setForm({ ...form, copy_ready: e.target.checked })} data-testid="input-copy-ready" />
+                  Copy written
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-fe-anthracite cursor-pointer">
+                  <input type="checkbox" className="w-4 h-4 accent-[#046A38]" checked={form.creative_ready} onChange={(e) => setForm({ ...form, creative_ready: e.target.checked })} data-testid="input-creative-ready" />
+                  Creative done
+                </label>
               </div>
 
               <Field label="Asset / Drive link">
