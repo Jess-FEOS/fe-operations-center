@@ -450,6 +450,9 @@ export default function MarketingPage() {
                 <Field label="Project (optional)">
                   <select disabled={!!form.source_task_id} className="fe-input" value={form.project_id || ''} onChange={(e) => setForm({ ...form, project_id: e.target.value || null })} data-testid="input-project">
                     <option value="">None</option>
+                    {form.project_id && !projects.some(p => p.id === form.project_id) && (
+                      <option value={form.project_id}>{items.find(i => i.id === form.id)?.project_name || 'Linked project'} (inactive)</option>
+                    )}
                     {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </Field>

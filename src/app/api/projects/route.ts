@@ -14,10 +14,15 @@ const WORKFLOW_LABELS: Record<string, string> = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { data: projects, error: projectsError } = await supabase
+    const status = request.nextUrl.searchParams.get('status') || 'active';
+    if (!['active', 'archived', 'completed', 'paused', 'all'].includes(status)) {
+      return NextResponse.json({ error: 'Invalid project status filter' }, { status: 400 });
+    }
+    let query = supabase
       .from('projects')
-      .select('*, monthly_priorities!projects_priority_id_fkey(title, status)')
-      .eq('status', 'active');
+      .select('*, monthly_priorities!projects_priority_id_fkey(title, status)');
+    if (status !== 'all') query = query.eq('status', status);
+    const { data: projects, error: projectsError } = await query;
 
     if (projectsError) {
       return NextResponse.json({ error: projectsError.message }, { status: 500 });

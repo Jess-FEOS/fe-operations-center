@@ -10,6 +10,7 @@ import ProgressBar from '@/components/ProgressBar'
 import { TaskStatus, nextStatus, WORKFLOW_COLORS } from '@/lib/types'
 import { getSimplifiedPhase, SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, SimplifiedPhase } from '@/lib/phases'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
+import ProjectArchiveButton from '@/components/ProjectArchiveButton'
 
 interface WorkflowTemplate {
   id: string
@@ -621,8 +622,8 @@ export default function ProjectDetailPage() {
       </button>
 
       <div className="bg-white border border-gray-100 p-6 mb-6">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-4">
+          <div className="flex-1 min-w-0">
             {editing ? (
               <div className="space-y-3">
                 <div className="flex gap-2 mb-2">
@@ -804,7 +805,8 @@ export default function ProjectDetailPage() {
             )}
           </div>
           {!editing && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <ProjectArchiveButton project={project} onChanged={status => setProject(current => current ? { ...current, status } : current)} />
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="px-3 py-1.5 text-sm text-red-400 hover:text-red-600 border border-gray-200 font-fira hover:bg-red-50 hover:border-red-200 transition-colors"
@@ -827,6 +829,11 @@ export default function ProjectDetailPage() {
           )}
         </div>
 
+        {project.status === 'archived' && (
+          <p role="status" className="mt-4 p-3 bg-gray-50 border border-gray-200 text-sm text-fe-blue-gray">
+            Archived project. Tasks and assets are preserved. Restore it to return it to Active and Marketing Strategy.
+          </p>
+        )}
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-fira text-fe-blue-gray">Overall Progress</span>

@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import WorkflowBadge from '@/components/WorkflowBadge'
 import ProgressBar from '@/components/ProgressBar'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
 import PageHeader from '@/components/PageHeader'
+import ProjectArchiveButton from '@/components/ProjectArchiveButton'
 
 interface Project {
   id: string
@@ -44,10 +45,17 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
   const [duplicating, setDuplicating] = useState<Project | null>(null)
+  const [view, setView] = useState('active')
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/projects').then(r => r.json()),
+  const load = useCallback(() => {
+    return Promise.all([
+      fetch('/api/projects?status=all', { cache: 'no-store' }).then(async r => {
+        const data = await r.json()
+        if (!r.ok || !Array.isArray(data)) throw new Error(data.error || 'Could not load projects.')
+        return data
+      }),
       fetch('/api/team').then(r => r.json()),
     ]).then(([proj, tm]) => {
       if (Array.isArray(proj)) {
@@ -57,12 +65,24 @@ export default function ProjectsPage() {
         setProjects([])
       }
       setTeam(Array.isArray(tm) ? tm : [])
-      setLoading(false)
-    })
+      setError('')
+    }).catch(err => setError(err.message || 'Could not load projects.'))
+      .finally(() => setLoading(false))
   }, [])
+  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const refresh = () => { load() }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [load])
 
-  const workflowTypes = [...new Set(projects.map(p => p.workflow_type))]
-  const filtered = filter === 'all' ? projects : projects.filter(p => p.workflow_type === filter)
+  const inView = projects.filter(p => view === 'inactive' ? ['paused', 'completed'].includes(p.status) : p.status === view)
+  const workflowTypes = [...new Set(inView.map(p => p.workflow_type))]
+  const filtered = filter === 'all' ? inView : inView.filter(p => p.workflow_type === filter)
+  const onStatusChanged = (project: Project, status: string) => {
+    setProjects(rows => rows.map(p => p.id === project.id ? { ...p, status } : p))
+    setNotice(`${project.name} ${status === 'archived' ? 'archived. Find it in Archived to restore it.' : 'restored to Active.'}`)
+  }
 
   if (loading) {
     return (
@@ -89,7 +109,25 @@ export default function ProjectsPage() {
         }
       />
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-3" aria-label="Project views">
+        {[
+          { value: 'active', label: 'Active' },
+          { value: 'archived', label: 'Archived' },
+          ...(projects.some(p => ['paused', 'completed'].includes(p.status)) ? [{ value: 'inactive', label: 'Other inactive' }] : []),
+        ].map(tab => (
+          <button key={tab.value} aria-pressed={view === tab.value}
+            onClick={() => { setView(tab.value); setFilter('all') }}
+            className={`px-4 py-2 text-sm border ${view === tab.value ? 'bg-fe-navy text-white border-fe-navy' : 'bg-white text-fe-navy border-gray-200'}`}>
+            {tab.label} ({projects.filter(p => tab.value === 'inactive' ? ['paused', 'completed'].includes(p.status) : p.status === tab.value).length})
+          </button>
+        ))}
+      </div>
+      <p className="text-sm text-fe-blue-gray mb-4">
+        {view === 'archived' ? 'Archived projects keep all their tasks and assets. Restore a project to make it active again.' : 'Finishing tasks does not archive a project. Archive it when you are ready to put it away.'}
+      </p>
+      {notice && <p role="status" className="text-sm text-fe-navy bg-blue-50 p-3 mb-4">{notice}</p>}
+      {error && <div role="alert" className="text-sm text-red-700 mb-4">{error} <button onClick={load} className="underline">Retry</button></div>}
+      <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => setFilter('all')}
           className={`px-3 py-1.5 text-sm font-fira transition-colors ${
@@ -111,15 +149,15 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      <div className="fe-cards fe-cards-wide">
+      <div className="fe-cards" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))' }}>
         {filtered.map(project => (
           <div
             key={project.id}
-            className="bg-white border border-gray-100 p-5 hover:shadow-md transition-shadow group relative"
+            className="min-w-0 bg-white border border-gray-100 p-5 hover:shadow-md transition-shadow group relative"
           >
             <Link href={`/projects/${project.id}`} className="block">
               <div className="flex items-start justify-between mb-3">
-                <h3 className="font-barlow font-bold text-lg text-fe-navy leading-tight pr-2">{project.name}</h3>
+                <h3 className="min-w-0 break-words font-barlow font-bold text-lg text-fe-navy leading-tight pr-2">{project.name}</h3>
                 <WorkflowBadge type={project.workflow_type} />
               </div>
               <p className="text-sm text-fe-blue-gray font-fira mb-4">
@@ -137,15 +175,17 @@ export default function ProjectsPage() {
                 {project.done_tasks} of {project.total_tasks} tasks complete
               </p>
             </Link>
+            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+            {project.status !== 'active' && <span className="mr-auto text-xs text-fe-blue-gray capitalize">{project.status}</span>}
             <button
               onClick={() => setDuplicating(project)}
-              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-1.5 text-fe-blue-gray hover:text-fe-navy bg-white border border-gray-200 hover:bg-gray-50 transition-all"
+              className="px-3 py-1.5 text-sm text-fe-blue-gray border border-gray-200 hover:bg-gray-50"
               title="Duplicate project"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
+              Duplicate
             </button>
+            <ProjectArchiveButton project={project} onChanged={status => onStatusChanged(project, status)} />
+            </div>
           </div>
         ))}
       </div>
@@ -163,9 +203,9 @@ export default function ProjectsPage() {
         />
       )}
 
-      {filtered.length === 0 && (
+      {!error && filtered.length === 0 && (
         <div className="text-center py-12 text-fe-blue-gray font-fira">
-          No projects found.
+          {view === 'archived' ? 'No archived projects found.' : 'No projects found.'}
         </div>
       )}
     </div>

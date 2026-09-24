@@ -69,8 +69,8 @@ export default function MarketingStrategyPage() {
   }, [loadRequirements, load])
 
   const visiblePrograms = useMemo(
-    () => programs.filter((p) => showAll || p.project_status === 'active' || items.some((i) => i.project_id === p.project_id)),
-    [programs, items, showAll]
+    () => programs.filter((p) => showAll || p.project_status === 'active'),
+    [programs, showAll]
   )
   const unassigned = items.filter((i) => !i.project_id || !programs.some((p) => p.project_id === i.project_id))
 
@@ -110,7 +110,7 @@ export default function MarketingStrategyPage() {
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 text-sm text-fe-blue-gray cursor-pointer">
               <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="accent-[#1B365D]" />
-              Show inactive programs
+              Show archived / inactive programs
             </label>
             <button onClick={() => setModal({ item: null })} className="px-4 py-1.5 bg-fe-blue text-white text-sm font-bold hover:opacity-90" data-testid="button-new-asset">
               + New asset
