@@ -11,6 +11,7 @@ import { TaskStatus, nextStatus, WORKFLOW_COLORS } from '@/lib/types'
 import { getSimplifiedPhase, SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, SimplifiedPhase } from '@/lib/phases'
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
 import ProjectArchiveButton from '@/components/ProjectArchiveButton'
+import ProjectScheduleModal from '@/components/ProjectScheduleModal'
 
 interface WorkflowTemplate {
   id: string
@@ -140,6 +141,10 @@ export default function ProjectDetailPage() {
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
   const [roles, setRoles] = useState<{ id: string; name: string; color: string }[]>([])
   const [notes, setNotes] = useState('')
+  const [schedulePatch, setSchedulePatch] = useState<Record<string, unknown> | null>(null)
+  const [projectSaveError, setProjectSaveError] = useState('')
+  const [projectSaving, setProjectSaving] = useState(false)
+  const [scheduleNotice, setScheduleNotice] = useState('')
   const notesRef = useRef<string>('')
   const [expandedComments, setExpandedComments] = useState<string | null>(null)
   const [taskComments, setTaskComments] = useState<Record<string, TaskComment[]>>({})
@@ -542,6 +547,7 @@ export default function ProjectDetailPage() {
   }
 
   const saveEdits = async () => {
+    setProjectSaveError('')
     const updates: Record<string, unknown> = {
       name: editName,
       start_date: editDate,
@@ -550,17 +556,25 @@ export default function ProjectDetailPage() {
       revenue_goal: editRevenueGoal ? parseFloat(editRevenueGoal) : null,
       enrollment_goal: editEnrollmentGoal ? parseInt(editEnrollmentGoal) : null,
     }
+    if (editDate !== project?.start_date || (editLaunchDate || null) !== project?.launch_date) {
+      setSchedulePatch(updates)
+      return
+    }
+    setProjectSaving(true)
+    try {
     const res = await fetch(`/api/projects/${params.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     })
-    if (res.ok) {
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not save project.')
       const updated = data.project || data
       setProject(prev => prev ? { ...prev, ...updated } : prev)
-    }
-    setEditing(false)
+      setEditing(false)
+    } catch (err) {
+      setProjectSaveError(err instanceof Error ? err.message : 'Could not save project.')
+    } finally { setProjectSaving(false) }
   }
 
   if (loading || !project) {
@@ -611,6 +625,19 @@ export default function ProjectDetailPage() {
 
   return (
     <div>
+      {schedulePatch && <ProjectScheduleModal
+        projectId={project.id} patch={schedulePatch} onClose={() => setSchedulePatch(null)}
+        onSaved={result => {
+          setProject(current => current ? { ...current, ...result.project } : current)
+          setTasks(result.tasks)
+          setEditDate(result.project.start_date)
+          setEditLaunchDate(result.project.launch_date || '')
+          setSchedulePatch(null); setEditing(false)
+          setScheduleNotice(`Schedule saved. ${result.rescheduled} task deadlines updated.`)
+        }}
+      />}
+      {projectSaveError && <p role="alert" className="p-3 mb-4 bg-red-50 text-red-700 text-sm">{projectSaveError}</p>}
+      {scheduleNotice && <p role="status" className="p-3 mb-4 bg-blue-50 text-fe-navy text-sm">{scheduleNotice}</p>}
       <button
         onClick={() => router.back()}
         className="flex items-center gap-1 text-sm text-fe-blue-gray hover:text-fe-navy font-fira mb-4 transition-colors"
@@ -629,9 +656,10 @@ export default function ProjectDetailPage() {
                 <div className="flex gap-2 mb-2">
                   <button
                     onClick={saveEdits}
+                    disabled={projectSaving}
                     className="px-4 py-2 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90"
                   >
-                    Save Changes
+                    {projectSaving ? 'Saving…' : 'Save Changes'}
                   </button>
                   <button
                     onClick={() => { setEditing(false); setEditName(project.name); setEditDate(project.start_date); setEditLaunchDate(project.launch_date || ''); setEditWorkflowType(project.workflow_type); setEditRevenueGoal(project.revenue_goal != null ? String(project.revenue_goal) : ''); setEditEnrollmentGoal(project.enrollment_goal != null ? String(project.enrollment_goal) : ''); }}
@@ -664,8 +692,9 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Start Date</label>
+                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Program Start Date</label>
                     <input
+                      aria-label="Program Start Date"
                       type="date"
                       value={editDate}
                       onChange={e => setEditDate(e.target.value)}
@@ -673,8 +702,9 @@ export default function ProjectDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Launch Date</label>
+                    <label className="block text-xs text-fe-blue-gray font-fira mb-1">Marketing Launch Date</label>
                     <input
+                      aria-label="Marketing Launch Date"
                       type="date"
                       value={editLaunchDate}
                       onChange={e => setEditLaunchDate(e.target.value)}
@@ -752,7 +782,7 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
                 <p className="text-sm text-fe-blue-gray font-fira">
-                  Started {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  Program starts {new Date(project.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </p>
                 {/* Priority chip */}
                 <div className="flex items-center gap-2 mt-1">
@@ -786,7 +816,7 @@ export default function ProjectDetailPage() {
                         <svg className="w-3.5 h-3.5 text-fe-blue-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        Launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        Marketing launch: {new Date(project.launch_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                     )}
                     {project.revenue_goal && (
@@ -806,6 +836,10 @@ export default function ProjectDetailPage() {
           </div>
           {!editing && (
             <div className="flex flex-wrap gap-2">
+              <button onClick={() => setSchedulePatch({ start_date: project.start_date, launch_date: project.launch_date })}
+                className="px-3 py-1.5 text-sm text-fe-navy border border-gray-200 font-fira hover:bg-gray-50">
+                Review schedule
+              </button>
               <ProjectArchiveButton project={project} onChanged={status => setProject(current => current ? { ...current, status } : current)} />
               <button
                 onClick={() => setShowDeleteConfirm(true)}

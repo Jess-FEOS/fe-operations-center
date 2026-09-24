@@ -147,7 +147,7 @@ export async function PATCH(request: NextRequest) {
         if (!task_id || !new_due_date) continue;
         const { error } = await supabase
           .from('project_tasks')
-          .update({ due_date: new_due_date })
+          .update({ due_date: new_due_date, schedule_anchor: 'fixed', schedule_offset_days: null })
           .eq('id', task_id);
         if (!error) updatedCount++;
       }

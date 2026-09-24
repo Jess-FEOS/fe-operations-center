@@ -11,7 +11,7 @@ function api(path, overrides = {}) {
     const finish = () => {
       if (action === 'read') {
         state.reads.push(table)
-        return { data: table === 'projects' ? { id: 'project', status: state.status, priority_id: 'priority' } : [], error: state.readError }
+        return { data: table === 'projects' ? { id: 'project', status: state.status, priority_id: 'priority', start_date: '2026-12-15', launch_date: null } : [], error: state.readError }
       }
       state.writes.push({ table, action, row })
       if (action === 'update' && table === 'projects') {
@@ -90,4 +90,22 @@ test('repeating an unchanged status does not duplicate activity', async () => {
   const app = api('[id]/route.ts', { status: 'archived' })
   assert.equal((await app.PATCH(req({ status: 'archived' }), context)).status, 200)
   assert.deepEqual(app.state.writes.map(w => w.table), ['projects'])
+})
+test('direct date edits including a first launch require schedule review without writes', async () => {
+  for (const patch of [{start_date:'2027-01-15'},{launch_date:'2026-11-09'}]) {
+    const app = api('[id]/route.ts')
+    const result = await app.PATCH(req(patch),context)
+    assert.equal(result.status,409)
+    assert.equal(result.data.code,'SCHEDULE_REVIEW_REQUIRED')
+    assert.equal(app.state.writes.length,0)
+  }
+  const app = api('[id]/route.ts')
+  assert.equal((await app.PATCH(req({name:'Updated name',start_date:'2026-12-15',launch_date:null}),context)).status,200)
+  assert.equal(JSON.stringify(app.state.writes[0].row),JSON.stringify({name:'Updated name'}))
+})
+test('retired global rescheduling rejects without any database access', async () => {
+  const app = api('recascade-all/route.ts')
+  assert.equal((await app.POST()).status,410)
+  assert.equal(app.state.writes.length,0)
+  assert.equal(app.state.reads.length,0)
 })

@@ -54,6 +54,8 @@ export async function POST(
         phase_order: phase_order || 1,
         task_order: nextOrder,
         due_date: startDate,
+        schedule_anchor: 'fixed',
+        schedule_offset_days: null,
         week_number: 1,
         status: 'not_started',
         owner_ids: owner_ids || [],
