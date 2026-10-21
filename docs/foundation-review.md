@@ -40,6 +40,7 @@ This is a preview, not a production release.
 - The migration does not backfill owners, reschedule tasks, archive projects, or rewrite templates.
 - Provision approved team Auth accounts and configure `OPS_ALLOWED_EMAILS` before merging. No invitations, emails, password changes, or account provisioning are performed by this branch.
 - Set `OPS_WRITES_ENABLED=true` in production only after access and database tests pass. Without it, production remains read-only; without approved sign-in configuration, production data access fails closed.
+- Confirm database RLS coverage for the previously flagged later-added tables before treating access hardening as complete. This branch does not change those policies.
 - Sessions use a secure HTTP-only cookie and expire at the auth-token lifetime. Refresh-token renewal and richer account administration are not included.
 - Review role holders and ambiguous owner decisions with the team. No mass reassignment is included.
 - Shared-company homepage simplification, recurring production, lightweight email UX, and transcript ingestion remain the next packages.
@@ -59,7 +60,7 @@ No production writes are authorized by this document.
 Completed on October 20, 2026, against a private read-only snapshot and disposable test databases:
 
 - Production build and TypeScript checks pass.
-- All 45 unit/route tests pass; both disposable database suites pass.
+- All 50 unit/route tests pass; both disposable database suites pass.
 - All seven existing editable templates prepare successfully, preserving all 174 template steps.
 - The duplicate-project screen reviews the actual selected checklist, permits owner/date decisions, and disables Save in preview.
 - Owner overrides and fixed-date overrides survive Recheck. Missing launch dates are flagged; a launch after program start is rejected visibly.
@@ -69,6 +70,7 @@ Completed on October 20, 2026, against a private read-only snapshot and disposab
 - Existing-project workflow replacement shows the protected-work message instead of offering destructive confirmation.
 - Task-owner editing can be cancelled without changing the original assignment.
 - Local POST, PATCH, and DELETE attempts are rejected with 403.
+- In production mode without access configuration, private API reads return 401 (including a middleware-bypass-header probe), and sign-in returns a configuration error rather than granting access.
 - Tested desktop and mobile layouts show no page-level horizontal overflow in the new checklist review, Team review, and This Week flows. No browser runtime exceptions occurred in these tests.
 
 These checks do not constitute authenticated verification of the hosted Vercel preview or approval to release production.

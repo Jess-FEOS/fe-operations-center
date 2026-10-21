@@ -31,6 +31,12 @@ export async function middleware(request: NextRequest) {
     } catch { /* Fail closed when identity cannot be verified. */ }
   }
   if(api) return NextResponse.json({error:'Sign in with an approved team account.'},{status:401})
-  return NextResponse.redirect(new URL('/login',request.url))
+  const loginUrl=new URL('/login',request.url)
+  // Keep redirects on the caller's host when Next normalizes the URL
+  // internally, such as localhost behind a reverse proxy.
+  const host=request.headers.get('host')
+  if(host) { loginUrl.port=''; loginUrl.host=host }
+  if(request.headers.get('x-forwarded-proto')==='https') loginUrl.protocol='https:'
+  return NextResponse.redirect(loginUrl)
 }
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'] }
