@@ -192,6 +192,7 @@ export default function ProjectsPage() {
 
       {duplicating && (
         <DuplicateProjectModal
+          sourceId={duplicating.id}
           sourceName={duplicating.name}
           workflowType={duplicating.workflow_type}
           workflowTemplateId={duplicating.workflow_template_id}

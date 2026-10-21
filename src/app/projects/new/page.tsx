@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import ProjectCreationReview from '@/components/ProjectCreationReview'
 
 interface ProjectTemplateTask {
   id: string
@@ -144,9 +145,11 @@ export default function NewProjectPage() {
   const sortedWeeks = Object.keys(groupedTasks).map(Number).sort((a, b) => b - a)
 
   const getDueDatePreview = (weekNumber: number): string => {
-    if (!startDate) return ''
-    const start = new Date(startDate + 'T00:00:00')
-    const offset = -weekNumber * 7
+    const launchAnchored = selected?.type === 'course-launch' && selected.tasks.some(t => t.week_number === 3) && weekNumber >= 3
+    const anchor = launchAnchored ? launchDate : startDate
+    if (!anchor) return launchAnchored ? 'marketing launch needed' : 'program start needed'
+    const start = new Date(anchor + 'T00:00:00')
+    const offset = launchAnchored ? (3 - weekNumber) * 7 : -weekNumber * 7
     const due = new Date(start.getTime() + offset * 24 * 60 * 60 * 1000)
     return due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
@@ -163,6 +166,13 @@ export default function NewProjectPage() {
       </div>
     )
   }
+
+  if (step === 3 && selected) return <div className="max-w-3xl mx-auto">
+    <ProjectCreationReview input={{template_id:selected.id,name:projectName.trim(),start_date:startDate,
+      launch_date:launchDate||null,priority_id:selectedPriority||null,
+      revenue_goal:revenueGoal ? Number(revenueGoal) : null,enrollment_goal:enrollmentGoal ? Number(enrollmentGoal) : null}}
+      onBack={()=>setStep(2)} onCreated={p=>router.push(`/projects/${p.id}`)} />
+  </div>
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -293,8 +303,9 @@ export default function NewProjectPage() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Project Name</label>
+              <label htmlFor="project-name" className="block text-sm font-fira font-bold text-fe-navy mb-1">Project Name</label>
               <input
+                id="project-name"
                 type="text"
                 value={projectName}
                 onChange={e => setProjectName(e.target.value)}
@@ -303,8 +314,9 @@ export default function NewProjectPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Start Date</label>
+              <label htmlFor="program-start" className="block text-sm font-fira font-bold text-fe-navy mb-1">Program Start</label>
               <input
+                id="program-start"
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -312,14 +324,15 @@ export default function NewProjectPage() {
               />
               {startDate && maxWeek > 0 && (
                 <p className="text-xs text-fe-blue-gray font-fira mt-2">
-                  Tasks will be scheduled relative to this date. First tasks begin{' '}
-                  {getDueDatePreview(maxWeek)} ({maxWeek} weeks before start).
+                  Review all deadlines next. Course marketing preparation uses Marketing Launch;
+                  delivery preparation uses Program Start.
                 </p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-fira font-bold text-fe-navy mb-1">Launch Date <span className="font-normal text-fe-blue-gray">(optional)</span></label>
+              <label htmlFor="marketing-launch" className="block text-sm font-fira font-bold text-fe-navy mb-1">Marketing Launch <span className="font-normal text-fe-blue-gray">(needed for launch-linked course tasks)</span></label>
               <input
+                id="marketing-launch"
                 type="date"
                 value={launchDate}
                 onChange={e => setLaunchDate(e.target.value)}

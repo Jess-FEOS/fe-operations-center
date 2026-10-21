@@ -18,6 +18,9 @@ function patchFor(body: any, project: any) {
   if (!body.patch || typeof body.patch !== 'object' || Array.isArray(body.patch)) throw new Error('Project date changes are required.')
   if (Object.keys(body.patch).some(k => !PATCH_FIELDS.includes(k))) throw new Error('Save status or template changes separately.')
   const patch = { ...body.patch }
+  if (patch.workflow_type !== undefined && patch.workflow_type !== project.workflow_type) {
+    throw new Error('Change templates by creating a new project. Existing work is protected.')
+  }
   patch.start_date = patch.start_date === undefined ? project.start_date : patch.start_date
   patch.launch_date = patch.launch_date === undefined ? project.launch_date : patch.launch_date
   validateDates(patch)
@@ -26,10 +29,10 @@ function patchFor(body: any, project: any) {
 }
 
 // Read-only preview works before the migration; SELECT * tolerates absent columns.
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const body = await request.json()
-    const { project, tasks } = await snapshot(params.id)
+    const { project, tasks } = await snapshot((await params).id)
     const patch = patchFor(body, project)
     return NextResponse.json({
       revision: revisionOf(project, tasks), project, dates: { start_date: patch.start_date, launch_date: patch.launch_date },
@@ -41,10 +44,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 // Only the privileged RPC writes. A missing migration fails without saving ANY fields.
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const body = await request.json()
-    const { project, tasks } = await snapshot(params.id)
+    const { project, tasks } = await snapshot((await params).id)
     const patch = patchFor(body, project)
     if (body.revision !== revisionOf(project, tasks)) {
       return NextResponse.json({ error: 'This project or its tasks changed. Close this preview and review the latest schedule.' }, { status: 409 })
@@ -62,7 +65,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return { id: row.id, due_date: date, schedule_anchor: rule.anchor, schedule_offset_days: rule.offset_days }
     })
     const { data, error } = await supabase.rpc('save_project_schedule', {
-      p_project_id: params.id, p_expected_project: project, p_expected_tasks: tasks,
+      p_project_id: (await params).id, p_expected_project: project, p_expected_tasks: tasks,
       p_patch: patch, p_changes: changes,
     })
     if (error) {

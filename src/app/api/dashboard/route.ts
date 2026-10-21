@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { loadOwnership } from '@/lib/ownership-server';
+import { resolveOwnership } from '@/lib/ownership';
 import { getSimplifiedPhase } from '@/lib/phases';
 
 export const dynamic = 'force-dynamic';
@@ -46,12 +48,14 @@ export async function GET() {
       // All tasks for active projects
       supabase
         .from('project_tasks')
-        .select('id, project_id, status, due_date, owner_ids, phase, role_id'),
+        .select('id, project_id, status, due_date, owner_ids, phase, role_id,vendor_role_id,projects!inner(status)')
+        .eq('projects.status','active'),
 
       // This week's tasks
       supabase
         .from('project_tasks')
-        .select('status')
+        .select('status,projects!inner(status)')
+        .eq('projects.status','active')
         .gte('due_date', mondayStr)
         .lte('due_date', sundayStr),
 
@@ -82,6 +86,9 @@ export async function GET() {
     ]);
 
     // -- Active projects with progress + priority info --
+    if ([projectsRes,allTasksRes,thisWeekTasksRes,prioritiesRes,campaignsRes,latestMetricsRes,teamMembersRes].some(r=>r.error)) {
+      return NextResponse.json({ error:'Could not load the complete dashboard. Please retry.' },{status:500});
+    }
     const projects = projectsRes.data || [];
     const allTasks = allTasksRes.data || [];
 
@@ -146,13 +153,9 @@ export async function GET() {
     // A task is assigned if it has a non-empty owner_ids OR a role_id that
     // resolves to a current team member. "Unassigned" = empty owner_ids AND
     // (no role_id, or a role_id that maps to no current member).
-    const memberRoleIds = new Set(
-      (teamMembersRes.data || []).map((m: any) => m.role_id).filter(Boolean)
-    );
+    const ownership = await loadOwnership();
     const unassignedCount = allTasks.filter((t: any) => {
-      const hasOwner = t.owner_ids && t.owner_ids.length > 0;
-      if (hasOwner) return false;
-      return !t.role_id || !memberRoleIds.has(t.role_id);
+      return t.status !== 'done' && !resolveOwnership(t,ownership.people,ownership.joins).accountable_owner_id;
     }).length;
 
     // -- Monthly priorities with linked project info --

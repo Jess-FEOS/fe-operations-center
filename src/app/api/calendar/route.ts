@@ -54,7 +54,9 @@ export async function GET(request: NextRequest) {
     const [tasksRes, seminarsRes, marketingRes] = await Promise.all([
       supabase
         .from('project_tasks')
-        .select('id, task_name, due_date, project_id, projects(id, name)')
+        .select('id, task_name, due_date, project_id, projects!inner(id, name,status)')
+        .eq('projects.status', 'active')
+        .neq('status', 'done')
         .gte('due_date', from)
         .lte('due_date', to),
       supabase
@@ -69,6 +71,9 @@ export async function GET(request: NextRequest) {
         .lte('scheduled_date', to),
     ])
 
+    if (tasksRes.error || seminarsRes.error || marketingRes.error) {
+      return NextResponse.json({ error: 'Could not load the complete calendar. Please retry.' }, { status: 500 })
+    }
     const events: CalendarEvent[] = []
 
     // --- Projects: group tasks by (date, project) into one chip per project/day

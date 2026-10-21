@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic';
 // Add a task to a template
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const templateId = params.id;
+    const templateId = (await params).id;
     const body = await request.json();
     const { title, owner, week_number, description } = body;
 
@@ -57,7 +57,7 @@ export async function POST(
 // Update a task (pass task id in body)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json();
@@ -78,7 +78,7 @@ export async function PATCH(
       .from('project_template_tasks')
       .update(updates)
       .eq('id', task_id)
-      .eq('template_id', params.id)
+      .eq('template_id', (await params).id)
       .select()
       .single();
 
@@ -95,7 +95,7 @@ export async function PATCH(
 // Delete a task (pass task_id as query param)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { searchParams } = new URL(request.url);
@@ -109,7 +109,7 @@ export async function DELETE(
       .from('project_template_tasks')
       .delete()
       .eq('id', taskId)
-      .eq('template_id', params.id);
+      .eq('template_id', (await params).id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

@@ -857,7 +857,7 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               <span className="font-barlow font-bold text-amber-700 text-sm">
-                {unassignedTasks.length} Task{unassignedTasks.length !== 1 ? 's' : ''} With No Person Assigned
+                {unassignedTasks.length} Task{unassignedTasks.length !== 1 ? 's' : ''} Needing an Owner Decision
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs font-fira text-amber-600">

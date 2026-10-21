@@ -31,3 +31,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Private read-only QA snapshots and screenshots (never publish company data)
+/.qa/

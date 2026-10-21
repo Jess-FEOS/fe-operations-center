@@ -4,10 +4,10 @@ import { supabase } from '@/lib/supabase';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; taskId: string; linkId: string } }
+  { params }: { params: Promise<{ id: string; taskId: string; linkId: string }> }
 ) {
   try {
-    const { linkId } = params;
+    const { linkId } = await params;
 
     const { error } = await supabase
       .from('task_links')
