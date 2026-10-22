@@ -14,7 +14,9 @@ const fs=require('node:fs'),assert=require('node:assert/strict')
     CREATE TABLE project_tasks(id uuid primary key default gen_random_uuid(),project_id uuid references projects(id),phase text,
       phase_order integer,task_name text,task_order integer,due_date date not null,week_number integer,status text,
       owner_ids uuid[],role_id uuid not null,vendor_role_id uuid,schedule_anchor text,schedule_offset_days integer);
-    CREATE TABLE activity_log(id serial primary key,project_id uuid,change_type text,description text);
+    CREATE TABLE activity_log(id uuid primary key default gen_random_uuid(),project_id uuid,
+      project_name text not null,change_type text not null,description text not null,
+      changed_by text default 'System',old_value text,new_value text,created_at timestamptz default now());
     INSERT INTO team_members VALUES('00000000-0000-0000-0000-000000000001');
     INSERT INTO project_templates VALUES('00000000-0000-0000-0000-000000000002','Reviewed template');
     INSERT INTO project_template_tasks VALUES('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','A step',1);
@@ -27,12 +29,20 @@ const fs=require('node:fs'),assert=require('node:assert/strict')
   const source={kind:'template',id:'00000000-0000-0000-0000-000000000002',steps:(await db.query('select * from project_template_tasks order by order_index,id')).rows}
   const key='00000000-0000-4000-8000-000000000001'
   const save=(t=tasks,k=key,hash='review-1',s=source)=>db.query('select create_project_from_review($1::jsonb,$2::jsonb,$3::jsonb,$4::uuid,$5) result',[JSON.stringify(project),JSON.stringify(t),JSON.stringify(s),k,hash])
+  // Reproduce the production constraint mismatch, including atomic rollback.
+  await assert.rejects(save(),/project_name/)
+  assert.equal((await db.query('select count(*)::int n from projects')).rows[0].n,0)
+  assert.equal((await db.query('select count(*)::int n from project_tasks')).rows[0].n,0)
+  const repair=fs.readFileSync(__dirname+'/../supabase/migrations/20261022_foundation_activity_log.sql','utf8')
+  await db.exec(repair);await db.exec(repair)
   const first=(await save()).rows[0].result
   const retry=(await save()).rows[0].result
   assert.equal(first.id,retry.id)
   assert.equal((await db.query('select count(*)::int n from projects')).rows[0].n,1)
   assert.equal((await db.query('select count(*)::int n from project_tasks')).rows[0].n,1)
   assert.equal(first.launch_date,'2026-11-09')
+  assert.equal((await db.query('select project_name from activity_log')).rows[0].project_name,project.name)
+  assert.equal((await db.query('select count(*)::int n from activity_log')).rows[0].n,1)
   await assert.rejects(save(tasks,key,'different'),/different content/)
   await assert.rejects(save([{...tasks[0],owner_ids:[]}],'00000000-0000-4000-8000-000000000002'),/one reviewed owner/)
   assert.equal((await db.query('select count(*)::int n from projects')).rows[0].n,1)
