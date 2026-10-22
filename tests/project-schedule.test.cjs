@@ -135,6 +135,8 @@ test('individual manual date changes become fixed, unchanged dates keep their an
     if(name==='@/lib/supabase')return {supabase}
     if(name==='@/lib/ownership-server')return {loadOwnership:async()=>({people:[],joins:[]}),enrichOwnership:t=>t}
     if(name==='@/lib/project-schedule')return h
+    if(name==='@/lib/company-calendar')return {validCompanyTaskKind:()=>true}
+    if(name==='@/lib/ownership')return {resolveOwnership:()=>({owner_ids:[]})}
     throw new Error(name)
   }}
   vm.runInNewContext(compile('app/api/projects/[id]/tasks/[taskId]/route.ts'),box)

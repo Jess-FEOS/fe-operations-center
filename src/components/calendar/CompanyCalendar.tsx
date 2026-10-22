@@ -3,28 +3,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { calendarHref, programMilestones } from '@/lib/calendar'
-import { marketingRequest, readinessOf, READINESS, Status } from '@/lib/marketing'
+import { calendarHref } from '@/lib/calendar'
+import { marketingRequest } from '@/lib/marketing'
+import type { CompanyCommitment } from '@/lib/company-calendar'
 import type { CalendarViewProps } from './CalendarWorkspace'
 
 // ------------------------------------------------------------------
-// Company view — three toggleable layers plus program milestones:
-//   • Projects  — auto-derived from task due dates, one chip per project/day
-//   • Seminars  — added directly on the calendar (date, time, client, location)
-//   • Marketing — displayed from marketing_content; links to the Marketing page
-// A single unified feed (/api/calendar) supplies all three.
+// Company commitments only; Marketing owns asset scheduling in its own view.
 // ------------------------------------------------------------------
 
-type Layer = 'project' | 'seminar' | 'marketing'
-
-interface ProjectEvent {
-  type: 'project'
-  date: string
-  project_id: string
-  project_name: string
-  task_count: number
-  task_titles: string[]
-}
+type Layer = 'milestone' | 'seminar' | 'enterprise'
 interface SeminarEvent {
   type: 'seminar'
   date: string
@@ -35,34 +23,17 @@ interface SeminarEvent {
   location: string | null
   notes: string | null
 }
-interface MarketingEvent {
-  type: 'marketing'
-  date: string
-  id: string
-  title: string
-  channels: string[]
-  status: Status
-  copy_ready: boolean
-  creative_ready: boolean
-  asset_link: string | null
-}
-interface MilestoneEvent {
-  type: 'milestone'
-  date: string
-  project_id: string
-  label: string
-}
-type CalendarEvent = ProjectEvent | SeminarEvent | MarketingEvent | MilestoneEvent
+type CalendarEvent = SeminarEvent | (CompanyCommitment & {owner_names:string[]})
 
 const LAYERS: { key: Layer; label: string; color: string }[] = [
-  { key: 'project', label: 'Projects', color: '#0762C8' },
+  { key: 'milestone', label: 'Launches & starts', color: '#0762C8' },
   { key: 'seminar', label: 'Seminars', color: '#B29838' },
-  { key: 'marketing', label: 'Marketing', color: '#437F94' },
+  { key: 'enterprise', label: 'Enterprise delivery', color: '#437F94' },
 ]
 const LAYER_COLOR: Record<Layer, string> = {
-  project: '#0762C8',
+  milestone: '#0762C8',
   seminar: '#B29838',
-  marketing: '#437F94',
+  enterprise: '#437F94',
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -107,19 +78,18 @@ const EMPTY_FORM = {
   notes: '',
 }
 
-export default function CompanyCalendar({ anchor, onAnchorChange, programs, projectId, ownerId, navigating }: CalendarViewProps) {
+export default function CompanyCalendar({ anchor, onAnchorChange, projectId, ownerId, navigating }: CalendarViewProps) {
   const year = anchor.getFullYear()
   const month = anchor.getMonth()
   const params = useSearchParams()
   const router = useRouter()
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
-  const [addDate, setAddDate] = useState<string | null>(null)
   const requestId = useRef(0)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [activeLayers, setActiveLayers] = useState<Set<Layer>>(
-    () => new Set<Layer>(['project', 'seminar', 'marketing'])
+    () => new Set<Layer>(['milestone', 'seminar', 'enterprise'])
   )
 
   // Seminar day form
@@ -136,7 +106,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
     const query = new URLSearchParams({ from: toDateStr(calStart), to: toDateStr(calEnd) })
     if (projectId) query.set('project_id', projectId)
     if (ownerId) query.set('owner_id', ownerId)
-    return marketingRequest<{ events: CalendarEvent[] }>(`/api/calendar?${query}`)
+    return marketingRequest<{ events: CalendarEvent[] }>(`/api/calendar/company?${query}`)
       .then(d => { if (id === requestId.current) setEvents(d.events) })
       .catch(e => { if (id === requestId.current) setError(e.message || 'Could not load the calendar.') })
       .finally(() => { if (id === requestId.current) setLoading(false) })
@@ -160,15 +130,9 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
   // Bucket events by date, filtered to active layers.
   const byDate = new Map<string, CalendarEvent[]>()
   for (const e of events) {
-    if (e.type === 'milestone' || !activeLayers.has(e.type)) continue
+    if (!activeLayers.has(e.type)) continue
     if (!byDate.has(e.date)) byDate.set(e.date, [])
     byDate.get(e.date)!.push(e)
-  }
-  if (activeLayers.has('project') && !ownerId) {
-    for (const m of programMilestones(programs, projectId)) {
-      if (!byDate.has(m.date)) byDate.set(m.date, [])
-      byDate.get(m.date)!.unshift({ ...m, type: 'milestone' })
-    }
   }
 
   // Build weeks
@@ -198,7 +162,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
 
   // --- Seminar form handlers
   const openNew = (dateStr: string) => {
-    setFormError(''); setAddDate(null)
+    setFormError('')
     setForm({ ...EMPTY_FORM, seminar_date: dateStr })
     setFormOpen(true)
   }
@@ -305,10 +269,11 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
             </button>
           )
         })}
-        <span className="text-xs text-fe-blue-gray font-fira ml-2">Click a day to add a seminar or marketing asset</span>
+        <span className="text-xs text-fe-blue-gray font-fira ml-2">Click a day to add a seminar</span>
       </div>
+      <p className="text-sm text-fe-blue-gray mb-3">Company commitments, not the task list. Manage client deliverables and sessions in Projects; email and social assets stay in Marketing.</p>
       {(projectId || ownerId) && <p className="text-xs text-fe-blue-gray mb-3">
-        {ownerId ? 'Owner filters show assigned task deadlines and marketing assets only.' : 'Seminars are not tied to programs and are hidden while a program filter is selected.'}
+        {ownerId ? 'Owner filters show their client commitments and engagement milestones. Seminars and milestones without a named engagement owner are hidden.' : 'Seminars are company-wide and hidden while a project filter is selected.'}
       </p>}
       <p className="sm:hidden text-xs text-fe-blue-gray mb-2">Scroll the calendar sideways to see the full week.</p>
 
@@ -339,7 +304,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
                 return (
                   <div
                     key={di}
-                    onClick={() => setAddDate(dateStr)}
+                    onClick={() => openNew(dateStr)}
                     data-testid={`day-${dateStr}`}
                     className={`group min-h-[132px] border-r border-fe-line last:border-r-0 p-2 cursor-pointer transition-colors ${
                       isCurrentMonth ? 'bg-white hover:bg-fe-offwhite' : 'bg-fe-offwhite'
@@ -353,33 +318,20 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
                       }`}>
                         {day.getDate()}
                       </div>
-                      <button type="button" onClick={e => { e.stopPropagation(); setAddDate(dateStr) }} aria-label={`Add on ${dateStr}`} className="text-fe-blue p-1">+</button>
+                      <button type="button" onClick={e => { e.stopPropagation(); openNew(dateStr) }} aria-label={`Add seminar on ${dateStr}`} className="text-fe-blue p-1">+</button>
                     </div>
 
                     <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
                       {dayEvents.map((ev, idx) => {
-                        if (ev.type === 'milestone') return <Link key={`milestone-${idx}`} href={`/projects/${ev.project_id}`} className="block text-xs font-bold text-fe-navy break-words" data-testid="company-milestone">{ev.label}</Link>
-                        if (ev.type === 'project') {
-                          const c = LAYER_COLOR.project
-                          return (
-                            <Link
-                              key={`p-${ev.project_id}-${idx}`}
-                              href={`/projects/${ev.project_id}`}
-                              className="block px-2 py-1 text-xs font-fira truncate hover:opacity-80 transition-opacity"
-                              style={{ backgroundColor: `${c}12`, color: c, borderLeft: `3px solid ${c}` }}
-                              title={ev.task_titles.map((t) => `• ${t}`).join('\n')}
-                              data-testid={`event-project-${ev.project_id}`}
-                            >
-                              <span className="truncate">{ev.project_name}</span>
-                              <span
-                                className="ml-1 inline-flex items-center justify-center px-1 min-w-[16px] h-4 rounded-full text-white font-bold leading-none"
-                                style={{ backgroundColor: c, fontSize: '10px' }}
-                              >
-                                {ev.task_count}
-                              </span>
-                            </Link>
-                          )
-                        }
+                        if (ev.type === 'milestone') return <Link key={ev.id} href={`/projects/${ev.project_id}`} className="block border-l-[3px] border-fe-blue bg-blue-50 px-2 py-1 text-xs font-bold text-fe-navy break-words" data-testid="company-milestone">{ev.label}</Link>
+                        if (ev.type === 'enterprise') return <Link key={ev.id} href={`/projects/${ev.project_id}?task=${ev.id}`}
+                          className="block border-l-[3px] border-[#437F94] bg-[#edf4f6] px-2 py-1.5 text-xs text-fe-navy break-words hover:bg-blue-50"
+                          data-testid={`event-enterprise-${ev.id}`}>
+                          <span className="block uppercase tracking-wide text-[10px] font-bold">{ev.kind === 'session' ? 'Client session' : 'Client deliverable'}{ev.status === 'blocked' ? ' · Blocked' : ''}</span>
+                          <span className="block font-bold mt-0.5">{ev.label}</span>
+                          <span className="block mt-0.5">{ev.project_name}</span>
+                          <span className="block mt-0.5">{ev.owner_names.join(', ') || 'Owner needed'}</span>
+                        </Link>
                         if (ev.type === 'seminar') {
                           const c = LAYER_COLOR.seminar
                           const label = ev.client_name || ev.title || 'Seminar'
@@ -397,22 +349,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
                             </button>
                           )
                         }
-                        // marketing
-                        const ready = readinessOf(ev)
-                        const colors = READINESS[ready]
-                        return (
-                          <Link
-                            key={`m-${ev.id}`}
-                            href={calendarHref(new URLSearchParams(params), { view: 'marketing', asset: ev.id, date: ev.date, new: null })}
-                            className="flex items-center gap-1 px-2 py-1 text-xs font-fira truncate hover:opacity-80 transition-opacity"
-                            style={{ backgroundColor: colors.bg, color: colors.color, border: `1px ${ready === 'green' ? 'solid' : 'dashed'} ${colors.color}` }}
-                            title={`${ev.title} — ${ev.status}${ev.channels.length ? ' · ' + ev.channels.join(', ') : ''}`}
-                            data-testid={`event-marketing-${ev.id}`}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: colors.color }} />
-                            <span className="truncate">{ev.title}</span>
-                          </Link>
-                        )
+                        return null
                       })}
                     </div>
                   </div>
@@ -425,21 +362,10 @@ export default function CompanyCalendar({ anchor, onAnchorChange, programs, proj
 
       {/* Legend footnote */}
       <div className="mt-3 flex items-center gap-4 text-xs font-fira text-fe-blue-gray no-print flex-wrap">
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.project }} /> Projects (deadlines and milestones)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.milestone }} /> Project launches, starts and client kickoffs</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.seminar }} /> Seminars (click a day to add)</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.marketing }} /> Marketing (opens the same asset in Marketing view)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.enterprise }} /> Selected client commitments (opens the original task)</span>
       </div>
-      {addDate && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setAddDate(null)}>
-        <div role="dialog" aria-modal="true" aria-label="Add to calendar" className="bg-white border border-fe-line p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-          <h2 className="font-barlow text-lg font-bold text-fe-navy mb-2">Add to calendar</h2>
-          <p className="text-sm text-fe-blue-gray mb-5">{addDate}</p>
-          <div className="grid gap-3">
-            <button onClick={() => openNew(addDate)} className="border border-fe-line p-3 text-left text-fe-navy">Seminar</button>
-            <button onClick={() => router.push(calendarHref(new URLSearchParams(params), { view: 'marketing', date: addDate, new: '1', asset: null }), { scroll: false })} className="border border-fe-line p-3 text-left text-fe-navy">Marketing asset</button>
-            <button onClick={() => setAddDate(null)} className="text-sm text-fe-blue py-2">Cancel</button>
-          </div>
-        </div>
-      </div>}
 
       {/* Seminar add/edit modal */}
       {formOpen && (

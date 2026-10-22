@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { loadOwnership, enrichOwnership } from '@/lib/ownership-server';
 import { validDate } from '@/lib/project-schedule';
+import { validCompanyTaskKind } from '@/lib/company-calendar';
+import { resolveOwnership } from '@/lib/ownership';
 
 export async function PATCH(
   request: NextRequest,
@@ -24,6 +26,23 @@ export async function PATCH(
     }
 
     const updates: Record<string, unknown> = {};
+    if (body.company_calendar_kind !== undefined) {
+      if (!validCompanyTaskKind(body.company_calendar_kind))
+        return NextResponse.json({ error:'Choose a client deliverable, client session, or not shown.' }, { status:400 });
+      const { data: current, error } = await supabase.from('project_tasks').select('*').eq('id', taskId).eq('project_id', id).single();
+      if (error || !current) return NextResponse.json({ error:'Task not found.' }, { status:404 });
+      if (!Object.prototype.hasOwnProperty.call(current,'company_calendar_kind'))
+        return NextResponse.json({ error:'Company calendar task settings require the approved database update.' }, { status:503 });
+      if (body.company_calendar_kind !== null) {
+        const { data: project, error: projectError } = await supabase.from('projects').select('*').eq('id', id).single();
+        if (projectError || !project) return NextResponse.json({ error:'Could not read project.' }, { status:500 });
+        if (!project.is_enterprise) return NextResponse.json({ error:'Set this project up as an enterprise engagement first.' }, { status:400 });
+        const resolved = resolveOwnership({...current, ...(body.owner_ids !== undefined ? {owner_ids:body.owner_ids} : {})}, ownership.people, ownership.joins);
+        if (!resolved.accountable_owner_id)
+          return NextResponse.json({ error:'Choose one accountable owner before adding a client commitment to the calendar.' }, { status:400 });
+      }
+      updates.company_calendar_kind = body.company_calendar_kind;
+    }
     if (body.status !== undefined) updates.status = body.status;
     if (body.task_name !== undefined) updates.task_name = body.task_name;
     if (body.owner_ids !== undefined) {

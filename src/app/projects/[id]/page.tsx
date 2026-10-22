@@ -12,6 +12,8 @@ import { getSimplifiedPhase, SIMPLIFIED_PHASE_ORDER, SIMPLIFIED_PHASE_COLORS, Si
 import DuplicateProjectModal from '@/components/DuplicateProjectModal'
 import ProjectArchiveButton from '@/components/ProjectArchiveButton'
 import ProjectScheduleModal from '@/components/ProjectScheduleModal'
+import ProjectCompanyCalendar from '@/components/ProjectCompanyCalendar'
+import type { CompanyTaskKind } from '@/lib/company-calendar'
 
 interface WorkflowTemplate {
   id: string
@@ -29,6 +31,7 @@ const WORKFLOW_LABELS: Record<string, string> = {
 }
 
 interface ProjectTask {
+  company_calendar_kind?: CompanyTaskKind
   id: string
   project_id: string
   phase: string
@@ -69,6 +72,9 @@ interface TaskDependency {
 }
 
 interface Project {
+  is_enterprise?: boolean
+  enterprise_client_label?: string | null
+  enterprise_owner_id?: string | null
   id: string
   name: string
   workflow_type: string
@@ -128,6 +134,8 @@ export default function ProjectDetailPage() {
   const [switchingWorkflow, setSwitchingWorkflow] = useState(false)
   const [bulkMenuPhase, setBulkMenuPhase] = useState<string | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingCalendarKind, setEditingCalendarKind] = useState<CompanyTaskKind>(null)
+  const [taskSaveError, setTaskSaveError] = useState('')
   const [editingTaskName, setEditingTaskName] = useState('')
   const [editingTaskStatus, setEditingTaskStatus] = useState<TaskStatus>('not_started')
   const [editingTaskDueDate, setEditingTaskDueDate] = useState('')
@@ -312,6 +320,8 @@ export default function ProjectDetailPage() {
   }
 
   const openEditPanel = (task: ProjectTask) => {
+    setEditingCalendarKind(task.company_calendar_kind || null)
+    setTaskSaveError('')
     setEditingAccountableOwner(!task.ownership_issue ? (task.resolved_owner_ids ?? task.owner_ids)[0] || '' : '')
     setOwnerChanged(false)
     setEditingTaskId(task.id)
@@ -324,9 +334,23 @@ export default function ProjectDetailPage() {
     setSavingTask(false)
   }
 
+  useEffect(() => {
+    if (loading) return
+    const target = new URLSearchParams(window.location.search).get('task')
+    const task = tasks.find(t=>t.id === target)
+    if (!task) return
+    setExpandedPhases(prev=>new Set([...prev,getSimplifiedPhase(task.phase)]))
+    openEditPanel(task)
+    const frame = requestAnimationFrame(()=>document.getElementById(`task-${task.id}`)?.scrollIntoView({block:'center'}))
+    return ()=>cancelAnimationFrame(frame)
+    // Open a calendar deep link after initial loading, not again after edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, params.id])
+
   const saveTaskEdit = async (taskId: string) => {
     if (!editingTaskName.trim()) return
     setSavingTask(true)
+    setTaskSaveError('')
     const body: Record<string, unknown> = {
       task_name: editingTaskName.trim(),
       status: editingTaskStatus,
@@ -336,93 +360,25 @@ export default function ProjectDetailPage() {
       role_id: editingTaskRoleId || undefined,
     }
     if (ownerChanged) body.owner_ids = [editingAccountableOwner]
-
-    // Compute due date delta for cascading shift
     const editedTask = tasks.find(t => t.id === taskId)
-    const originalDueDate = editedTask?.due_date || ''
-    const newDueDate = editingTaskDueDate || ''
-    let shiftDays = 0
-    if (originalDueDate && newDueDate && originalDueDate !== newDueDate) {
-      const orig = new Date(originalDueDate + 'T12:00:00')
-      const updated = new Date(newDueDate + 'T12:00:00')
-      shiftDays = Math.round((updated.getTime() - orig.getTime()) / (1000 * 60 * 60 * 24))
-    }
-
+    if (editedTask && Object.prototype.hasOwnProperty.call(editedTask,'company_calendar_kind') &&
+      (project?.is_enterprise || editingCalendarKind !== (editedTask.company_calendar_kind || null)))
+      body.company_calendar_kind = editingCalendarKind
     try {
-      await fetch(`/api/projects/${params.id}/tasks/${taskId}`, {
+      const res = await fetch(`/api/projects/${params.id}/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
-      // Cascade: shift all subsequent non-done tasks by the same delta
-      if (shiftDays !== 0 && originalDueDate) {
-        const subsequentTasks = tasks.filter(t =>
-          t.id !== taskId &&
-          t.status !== 'done' &&
-          t.due_date &&
-          t.due_date > originalDueDate
-        )
-
-        if (subsequentTasks.length > 0) {
-          const shiftedUpdates: { taskId: string; newDate: string }[] = []
-          for (const t of subsequentTasks) {
-            const d = new Date(t.due_date + 'T12:00:00')
-            d.setDate(d.getDate() + shiftDays)
-            shiftedUpdates.push({ taskId: t.id, newDate: d.toISOString().split('T')[0] })
-          }
-
-          // PATCH each shifted task
-          await Promise.all(shiftedUpdates.map(u =>
-            fetch(`/api/projects/${params.id}/tasks/${u.taskId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ due_date: u.newDate }),
-            })
-          ))
-
-          // Build a map for quick lookup of shifted dates
-          const shiftMap = new Map(shiftedUpdates.map(u => [u.taskId, u.newDate]))
-
-          setTasks(prev => prev.map(t => {
-            if (t.id === taskId) {
-              return {
-                ...t,
-                task_name: editingTaskName.trim(),
-                status: editingTaskStatus,
-                due_date: editingTaskDueDate || t.due_date,
-                on_hold: editingTaskOnHold,
-                follow_up_date: editingTaskFollowUp || null,
-                role_id: editingTaskRoleId,
-              }
-            }
-            const shifted = shiftMap.get(t.id)
-            if (shifted) return { ...t, due_date: shifted }
-            return t
-          }))
-        } else {
-          setTasks(prev => prev.map(t => t.id === taskId ? {
-            ...t,
-            task_name: editingTaskName.trim(),
-            status: editingTaskStatus,
-            due_date: editingTaskDueDate || t.due_date,
-            on_hold: editingTaskOnHold,
-            follow_up_date: editingTaskFollowUp || null,
-            role_id: editingTaskRoleId,
-          } : t))
-        }
-      } else {
-        setTasks(prev => prev.map(t => t.id === taskId ? {
-          ...t,
-          task_name: editingTaskName.trim(),
-          status: editingTaskStatus,
-          due_date: editingTaskDueDate || t.due_date,
-          on_hold: editingTaskOnHold,
-          follow_up_date: editingTaskFollowUp || null,
-          role_id: editingTaskRoleId,
-        } : t))
-      }
+      const updated = await res.json()
+      if (!res.ok) throw new Error(updated.error || 'Task was not saved.')
+      // A single commitment edit must not silently move other client deadlines.
+      // Project-wide changes still use the reviewed, atomic schedule endpoint.
+      setTasks(prev => prev.map(t => t.id === taskId ? {...t,...updated} : t))
       setEditingTaskId(null)
+    } catch(e) {
+      setTaskSaveError(e instanceof Error ? e.message : 'Task was not saved.')
     } finally {
       setSavingTask(false)
     }
@@ -893,6 +849,7 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      <ProjectCompanyCalendar key={project.id} project={project} people={team} onSaved={patch=>setProject(p=>p ? {...p,...patch} : p)} />
       {/* Two-column split: task phases (wide) + metrics sidebar (narrow) */}
       <div className="fe-grid">
       <div className="fe-col-8 space-y-3">
@@ -975,7 +932,7 @@ export default function ProjectDetailPage() {
                     const isCommentsOpen = expandedComments === task.id
 
                     return (
-                      <div key={task.id} className="border-b border-gray-50 last:border-b-0">
+                      <div key={task.id} id={`task-${task.id}`} className="border-b border-gray-50 last:border-b-0 scroll-mt-24">
                         {editingTaskId === task.id ? (
                           /* ── Edit Panel (replaces entire row) ── */
                           <div className="px-4 py-3">
@@ -1031,6 +988,18 @@ export default function ProjectDetailPage() {
                                   ))}
                                 </select>
                               </div>
+                              {project.is_enterprise && <label className="block text-xs text-fe-blue-gray">Company calendar
+                                <select aria-label="Company calendar" value={editingCalendarKind || ''}
+                                  disabled={!Object.prototype.hasOwnProperty.call(task,'company_calendar_kind')}
+                                  onChange={e=>setEditingCalendarKind((e.target.value || null) as CompanyTaskKind)}
+                                  className="block w-full mt-1 p-2 border bg-white text-sm">
+                                  <option value="">Not shown (internal task)</option>
+                                  <option value="deliverable">Client deliverable</option>
+                                  <option value="session">Client session</option>
+                                </select>
+                              </label>}
+                              <p className="text-xs text-fe-blue-gray">Changing this deadline only changes this task. Use project date review to move the wider schedule.</p>
+                              {taskSaveError && <p role="alert" className="text-sm text-fe-red">{taskSaveError}</p>}
                               <div className="flex items-center gap-2 pt-1">
                                 <button onClick={() => saveTaskEdit(task.id)} disabled={savingTask} className="px-3 py-1.5 bg-fe-blue text-white text-xs font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-50">{savingTask ? 'Saving...' : 'Save'}</button>
                                 <button onClick={() => setEditingTaskId(null)} className="px-3 py-1.5 text-xs font-fira font-bold text-fe-blue-gray hover:text-fe-anthracite transition-colors">Cancel</button>
@@ -1094,6 +1063,7 @@ export default function ProjectDetailPage() {
                                     className="text-sm font-fira text-fe-anthracite truncate hover:text-fe-blue transition-colors text-left"
                                   >
                                     {task.task_name}
+                                    {project.is_enterprise && task.company_calendar_kind && <span className="ml-2 text-[10px] text-[#316577] font-bold">{task.company_calendar_kind === 'session' ? 'Client session' : 'Client deliverable'}</span>}
                                   </button>
                                   {task.on_hold && (
                                     <span className="shrink-0 text-[9px] font-fira font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 uppercase tracking-wide">
