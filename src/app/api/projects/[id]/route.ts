@@ -108,6 +108,26 @@ export async function PATCH(
     }
 
     const updates: Record<string, unknown> = {};
+    const calendarFields = ['is_enterprise','enterprise_client_label','enterprise_owner_id'];
+    if (calendarFields.some(key => body[key] !== undefined)) {
+      const { data: current, error } = await supabase.from('projects').select('*').eq('id', id).single();
+      if (error || !current) return NextResponse.json({ error:'Could not read project.' }, { status:404 });
+      if (!Object.prototype.hasOwnProperty.call(current,'is_enterprise'))
+        return NextResponse.json({ error:'Enterprise settings require the approved database update.' }, { status:503 });
+      const enterprise = body.is_enterprise === undefined ? current.is_enterprise : body.is_enterprise;
+      const label = body.enterprise_client_label === undefined ? current.enterprise_client_label : body.enterprise_client_label;
+      const owner = body.enterprise_owner_id === undefined ? current.enterprise_owner_id : body.enterprise_owner_id;
+      if (typeof enterprise !== 'boolean' || (label !== null && (typeof label !== 'string' || label.length > 160)))
+        return NextResponse.json({ error:'Enter valid enterprise settings and a display label up to 160 characters.' }, { status:400 });
+      if (enterprise && (!label?.trim() || !owner))
+        return NextResponse.json({ error:'Choose one engagement owner and an approved client display label.' }, { status:400 });
+      const ownership = await loadOwnership();
+      if (owner !== null && !ownership.people.some(p => p.id === owner))
+        return NextResponse.json({ error:'Choose a valid engagement owner.' }, { status:400 });
+      updates.is_enterprise = enterprise;
+      updates.enterprise_client_label = label?.trim() || null;
+      updates.enterprise_owner_id = owner;
+    }
     if (body.name !== undefined) updates.name = body.name;
     // Dates are written only by save_project_schedule. Even unchanged dates
     // are omitted here so metadata edits cannot race and overwrite a schedule.

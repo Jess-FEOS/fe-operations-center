@@ -53,4 +53,5 @@ const server=http.createServer((req,res)=>{
   }
   res.end(JSON.stringify(rows))
 })
-server.listen(4400,'127.0.0.1',()=>console.log('Read-only private snapshot server ready on 4400'))
+const port=Number(process.env.QA_PORT || 4400)
+server.listen(port,'127.0.0.1',()=>console.log(`Read-only private snapshot server ready on ${port}`))

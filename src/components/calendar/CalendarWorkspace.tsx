@@ -66,7 +66,7 @@ export default function CalendarWorkspace() {
         <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex min-w-0">
           <select disabled={navigating || loading} aria-label="Program" data-testid="filter-program" className="fe-input !w-full sm:!w-auto min-w-0 max-w-full"
             value={projectId} onChange={e => update({ program: e.target.value, asset: null, new: null })}>
-            <option value="">All programs</option>
+            <option value="">{view === 'company' ? 'All projects / engagements' : 'All programs'}</option>
             {programs.map(p => <option key={p.project_id} value={p.project_id}>{p.name}{p.project_status === 'archived' ? ' (archived)' : ''}</option>)}
           </select>
           <select disabled={navigating || loading} aria-label="Owner" data-testid="filter-owner" className="fe-input !w-full sm:!w-auto min-w-0 max-w-full"
@@ -77,7 +77,7 @@ export default function CalendarWorkspace() {
         </div>
       </div>
       <p className="text-sm text-fe-blue-gray mb-4">
-        {view === 'company' ? 'Task deadlines, program milestones, seminars and dated marketing assets.' : 'Plan what goes out, on which platform, and whether it is ready.'}
+        {view === 'company' ? 'Project launches, program starts, seminars and selected enterprise commitments.' : 'Plan what goes out, on which platform, and whether it is ready.'}
       </p>
       {error ? <div role="alert" className="border border-fe-red p-4 text-fe-red">{error} <button onClick={load} className="underline">Retry</button></div>
         : loading ? <p role="status" className="py-12 text-fe-blue-gray">Loading calendar…</p>
