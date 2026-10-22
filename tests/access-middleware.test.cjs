@@ -26,6 +26,15 @@ test('preview forces writes off while preserving read-only checklist review',asy
   assert.equal((await handle(req('/api/projects/prepare','POST'))).next,true)
   assert.equal((await handle(req('/api/projects'))).next,true)
 })
+test('preview permits only exact prepare endpoint, not hypothetical update writes',async()=>{
+  const handle=app({VERCEL_ENV:'preview'})
+  assert.equal((await handle(req('/api/updates/prepare','POST'))).next,true)
+  for(const path of ['/api/updates/apply','/api/updates/prepare/extra','/api/updates']){
+    assert.equal((await handle(req(path,'POST'))).status,403)
+  }
+  assert.equal((await handle(req('/api/updates/prepare','PUT'))).status,403)
+  assert.equal((await handle(req('/api/updates/prepare','POST',{origin:'https://attacker.example.test'}))).status,403)
+})
 test('production retains approved no-login reads and writes',async()=>{
   const handle=app({NODE_ENV:'production',VERCEL_ENV:'production'})
   assert.equal((await handle(req())).next,true)

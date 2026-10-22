@@ -24,6 +24,7 @@ const PRIMARY: NavItem[] = [
 ]
 
 const MORE = [
+  { href: '/updates', label: 'Import updates' },
   { href: '/vendors/library', label: 'Asset Library' },
   { href: '/performance', label: 'Performance' },
   { href: '/weekly-checklist', label: 'Weekly Checklist' },
