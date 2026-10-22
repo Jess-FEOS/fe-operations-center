@@ -76,7 +76,7 @@ export default function CalendarWorkspace() {
           </select>
         </div>
       </div>
-      <p className="text-sm text-fe-blue-gray mb-4">
+      <p className="text-sm text-slate-600 mb-4">
         {view === 'company' ? 'Project launches, program starts, seminars and selected enterprise commitments.' : 'Plan what goes out, on which platform, and whether it is ready.'}
       </p>
       {error ? <div role="alert" className="border border-fe-red p-4 text-fe-red">{error} <button onClick={load} className="underline">Retry</button></div>

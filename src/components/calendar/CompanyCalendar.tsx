@@ -248,7 +248,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
 
       {/* Layer toggles */}
       <div className="flex items-center gap-2 mb-4 flex-wrap no-print">
-        <span className="text-xs text-fe-blue-gray font-fira mr-1 uppercase tracking-wider">Layers</span>
+        <span className="text-xs text-slate-600 font-fira mr-1 uppercase tracking-wider">Layers</span>
         {LAYERS.map((l) => {
           const on = activeLayers.has(l.key)
           return (
@@ -269,12 +269,12 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
             </button>
           )
         })}
-        <span className="text-xs text-fe-blue-gray font-fira ml-2">Click a day to add a seminar</span>
+        <span className="text-xs text-slate-600 font-fira ml-2">Click a day to add a seminar</span>
       </div>
-      {(projectId || ownerId) && <p className="text-xs text-fe-blue-gray mb-3">
+      {(projectId || ownerId) && <p className="text-xs text-slate-600 mb-3">
         {ownerId ? 'Owner filters show their client commitments and engagement milestones. Seminars and milestones without a named engagement owner are hidden.' : 'Seminars are company-wide and hidden while a project filter is selected.'}
       </p>}
-      <p className="sm:hidden text-xs text-fe-blue-gray mb-2">Scroll the calendar sideways to see the full week.</p>
+      <p className="sm:hidden text-xs text-slate-600 mb-2">Scroll the calendar sideways to see the full week.</p>
 
       {error ? <div role="alert" className="border border-fe-red p-4 text-fe-red">{error} <button onClick={load} className="underline">Retry</button></div> : loading ? (
         <div className="flex items-center justify-center h-64">
@@ -285,7 +285,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
           {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-fe-line">
             {DAYS.map((day) => (
-              <div key={day} className="px-2 py-2.5 text-center text-xs font-fira font-bold text-fe-blue-gray bg-fe-offwhite">
+              <div key={day} className="px-2 py-2.5 text-center text-xs font-fira font-bold text-slate-600 bg-fe-offwhite">
                 {day}
               </div>
             ))}
@@ -313,7 +313,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
                       <div className={`text-xs font-fira ${
                         isToday
                           ? 'w-6 h-6 rounded-full bg-fe-blue text-white flex items-center justify-center font-bold'
-                          : isCurrentMonth ? 'text-fe-anthracite font-medium' : 'text-gray-300'
+                          : isCurrentMonth ? 'text-fe-anthracite font-medium' : 'text-slate-600'
                       }`}>
                         {day.getDate()}
                       </div>
@@ -360,8 +360,8 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
       )}
 
       {/* Legend footnote */}
-      <p className="mt-3 text-xs text-fe-blue-gray">Manage client deliverables and sessions in Projects; email and social assets stay in Marketing.</p>
-      <div className="mt-3 flex items-center gap-4 text-xs font-fira text-fe-blue-gray no-print flex-wrap">
+      <p className="mt-3 text-xs text-slate-600">Manage client deliverables and sessions in Projects; email and social assets stay in Marketing.</p>
+      <div className="mt-3 flex items-center gap-4 text-xs font-fira text-slate-600 no-print flex-wrap">
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.milestone }} /> Project launches, starts and client kickoffs</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.seminar }} /> Seminars (click a day to add)</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.enterprise }} /> Selected client commitments (opens the original task)</span>
