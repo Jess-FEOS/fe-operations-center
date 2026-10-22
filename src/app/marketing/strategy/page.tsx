@@ -167,7 +167,7 @@ export default function MarketingStrategyPage() {
           </div>
 
           <p className="mt-4 text-xs text-fe-blue-gray">
-            See these on the <Link href="/marketing/calendar" className="text-fe-blue hover:underline">Marketing Calendar</Link>, or work through copy in the{' '}
+            See these in <Link href="/calendar?view=marketing" className="text-fe-blue hover:underline">Calendar · Marketing</Link>, or work through copy in the{' '}
             <Link href="/marketing" className="text-fe-blue hover:underline">Content Pipeline</Link>.
           </p>
         </>

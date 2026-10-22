@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { loadOwnership } from '@/lib/ownership-server'
+import { resolveOwnership } from '@/lib/ownership'
+import { validCalendarDate } from '@/lib/calendar'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +41,8 @@ interface MarketingEvent {
   title: string
   channels: string[]
   status: string
+  copy_ready: boolean
+  creative_ready: boolean
   asset_link: string | null
 }
 type CalendarEvent = ProjectEvent | SeminarEvent | MarketingEvent
@@ -47,28 +52,35 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const from = searchParams.get('from')
     const to = searchParams.get('to')
-    if (!from || !to) {
-      return NextResponse.json({ error: 'Missing required query params: from, to' }, { status: 400 })
+    const projectId = searchParams.get('project_id')
+    const ownerId = searchParams.get('owner_id')
+    if (!validCalendarDate(from) || !validCalendarDate(to) || from > to) {
+      return NextResponse.json({ error: 'A valid from/to date range is required.' }, { status: 400 })
     }
-
-    const [tasksRes, seminarsRes, marketingRes] = await Promise.all([
-      supabase
+    let tasksQuery = supabase
         .from('project_tasks')
-        .select('id, task_name, due_date, project_id, projects!inner(id, name,status)')
+        .select('id, task_name, due_date, project_id, owner_ids,role_id,vendor_role_id,projects!inner(id, name,status)')
         .eq('projects.status', 'active')
         .neq('status', 'done')
         .gte('due_date', from)
-        .lte('due_date', to),
-      supabase
+        .lte('due_date', to)
+    let marketingQuery = supabase.from('marketing_content')
+      .select('id,title,scheduled_date,channels,status,asset_link,copy_ready,creative_ready')
+      .gte('scheduled_date', from).lte('scheduled_date', to)
+    if (projectId) {
+      tasksQuery = tasksQuery.eq('project_id', projectId)
+      marketingQuery = marketingQuery.eq('project_id', projectId)
+    }
+    if (ownerId) marketingQuery = marketingQuery.eq('owner_id', ownerId)
+    const [tasksRes, seminarsRes, marketingRes, ownership] = await Promise.all([
+      tasksQuery,
+      projectId || ownerId ? Promise.resolve({ data: [], error: null }) : supabase
         .from('seminars')
         .select('*')
         .gte('seminar_date', from)
         .lte('seminar_date', to),
-      supabase
-        .from('marketing_content')
-        .select('id, title, scheduled_date, channels, status, asset_link')
-        .gte('scheduled_date', from)
-        .lte('scheduled_date', to),
+      marketingQuery,
+      ownerId ? loadOwnership() : Promise.resolve(null),
     ])
 
     if (tasksRes.error || seminarsRes.error || marketingRes.error) {
@@ -80,6 +92,7 @@ export async function GET(request: NextRequest) {
     const groupMap = new Map<string, ProjectEvent>()
     for (const t of (tasksRes.data as any[]) || []) {
       if (!t.due_date) continue
+      if (ownerId && ownership && !resolveOwnership(t, ownership.people, ownership.joins).owner_ids.includes(ownerId)) continue
       const projId = t.projects?.id || t.project_id || 'unknown'
       const key = `${t.due_date}::${projId}`
       let g = groupMap.get(key)
@@ -123,6 +136,8 @@ export async function GET(request: NextRequest) {
         title: m.title,
         channels: Array.isArray(m.channels) ? m.channels : [],
         status: m.status || 'idea',
+        copy_ready: !!m.copy_ready,
+        creative_ready: !!m.creative_ready,
         asset_link: m.asset_link,
       })
     }

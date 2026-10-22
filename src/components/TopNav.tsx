@@ -10,13 +10,13 @@ type NavItem = { href: string; label: string; children?: { href: string; label: 
 const PRIMARY: NavItem[] = [
   { href: '/', label: 'Dashboard' },
   { href: '/projects', label: 'Projects' },
+  { href: '/calendar', label: 'Calendar' },
   { href: '/vendors', label: 'Vendors' },
   {
     href: '/marketing',
     label: 'Marketing',
     children: [
       { href: '/marketing', label: 'Content Pipeline', hint: 'Draft & move content through stages' },
-      { href: '/marketing/calendar', label: 'Marketing Calendar', hint: 'What posts where, and when' },
       { href: '/marketing/strategy', label: 'Marketing Strategy', hint: 'Plan assets by program' },
     ],
   },
@@ -27,7 +27,6 @@ const MORE = [
   { href: '/vendors/library', label: 'Asset Library' },
   { href: '/performance', label: 'Performance' },
   { href: '/weekly-checklist', label: 'Weekly Checklist' },
-  { href: '/calendar', label: 'Calendar' },
   { href: '/tasks/bulk-edit', label: 'Bulk Editor' },
 ]
 
