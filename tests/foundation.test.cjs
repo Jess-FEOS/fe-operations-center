@@ -73,17 +73,17 @@ test('copy preserves checklist, not completion or old fixed deadlines',()=>{
 })
 test('preview write flag cannot override read-only mode',()=>{
   assert.equal(access.isReadOnly({VERCEL_ENV:'preview',OPS_WRITES_ENABLED:'true'}),true)
-  assert.equal(access.isReadOnly({VERCEL_ENV:'production'}),true)
+  assert.equal(access.isReadOnly({VERCEL_ENV:'production'}),false)
   assert.equal(access.isReadOnly({VERCEL_ENV:'production',OPS_WRITES_ENABLED:'true'}),false)
   assert.equal(access.isReadRequest('POST','/api/projects/prepare'),true)
   assert.equal(access.isReadRequest('POST','/api/projects/x/schedule'),true)
   for(const method of ['PUT','DELETE','PATCH'])assert.equal(access.isReadRequest(method,'/api/projects/x/schedule'),false)
   assert.equal(access.isReadRequest('POST','/api/projects'),false)
 })
-test('production allowlist is exact, case-insensitive, and fail-closed',()=>{
-  assert.equal(access.allowedEmail('PERSON@example.com',' person@example.com, other@example.com'),true)
-  assert.equal(access.allowedEmail('attacker@example.com','person@example.com'),false)
-  assert.equal(access.allowedEmail('person@example.com',undefined),false)
+test('explicit write freeze and local review remain read-only',()=>{
+  assert.equal(access.isReadOnly({VERCEL_ENV:'production',OPS_WRITES_ENABLED:'false'}),true)
+  assert.equal(access.isReadOnly({VERCEL_ENV:'production',OPS_LOCAL_REVIEW:'true'}),true)
+  assert.equal(access.isReadOnly({}),true)
 })
 test('same-host review requests work behind a proxy; foreign and opaque origins fail',()=>{
   assert.equal(access.allowedOrigin('http://127.0.0.1:3000','127.0.0.1:3000'),true)

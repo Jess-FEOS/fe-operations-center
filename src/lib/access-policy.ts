@@ -1,4 +1,4 @@
-/** A Vercel preview is ALWAYS read-only, even if a production write flag is inherited. */
+/** Origin checks reduce cross-site browser submissions; they are not authentication. */
 export function allowedOrigin(origin: string | null, host: string | null) {
   if (!origin) return true
   try {
@@ -8,12 +8,11 @@ export function allowedOrigin(origin: string | null, host: string | null) {
 }
 
 export function isReadOnly(env: Record<string,string | undefined>) {
-  return env.VERCEL_ENV === 'preview' || env.OPS_WRITES_ENABLED !== 'true'
+  // Approved release policy: retain open production access; previews never write.
+  if (env.VERCEL_ENV === 'preview' || env.OPS_LOCAL_REVIEW === 'true' || env.OPS_WRITES_ENABLED === 'false') return true
+  return env.VERCEL_ENV !== 'production' && env.OPS_WRITES_ENABLED !== 'true'
 }
 export function isReadRequest(method: string, path: string) {
   return ['GET','HEAD','OPTIONS'].includes(method) ||
     (method === 'POST' && (path === '/api/projects/prepare' || /^\/api\/projects\/[^/]+\/schedule$/.test(path)))
-}
-export function allowedEmail(email: string | undefined, allowlist: string | undefined) {
-  return !!email && !!allowlist?.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase())
 }

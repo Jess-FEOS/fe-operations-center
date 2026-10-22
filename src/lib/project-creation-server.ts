@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isReadOnly } from '@/lib/access-policy'
 import { supabase } from '@/lib/supabase'
 import { loadOwnership } from '@/lib/ownership-server'
 import { prepareCopyTasks, prepareTemplateTasks, Overrides } from '@/lib/project-foundation'
@@ -44,7 +45,7 @@ export async function prepareCreation(input: CreationInput) {
     priority_id: input.priority_id || null, revenue_goal: input.revenue_goal ?? null, enrollment_goal: input.enrollment_goal ?? null }
   const review_hash = createHash('sha256').update(JSON.stringify({ project, source, tasks })).digest('hex')
   return { project, source, tasks, review_hash, issues: tasks.filter(t => t.issues.length).length,
-    people: people.map(p => ({ id: p.id, name: p.name })), can_save: process.env.OPS_WRITES_ENABLED === 'true' && process.env.VERCEL_ENV !== 'preview' }
+    people: people.map(p => ({ id: p.id, name: p.name })), can_save: !isReadOnly(process.env) }
 }
 
 export async function createReviewedProject(input: CreationInput) {

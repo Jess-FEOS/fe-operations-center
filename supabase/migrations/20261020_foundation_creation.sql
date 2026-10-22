@@ -1,4 +1,4 @@
--- PENDING REVIEW. Do not run against production as part of preview deployment.
+-- Approved foundation release migration. Apply separately, never during preview deployment.
 begin;
 -- A named accountable person or modern role need not also have a legacy role.
 -- Existing assignments are unchanged.

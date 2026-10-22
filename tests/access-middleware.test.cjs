@@ -26,26 +26,26 @@ test('preview forces writes off while preserving read-only checklist review',asy
   assert.equal((await handle(req('/api/projects/prepare','POST'))).next,true)
   assert.equal((await handle(req('/api/projects'))).next,true)
 })
-test('unsigned production API requests fail closed, including bypass-header probes',async()=>{
-  const handle=app({NODE_ENV:'production',OPS_WRITES_ENABLED:'true'})
-  assert.equal((await handle(req())).status,401)
-  assert.equal((await handle(req('/api/projects','GET',{'x-middleware-subrequest':'middleware:middleware:middleware:middleware:middleware'}))).status,401)
+test('production retains approved no-login reads and writes',async()=>{
+  const handle=app({NODE_ENV:'production',VERCEL_ENV:'production'})
+  assert.equal((await handle(req())).next,true)
+  assert.equal((await handle(req('/api/projects','POST',{origin:'https://app.example.test'}))).next,true)
 })
-test('production verifies the session against the exact approved-email list',async()=>{
-  const env={NODE_ENV:'production',OPS_WRITES_ENABLED:'true',OPS_ALLOWED_EMAILS:'team@example.test'}
-  assert.equal((await app(env)(req('/api/projects','GET',{},'test-session'))).next,true)
-  assert.equal((await app(env,'outsider@example.test')(req('/api/projects','GET',{},'test-session'))).status,401)
-  assert.equal((await app(env,new Error('identity unavailable'))(req('/api/projects','GET',{},'test-session'))).status,401)
+test('production write kill switch preserves read-only reviews',async()=>{
+  const handle=app({VERCEL_ENV:'production',OPS_WRITES_ENABLED:'false'})
+  assert.equal((await handle(req('/api/projects','POST'))).status,403)
+  assert.equal((await handle(req('/api/projects/prepare','POST'))).next,true)
+  assert.equal((await handle(req())).next,true)
 })
-test('sign-in redirects retain the incoming app host and HTTPS behind a proxy',async()=>{
-  const result=await app({NODE_ENV:'production'})(req('/projects','GET',{'x-forwarded-proto':'https'}))
-  assert.equal(result.url,'https://app.example.test/login')
+test('production pages do not redirect to login',async()=>{
+  const result=await app({VERCEL_ENV:'production'})(req('/projects','GET',{'x-forwarded-proto':'https'}))
+  assert.equal(result.next,true)
 })
-test('foreign or opaque origins cannot submit to preview or sign-in routes',async()=>{
+test('foreign or opaque origins cannot submit to preview or production routes',async()=>{
   const handle=app({VERCEL_ENV:'preview'})
   for(const origin of ['https://attacker.example.test','null']){
     assert.equal((await handle(req('/api/projects/prepare','POST',{origin}))).status,403)
-    assert.equal((await handle(req('/api/auth/login','POST',{origin}))).status,403)
+    assert.equal((await app({VERCEL_ENV:'production'})(req('/api/projects','POST',{origin}))).status,403)
   }
   assert.equal((await handle(req('/api/projects/prepare','POST',{origin:'https://app.example.test'}))).next,true)
 })
