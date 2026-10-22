@@ -271,7 +271,6 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
         })}
         <span className="text-xs text-fe-blue-gray font-fira ml-2">Click a day to add a seminar</span>
       </div>
-      <p className="text-sm text-fe-blue-gray mb-3">Company commitments, not the task list. Manage client deliverables and sessions in Projects; email and social assets stay in Marketing.</p>
       {(projectId || ownerId) && <p className="text-xs text-fe-blue-gray mb-3">
         {ownerId ? 'Owner filters show their client commitments and engagement milestones. Seminars and milestones without a named engagement owner are hidden.' : 'Seminars are company-wide and hidden while a project filter is selected.'}
       </p>}
@@ -361,6 +360,7 @@ export default function CompanyCalendar({ anchor, onAnchorChange, projectId, own
       )}
 
       {/* Legend footnote */}
+      <p className="mt-3 text-xs text-fe-blue-gray">Manage client deliverables and sessions in Projects; email and social assets stay in Marketing.</p>
       <div className="mt-3 flex items-center gap-4 text-xs font-fira text-fe-blue-gray no-print flex-wrap">
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.milestone }} /> Project launches, starts and client kickoffs</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5" style={{ backgroundColor: LAYER_COLOR.seminar }} /> Seminars (click a day to add)</span>
