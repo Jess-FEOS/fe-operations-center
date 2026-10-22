@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import TopNav from '@/components/TopNav'
+import { isReadOnly } from '@/lib/access-policy'
 
 export const metadata: Metadata = {
   title: 'Fundamental Edge Operations Center',
@@ -12,7 +13,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const readOnly = process.env.VERCEL_ENV === 'preview' || process.env.OPS_WRITES_ENABLED !== 'true'
+  const readOnly = isReadOnly(process.env)
   return (
     <html lang="en">
       <body className="min-h-screen" style={{ backgroundColor: '#F4F5F7' }}>
