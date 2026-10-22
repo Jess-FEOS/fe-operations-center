@@ -358,7 +358,7 @@ export default function MarketingPage() {
       {/* Connectedness note */}
       <p className="mt-3 text-xs font-fira text-fe-blue-gray">
         Scheduled items appear on the{' '}
-        <Link href="/marketing/calendar" className="text-fe-blue hover:underline">Marketing Calendar</Link>{' '}
+        <Link href="/calendar?view=marketing" className="text-fe-blue hover:underline">Calendar · Marketing</Link>{' '}
         on their scheduled date. Plan assets by program on{' '}
         <Link href="/marketing/strategy" className="text-fe-blue hover:underline">Marketing Strategy</Link>.
       </p>
