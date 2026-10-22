@@ -1,19 +1,35 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { loadOwnership, enrichOwnership } from '@/lib/ownership-server';
+import { validDate } from '@/lib/project-schedule';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; taskId: string } }
+  { params }: { params: Promise<{ id: string; taskId: string }> }
 ) {
   try {
-    const { id, taskId } = params;
+    const { id, taskId } = await params;
     const body = await request.json();
+    const ownership = await loadOwnership();
+    if (body.owner_ids !== undefined && (!Array.isArray(body.owner_ids) || body.owner_ids.length !== 1 ||
+      !ownership.people.some(p => p.id === body.owner_ids[0]))) {
+      return NextResponse.json({ error: 'Choose exactly one accountable owner.' }, { status: 400 });
+    }
+    if (body.status !== undefined && !['not_started','in_progress','done','blocked'].includes(body.status)) {
+      return NextResponse.json({ error: 'Invalid task status.' }, { status: 400 });
+    }
+    if (body.due_date !== undefined && !validDate(body.due_date)) {
+      return NextResponse.json({ error: 'A valid deadline is required.' }, { status: 400 });
+    }
 
     const updates: Record<string, unknown> = {};
     if (body.status !== undefined) updates.status = body.status;
     if (body.task_name !== undefined) updates.task_name = body.task_name;
-    if (body.owner_ids !== undefined) updates.owner_ids = body.owner_ids;
+    if (body.owner_ids !== undefined) {
+      updates.owner_ids = body.owner_ids;
+      updates.vendor_role_id = ownership.people.find(p => p.id === body.owner_ids[0])?.vendor_role_id || null;
+    }
     if (body.role_id !== undefined) updates.role_id = body.role_id;
     if (body.due_date !== undefined) {
       updates.due_date = body.due_date;
@@ -26,7 +42,8 @@ export async function PATCH(
         updates.schedule_offset_days = null;
       }
     }
-    if (body.on_hold !== undefined) updates.on_hold = body.on_hold;
+    // on_hold is not a column in the current schema. Keep the existing blocked status instead.
+    if (body.on_hold === true && body.status !== 'done') updates.status = 'blocked';
     if (body.follow_up_date !== undefined) updates.follow_up_date = body.follow_up_date;
     if (body.phase !== undefined) updates.phase = body.phase;
 
@@ -57,49 +74,9 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // --- Sync: recalculate project progress when task status changes ---
-    if (body.status !== undefined) {
-      const { data: allTasks } = await supabase
-        .from('project_tasks')
-        .select('status')
-        .eq('project_id', id);
-
-      const total = allTasks?.length || 0;
-      const doneTasks = allTasks?.filter((t: { status: string }) => t.status === 'done').length || 0;
-      const progress = total > 0 ? Math.round((doneTasks / total) * 100) : 0;
-      const allDone = total > 0 && doneTasks === total;
-
-      const projectUpdates: Record<string, unknown> = {
-        progress,
-        done_tasks: doneTasks,
-      };
-      if (allDone) {
-        projectUpdates.status = 'completed';
-      }
-
-      await supabase
-        .from('projects')
-        .update(projectUpdates)
-        .eq('id', id);
-
-      // If project just became completed and has a priority_id, mark priority done
-      if (allDone) {
-        const { data: project } = await supabase
-          .from('projects')
-          .select('priority_id')
-          .eq('id', id)
-          .single();
-
-        if (project?.priority_id) {
-          await supabase
-            .from('monthly_priorities')
-            .update({ status: 'done' })
-            .eq('id', project.priority_id);
-        }
-      }
-    }
-
-    return NextResponse.json(data);
+    // Progress is derived on read. Task completion does not silently change
+    // project visibility, priority state, or archived history.
+    return NextResponse.json(enrichOwnership(data, ownership));
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -107,10 +84,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; taskId: string } }
+  { params }: { params: Promise<{ id: string; taskId: string }> }
 ) {
   try {
-    const { id, taskId } = params;
+    const { id, taskId } = await params;
 
     const { error } = await supabase
       .from('project_tasks')

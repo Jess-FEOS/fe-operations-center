@@ -83,6 +83,8 @@ function api(options = {}) {
     if(name==='crypto')return require('node:crypto')
     if(name==='next/server')return {NextResponse:{json:(data,opts)=>({status:opts?.status||200,data})}}
     if(name==='@/lib/supabase')return {supabase}
+    if(name==='@/lib/ownership-server')return {loadOwnership:async()=>({people:[],joins:[]}),enrichOwnership:t=>t}
+    if(name==='@/lib/project-schedule')return h
     if(name==='@/lib/project-schedule')return h
     throw new Error(name)
   }}
@@ -131,6 +133,8 @@ test('individual manual date changes become fixed, unchanged dates keep their an
   const box={exports:{},require(name){
     if(name==='next/server')return {NextResponse:{json:(data,opts)=>({status:opts?.status||200,data})}}
     if(name==='@/lib/supabase')return {supabase}
+    if(name==='@/lib/ownership-server')return {loadOwnership:async()=>({people:[],joins:[]}),enrichOwnership:t=>t}
+    if(name==='@/lib/project-schedule')return h
     throw new Error(name)
   }}
   vm.runInNewContext(compile('app/api/projects/[id]/tasks/[taskId]/route.ts'),box)

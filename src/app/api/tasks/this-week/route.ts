@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { loadOwnership, enrichOwnership } from '@/lib/ownership-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('project_tasks')
-      .select('*, projects(name, workflow_type), campaigns(name)')
+      .select('*, projects!inner(name, workflow_type,status), campaigns(name)')
+      .eq('projects.status', 'active')
+      .neq('status', 'done')
       .gte('due_date', mondayStr)
       .lte('due_date', sundayStr);
 
@@ -32,8 +35,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Flatten the joins into top-level fields
+    const ownership = await loadOwnership();
     const flattened = (data || []).map((task: any) => ({
-      ...task,
+      ...enrichOwnership(task, ownership),
       project_name: task.projects?.name || '',
       workflow_type: task.projects?.workflow_type || '',
       campaign_name: task.campaigns?.name || null,

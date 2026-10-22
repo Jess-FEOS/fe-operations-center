@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Avatar from '@/components/Avatar';
 import PageHeader from '@/components/PageHeader';
 
@@ -24,6 +24,7 @@ interface WorkItem {
   project_id: string | null;
   status: string;
   due_date: string | null;
+  ownership_issue?: string | null;
 }
 
 interface RoleWorkspace {
@@ -130,6 +131,7 @@ export default function TeamPage() {
   const [roles, setRoles] = useState<RoleWorkspace[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [tab, setTab] = useState<Tab>('roles');
 
   // expanded role work lists
@@ -145,6 +147,7 @@ export default function TeamPage() {
   const [digestWindow, setDigestWindow] = useState<'week' | 'all'>('week');
   const [digestRange, setDigestRange] = useState<{ start: string; end: string } | null>(null);
   const [digestLoading, setDigestLoading] = useState(false);
+  const digestRequest = useRef(0);
 
   const [toast, setToast] = useState<Toast>({ message: '', visible: false });
   const showToast = useCallback((message: string) => {
@@ -170,26 +173,36 @@ export default function TeamPage() {
       ]);
       const rolesData = await rolesRes.json();
       const teamData = await teamRes.json();
+      if (!rolesRes.ok || !teamRes.ok || !Array.isArray(rolesData) || !Array.isArray(teamData)) {
+        throw new Error('Could not load complete team data. Refresh before relying on these counts.');
+      }
       setRoles(Array.isArray(rolesData) ? rolesData : []);
       setTeam(Array.isArray(teamData) ? teamData : []);
+      setLoadError('');
     } catch (e) {
       console.error('Failed to load team workspace', e);
+      setLoadError(e instanceof Error ? e.message : 'Could not load complete team data.');
     } finally {
       setLoading(false);
     }
   }
 
   async function fetchDigest(win: 'week' | 'all') {
+    const requestId = ++digestRequest.current;
     setDigestLoading(true);
     try {
       const res = await fetch(`/api/roles-workspace/weekly-digest?window=${win}`);
       const data = await res.json();
+      if (requestId !== digestRequest.current) return;
+      if (!res.ok || !Array.isArray(data.people)) throw new Error('Could not load the complete weekly review. Please retry.');
       setDigest(Array.isArray(data.people) ? data.people : []);
       setDigestRange({ start: data.week_start, end: data.week_end });
+      setLoadError('');
     } catch (e) {
       console.error('Failed to load digest', e);
+      if (requestId === digestRequest.current) setLoadError(e instanceof Error ? e.message : 'Could not load the complete weekly review.');
     } finally {
-      setDigestLoading(false);
+      if (requestId === digestRequest.current) setDigestLoading(false);
     }
   }
 
@@ -221,7 +234,7 @@ export default function TeamPage() {
       const names = team.filter((m) => selectedHolderIds.includes(m.id)).map((m) => m.name);
       showToast(
         names.length
-          ? `${assigningRole.name} → ${names.join(', ')}. Work reassigned.`
+          ? `${assigningRole.name}: ${names.join(', ')}. Role defaults updated; named owners preserved.`
           : `${assigningRole.name} left unassigned.`
       );
       setAssigningRole(null);
@@ -240,7 +253,7 @@ export default function TeamPage() {
       <PageHeader
         eyebrow="Operations Center"
         title="Team & Roles"
-        subtitle="Work is owned by roles. Assign a person to a role and everything that role owns follows them."
+        subtitle="Open work across active projects and partner deliverables. Explicit owners stay accountable; roles provide defaults. Completed history remains in each project."
         actions={
           <div className="flex items-center gap-2 no-print">
             <button
@@ -267,6 +280,9 @@ export default function TeamPage() {
         }
       />
 
+      {loadError && <div role="alert" className="border border-red-200 bg-red-50 text-red-800 p-3 mb-4 text-sm">
+        {loadError} <button className="underline ml-2" onClick={()=>tab === 'review' ? fetchDigest(digestWindow) : fetchData()}>Retry</button>
+      </div>}
       {loading ? (
         <div className="fe-cards">
           {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -309,9 +325,9 @@ export default function TeamPage() {
             </div>
             <div className="p-5">
               <p className="text-sm font-fira text-fe-blue-gray mb-4">
-                Choose who holds this role. Everything the role owns
-                ({assigningRole.work_count} item{assigningRole.work_count === 1 ? '' : 's'})
-                will be reassigned to them automatically. You can select more than one person.
+                Choose who holds this role. Named task owners stay unchanged.
+                Work without a named owner uses the role as its default.
+                If you select multiple holders, that work needs an accountable-owner decision.
               </p>
               <div className="space-y-1 max-h-72 overflow-y-auto border border-fe-line">
                 {team.map((m) => {
@@ -350,7 +366,7 @@ export default function TeamPage() {
                 disabled={saving}
                 className="px-3 py-1.5 text-sm font-fira font-semibold bg-fe-blue text-white disabled:opacity-60"
               >
-                {saving ? 'Saving…' : 'Save & reassign'}
+                {saving ? 'Saving…' : 'Save role holders'}
               </button>
             </div>
           </div>
@@ -389,7 +405,7 @@ function RolesTab({
       <div className="flex items-center gap-6 mb-5 text-sm font-fira text-fe-blue-gray no-print">
         <span><strong className="text-fe-navy">{roles.length}</strong> roles</span>
         <span><strong className="text-fe-navy">{roles.filter((r) => r.holders.length).length}</strong> filled</span>
-        <span><strong className="text-fe-navy">{totalWork}</strong> items of work owned</span>
+        <span><strong className="text-fe-navy">{totalWork}</strong> items of open work</span>
       </div>
 
       <div className="fe-cards">
@@ -435,6 +451,7 @@ function RolesTab({
                     </div>
                     <button
                       onClick={() => onAssign(role)}
+                      disabled={role.id === 'unassigned'}
                       className="px-2.5 py-1 text-xs font-fira font-semibold border border-fe-line text-fe-navy bg-white hover:bg-fe-canvas shrink-0 no-print"
                     >
                       {role.holders.length ? 'Change' : 'Assign'}
@@ -470,7 +487,10 @@ function RolesTab({
                               style={{ backgroundColor: w.kind === 'task' ? '#0762C8' : '#437F94' }}
                               title={w.kind}
                             />
-                            <span className="font-fira text-fe-navy truncate flex-1">{w.title}</span>
+                            <span className="font-fira text-fe-navy min-w-0 flex-1">
+                              <span className="block truncate" title={w.title}>{w.title}</span>
+                              {w.ownership_issue && <span className="block text-xs text-amber-800">{w.ownership_issue}</span>}
+                            </span>
                             {w.due_date && (
                               <span
                                 className={`font-fira text-xs shrink-0 ${
@@ -618,13 +638,13 @@ function ReviewTab({
                   {person.items.map((w) => (
                     <li
                       key={`${w.kind}-${w.id}`}
-                      className="flex items-center gap-3 px-4 py-2 border-b border-fe-line last:border-b-0"
+                      className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 px-4 py-2 border-b border-fe-line last:border-b-0"
                     >
                       <span
-                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        className="hidden sm:block w-1.5 h-1.5 rounded-full shrink-0"
                         style={{ backgroundColor: w.kind === 'task' ? '#0762C8' : '#437F94' }}
                       />
-                      <span className="font-fira text-sm text-fe-navy flex-1 truncate">
+                      <span className="font-fira text-sm text-fe-navy w-full sm:w-auto sm:flex-1 sm:truncate">
                         {w.title}
                         <span className="text-fe-blue-gray"> · {w.context}</span>
                       </span>

@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic';
 /** PATCH /api/vendors/[id] — update vendor fields. */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     const allowedFields = [
@@ -48,10 +48,10 @@ export async function PATCH(
 /** DELETE /api/vendors/[id] — cascade FK removes child deliverables & assets. */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // Best-effort: remove any uploaded storage objects for this vendor before
     // the DB rows cascade away (storage is not cascaded by the FK).

@@ -36,6 +36,8 @@ function api(path, overrides = {}) {
   const sandbox = { exports: {}, console, Date, require(name) {
     if (name === 'next/server') return { NextResponse: { json: (data, opts) => ({ status: opts?.status || 200, data }) } }
     if (name === '@/lib/supabase') return { supabase }
+    if (name === '@/lib/ownership-server') return { loadOwnership:async()=>({people:[],joins:[]}),enrichOwnership:t=>t }
+    if (name === '@/lib/project-creation-server') return { createReviewedProject:async()=>{throw new Error('Creation not expected')} }
     if (name === '@/lib/phases') return { getSimplifiedPhase: () => 'Build' }
     throw new Error(`Unexpected module: ${name}`)
   } }
@@ -74,6 +76,15 @@ test('failed archive stays active and creates no success activity entry', async 
   assert.equal(result.status, 500)
   assert.equal(app.state.status, 'active')
   assert.equal(app.state.writes.length, 1)
+})
+test('workflow replacement is rejected without writing any task or project row', async () => {
+  for (const patch of [{workflow_type:'podcast'},{workflow_template_id:'replacement'}]) {
+    const app=api('[id]/route.ts')
+    const result=await app.PATCH(req(patch),{params:Promise.resolve({id:'project'})})
+    assert.equal(result.status,409)
+    assert.equal(result.data.code,'WORKFLOW_REPLACEMENT_BLOCKED')
+    assert.equal(app.state.writes.length,0)
+  }
 })
 
 test('project lists default to active and explicitly support archived, all and other statuses', async () => {

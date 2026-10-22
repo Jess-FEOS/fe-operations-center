@@ -9,10 +9,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     // Optional activity descriptor — pulled out so it isn't written as a column.
@@ -97,10 +97,10 @@ export async function PATCH(
 /** DELETE /api/vendors/deliverables/[id]. */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const { error } = await supabase
       .from('vendor_deliverables')

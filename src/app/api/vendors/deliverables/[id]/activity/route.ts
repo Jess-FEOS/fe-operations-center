@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic';
 /** GET /api/vendors/deliverables/[id]/activity — full activity log, newest first. */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { data, error } = await supabase
       .from('vendor_deliverable_activity')
       .select('*')

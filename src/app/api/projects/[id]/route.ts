@@ -1,15 +1,16 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { loadOwnership, enrichOwnership } from '@/lib/ownership-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const { data: project, error: projectError } = await supabase
       .from('projects')
@@ -54,7 +55,8 @@ export async function GET(
       dependencies = depsData || [];
     }
 
-    return NextResponse.json({ project, tasks: tasks || [], links, dependencies });
+    const ownership = await loadOwnership();
+    return NextResponse.json({ project, tasks: (tasks || []).map(t => enrichOwnership(t, ownership)), links, dependencies });
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -62,11 +64,23 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
+
+    // Changing a category must never erase active work, links, or history.
+    if (body.workflow_template_id !== undefined || body.workflow_type !== undefined) {
+      const { data: current, error } = await supabase.from('projects')
+        .select('workflow_template_id,workflow_type').eq('id', id).single();
+      if (error || !current) return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
+      if ((body.workflow_template_id !== undefined && body.workflow_template_id !== current.workflow_template_id) ||
+          (body.workflow_type !== undefined && body.workflow_type !== current.workflow_type)) {
+        return NextResponse.json({ error: 'Workflow replacement is disabled to protect existing tasks and history. Create a new project from a template instead.',
+          code: 'WORKFLOW_REPLACEMENT_BLOCKED' }, { status: 409 });
+      }
+    }
 
     // Date edits must use the reviewed, atomic schedule endpoint. Even first-set
     // launch dates and start-only edits follow this path; no legacy cascade.
@@ -102,8 +116,6 @@ export async function PATCH(
     if (body.revenue_goal !== undefined) updates.revenue_goal = body.revenue_goal;
     if (body.enrollment_goal !== undefined) updates.enrollment_goal = body.enrollment_goal;
     if (body.priority_id !== undefined) updates.priority_id = body.priority_id;
-    if (body.workflow_type !== undefined) updates.workflow_type = body.workflow_type;
-    if (body.workflow_template_id !== undefined) updates.workflow_template_id = body.workflow_template_id;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
@@ -112,69 +124,6 @@ export async function PATCH(
       );
     }
 
-    // If workflow template is changing, regenerate tasks
-    let newTasks = null;
-    if (body.workflow_template_id) {
-      // Get the project's start_date (use provided or fetch existing)
-      let startDate = body.start_date;
-      if (!startDate) {
-        const { data: existing } = await supabase
-          .from('projects')
-          .select('start_date')
-          .eq('id', id)
-          .single();
-        startDate = existing?.start_date;
-      }
-
-      // Delete existing tasks
-      const { error: deleteError } = await supabase
-        .from('project_tasks')
-        .delete()
-        .eq('project_id', id);
-
-      if (deleteError) {
-        return NextResponse.json({ error: deleteError.message }, { status: 500 });
-      }
-
-      // Fetch new template tasks
-      const { data: templateTasks, error: templateError } = await supabase
-        .from('template_tasks')
-        .select('*')
-        .eq('workflow_template_id', body.workflow_template_id);
-
-      if (templateError) {
-        return NextResponse.json({ error: templateError.message }, { status: 500 });
-      }
-
-      // Generate new project tasks
-      if (templateTasks && templateTasks.length > 0) {
-        const startDateObj = new Date(startDate);
-        const projectTasks = templateTasks.map((task: Record<string, unknown>) => {
-          const dueDate = new Date(startDateObj.getTime() + (task.week_offset as number) * 7 * 24 * 60 * 60 * 1000);
-          return {
-            project_id: id,
-            phase: task.phase,
-            phase_order: task.phase_order,
-            task_name: task.task_name,
-            task_order: task.task_order,
-            due_date: dueDate.toISOString().split('T')[0],
-            week_number: (task.week_offset as number) + 1,
-            status: 'not_started',
-            owner_ids: task.owner_ids,
-          };
-        });
-
-        const { data: inserted, error: insertError } = await supabase
-          .from('project_tasks')
-          .insert(projectTasks)
-          .select();
-
-        if (insertError) {
-          return NextResponse.json({ error: insertError.message }, { status: 500 });
-        }
-        newTasks = inserted;
-      }
-    }
 
     const { data, error } = await supabase
       .from('projects')
@@ -229,11 +178,6 @@ export async function PATCH(
       }
     }
 
-    // Return tasks alongside project when workflow changed
-    if (newTasks !== null) {
-      return NextResponse.json({ project: data, tasks: newTasks });
-    }
-
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -242,10 +186,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // Delete associated tasks first
     const { error: tasksError } = await supabase

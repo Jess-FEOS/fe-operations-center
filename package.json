@@ -6,14 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --test tests/*.test.cjs",
+    "test:foundation-db": "node tests/foundation-db.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",
     "@supabase/supabase-js": "^2.39.0",
-    "next": "14.1.0",
+    "next": "15.5.28",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.31"
+    }
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -21,7 +28,7 @@
     "@types/react-dom": "^18.2.0",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.56.0",
-    "eslint-config-next": "14.1.0",
+    "eslint-config-next": "15.5.28",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3"

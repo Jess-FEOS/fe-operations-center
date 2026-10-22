@@ -32,6 +32,8 @@ interface WeekTask {
   status: TaskStatus
   due_date: string
   owner_ids: string[]
+  resolved_owner_ids?: string[]
+  ownership_issue?: string | null
   role_id: string | null
 }
 
@@ -40,17 +42,17 @@ export default function ThisWeekPage() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [selectedMember, setSelectedMember] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/tasks/this-week')
-      .then((res) => res.json())
-      .then(setTasks)
-    fetch('/api/team')
-      .then((res) => res.json())
-      .then(setTeam)
-    fetch('/api/roles')
-      .then((res) => res.json())
-      .then((data) => setRoles(Array.isArray(data) ? data : []))
+    Promise.all(['/api/tasks/this-week','/api/team','/api/roles'].map(async url=>{
+      const res=await fetch(url), data=await res.json()
+      if(!res.ok || !Array.isArray(data)) throw new Error('Could not load complete work data. Please retry.')
+      return data
+    })).then(([work,people,roles])=>{setTasks(work);setTeam(people);setRoles(roles)})
+      .catch(e=>setLoadError(e.message))
+      .finally(()=>setLoading(false))
   }, [])
 
   const teamById = team.reduce<Record<string, TeamMember>>((acc, m) => {
@@ -59,7 +61,7 @@ export default function ThisWeekPage() {
   }, {})
 
   const filteredTasks = selectedMember
-    ? tasks.filter((t) => t.owner_ids.includes(selectedMember))
+    ? tasks.filter((t) => (t.resolved_owner_ids ?? t.owner_ids).includes(selectedMember))
     : tasks
 
   const grouped = filteredTasks.reduce<Record<string, WeekTask[]>>((acc, task) => {
@@ -69,19 +71,25 @@ export default function ThisWeekPage() {
   }, {})
 
   async function handleStatusChange(task: WeekTask, newStatus: TaskStatus) {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t))
-    )
-    await fetch(`/api/projects/${task.project_id}/tasks/${task.id}`, {
+    try {
+    const res=await fetch(`/api/projects/${task.project_id}/tasks/${task.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
     })
+    const data=await res.json()
+    if(!res.ok) throw new Error(data.error || 'Status was not saved.')
+    setTasks(prev=>prev.map(t=>t.id===task.id?{...t,status:newStatus}:t).filter(t=>t.status!=='done'))
+    } catch(e) { alert(e instanceof Error ? e.message : 'Status was not saved.') }
   }
+
+  if(loadError || loading) return <div><PageHeader title="This Week" subtitle="Open tasks across active projects" />
+    {loadError ? <div role="alert" className="p-4 bg-red-50 text-red-800">{loadError} <button className="underline" onClick={()=>window.location.reload()}>Retry</button></div>
+    : <p className="text-fe-blue-gray">Loading open work…</p>}</div>
 
   return (
     <div className="font-fira">
-      <PageHeader title="This Week" subtitle="Tasks due across all projects this week" />
+      <PageHeader title="This Week" subtitle="Open tasks due across active projects this week" />
 
       <div className="space-y-6">
       {/* Filter bar */}
@@ -118,7 +126,7 @@ export default function ThisWeekPage() {
       {/* Task list grouped by project */}
       {Object.keys(grouped).length === 0 ? (
         <div className="text-center py-16 text-fe-blue-gray text-sm font-fira">
-          No tasks scheduled for this week.
+          No open tasks scheduled for this week. Completed work remains in project history.
         </div>
       ) : (
         <>
@@ -126,15 +134,15 @@ export default function ThisWeekPage() {
         <div className="fe-panel grid grid-cols-3 divide-x divide-[#E4E7EC]">
           <div className="px-5 py-4">
             <div className="text-2xl font-barlow font-extrabold leading-none text-fe-navy">{filteredTasks.length}</div>
-            <div className="fe-eyebrow mt-1.5">Tasks This Week</div>
+            <div className="fe-eyebrow mt-1.5">Open This Week</div>
           </div>
           <div className="px-5 py-4">
             <div className="text-2xl font-barlow font-extrabold leading-none text-fe-blue">{Object.keys(grouped).length}</div>
             <div className="fe-eyebrow mt-1.5">Projects</div>
           </div>
           <div className="px-5 py-4">
-            <div className="text-2xl font-barlow font-extrabold leading-none" style={{ color: '#046A38' }}>{filteredTasks.filter(t => t.status === 'done').length}</div>
-            <div className="fe-eyebrow mt-1.5">Completed</div>
+            <div className="text-2xl font-barlow font-extrabold leading-none" style={{ color: '#C8350D' }}>{filteredTasks.filter(t => t.status === 'blocked').length}</div>
+            <div className="fe-eyebrow mt-1.5">Blocked</div>
           </div>
         </div>
 
@@ -142,7 +150,7 @@ export default function ThisWeekPage() {
         <div className="fe-cards fe-cards-wide">
           {Object.entries(grouped).map(([projectName, projectTasks]) => (
             <div key={projectName} className="space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-barlow font-bold text-sm text-fe-navy">
                   {projectName}
                 </span>
@@ -153,7 +161,7 @@ export default function ThisWeekPage() {
                 {projectTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="bg-white border border-gray-100 p-4 flex items-start justify-between gap-4"
+                    className="bg-white border border-gray-100 p-4 flex flex-col sm:flex-row items-start justify-between gap-4"
                   >
                     <div className="min-w-0 flex-1 space-y-2">
                       <div>
@@ -165,8 +173,8 @@ export default function ThisWeekPage() {
                         </p>
                         <p className="text-xs text-gray-400">{task.phase}</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {task.owner_ids.length > 0 ? task.owner_ids.map((oid) => {
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(task.resolved_owner_ids ?? task.owner_ids).length > 0 ? (task.resolved_owner_ids ?? task.owner_ids).map((oid) => {
                           const member = teamById[oid]
                           return member ? (
                             <div key={oid} className="flex items-center gap-1">
@@ -182,7 +190,7 @@ export default function ThisWeekPage() {
                               </span>
                             </div>
                           ) : null
-                        }) : task.role_id ? (() => {
+                        }) : task.resolved_owner_ids !== undefined ? <span className="text-xs text-amber-800">Owner needed</span> : task.role_id ? (() => {
                           const role = roles.find(r => r.id === task.role_id)
                           return role ? (
                             <div className="flex items-center gap-1">

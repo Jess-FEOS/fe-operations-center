@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { loadOwnership, enrichOwnership } from '@/lib/ownership-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,8 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('project_tasks')
-      .select('*, projects(id, name, workflow_type)')
+      .select('*, projects!inner(id, name, workflow_type,status)')
+      .eq('projects.status','active')
       .lt('due_date', today)
       .neq('status', 'done')
       .order('due_date', { ascending: true });
@@ -25,8 +27,9 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
+    const ownership = await loadOwnership();
     const flattened = filtered.map((task: any) => ({
-      ...task,
+      ...enrichOwnership(task, ownership),
       project_name: task.projects?.name || '',
       project_id: task.projects?.id || task.project_id,
       workflow_type: task.projects?.workflow_type || '',

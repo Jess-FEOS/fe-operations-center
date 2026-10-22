@@ -39,6 +39,8 @@ interface ProjectTask {
   week_number: number
   status: TaskStatus
   owner_ids: string[]
+  resolved_owner_ids?: string[]
+  ownership_issue?: string | null
   role_id: string | null
   on_hold?: boolean
   follow_up_date?: string | null
@@ -143,6 +145,8 @@ export default function ProjectDetailPage() {
   const [notes, setNotes] = useState('')
   const [schedulePatch, setSchedulePatch] = useState<Record<string, unknown> | null>(null)
   const [projectSaveError, setProjectSaveError] = useState('')
+  const [editingAccountableOwner, setEditingAccountableOwner] = useState('')
+  const [ownerChanged, setOwnerChanged] = useState(false)
   const [projectSaving, setProjectSaving] = useState(false)
   const [scheduleNotice, setScheduleNotice] = useState('')
   const notesRef = useRef<string>('')
@@ -287,6 +291,12 @@ export default function ProjectDetailPage() {
       }),
     })
     const data = await res.json()
+    if (!res.ok) {
+      alert(data.error || 'Workflow was not changed.')
+      setSwitchingWorkflow(false)
+      setPendingWorkflow(null)
+      return
+    }
     setProject(data.project)
     setTasks(data.tasks || [])
     const phases = new Set<string>((data.tasks || []).map((t: ProjectTask) => t.phase))
@@ -302,6 +312,8 @@ export default function ProjectDetailPage() {
   }
 
   const openEditPanel = (task: ProjectTask) => {
+    setEditingAccountableOwner(!task.ownership_issue ? (task.resolved_owner_ids ?? task.owner_ids)[0] || '' : '')
+    setOwnerChanged(false)
     setEditingTaskId(task.id)
     setEditingTaskName(task.task_name)
     setEditingTaskStatus(task.status)
@@ -323,6 +335,7 @@ export default function ProjectDetailPage() {
       follow_up_date: editingTaskFollowUp || null,
       role_id: editingTaskRoleId || undefined,
     }
+    if (ownerChanged) body.owner_ids = [editingAccountableOwner]
 
     // Compute due date delta for cascading shift
     const editedTask = tasks.find(t => t.id === taskId)
@@ -971,6 +984,14 @@ export default function ProjectDetailPage() {
                                 <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Task Name</label>
                                 <input type="text" value={editingTaskName} onChange={e => setEditingTaskName(e.target.value)} className="w-full px-2.5 py-1.5 border border-gray-200 text-sm font-fira text-fe-anthracite focus:outline-none focus:ring-2 focus:ring-fe-blue focus:border-transparent bg-white" autoFocus onKeyDown={e => { if (e.key === 'Escape') setEditingTaskId(null) }} />
                               </div>
+                              <label className="block text-xs text-fe-blue-gray">Accountable owner
+                                <select aria-label="Accountable owner" value={editingAccountableOwner}
+                                  onChange={e=>{setEditingAccountableOwner(e.target.value);setOwnerChanged(true)}}
+                                  className="block w-full mt-1 p-2 border bg-white text-sm">
+                                  <option value="" disabled>Choose one person</option>
+                                  {team.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                              </label>
                               <div className="flex items-start gap-3">
                                 <div className="flex-1">
                                   <label className="block text-[10px] font-fira font-bold text-fe-blue-gray uppercase tracking-wide mb-1">Status</label>
@@ -1021,7 +1042,7 @@ export default function ProjectDetailPage() {
                         <div className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 group/task">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              {task.owner_ids.length > 0 ? task.owner_ids.map(oid => {
+                              {(task.resolved_owner_ids ?? task.owner_ids).length > 0 ? (task.resolved_owner_ids ?? task.owner_ids).map(oid => {
                                 const member = teamMap.get(oid)
                                 return member ? (
                                   <div key={oid} className="flex items-center gap-1" title={member.role_data ? `${member.role_data.name} · ${member.name}` : member.name}>
@@ -1033,7 +1054,7 @@ export default function ProjectDetailPage() {
                                     </span>
                                   </div>
                                 ) : null
-                              }) : task.role_id ? (
+                              }) : task.resolved_owner_ids !== undefined ? <span className="text-xs text-amber-800">Owner needed</span> : task.role_id ? (
                                 <div className="flex items-center gap-1">
                                   {(() => {
                                     const role = roles.find(r => r.id === task.role_id)
@@ -1065,6 +1086,7 @@ export default function ProjectDetailPage() {
                                 </div>
                               ) : null}
                             </div>
+                            {task.ownership_issue && <span className="text-xs text-amber-800" title={task.ownership_issue}>Confirm owner</span>}
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5">
                                   <button
@@ -1525,6 +1547,7 @@ export default function ProjectDetailPage() {
 
       {showDuplicate && project && (
         <DuplicateProjectModal
+          sourceId={project.id}
           sourceName={project.name}
           workflowType={project.workflow_type}
           workflowTemplateId={project.workflow_template_id}
@@ -1576,7 +1599,7 @@ export default function ProjectDetailPage() {
               Switch from <span className="font-bold">{WORKFLOW_LABELS[project.workflow_type] || project.workflow_type}</span> to <span className="font-bold">{WORKFLOW_LABELS[pendingWorkflow.slug] || pendingWorkflow.name}</span>?
             </p>
             <p className="text-sm text-red-600 font-fira mb-6">
-              All current tasks will be deleted and replaced with the new workflow&apos;s tasks. This cannot be undone.
+              Existing tasks and history are protected. Replacing the workflow of an existing project is disabled. Create a new project from a template instead.
             </p>
             <div className="flex gap-3">
               <button
@@ -1586,11 +1609,10 @@ export default function ProjectDetailPage() {
                 Cancel
               </button>
               <button
-                onClick={confirmWorkflowSwitch}
-                disabled={switchingWorkflow}
+                onClick={() => router.push('/projects/new')}
                 className="flex-1 px-6 py-2.5 bg-fe-blue text-white text-sm font-fira font-bold hover:bg-fe-blue/90 transition-colors disabled:opacity-60"
               >
-                {switchingWorkflow ? 'Switching...' : 'Switch Workflow'}
+                Choose a new template
               </button>
             </div>
           </div>

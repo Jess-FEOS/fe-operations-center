@@ -33,6 +33,7 @@ export default function PageHeader({
     month: 'long',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'America/Phoenix',
   })
 
   return (
