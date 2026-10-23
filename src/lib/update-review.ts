@@ -3,7 +3,7 @@ import {scheduledDate,validateDates,validRule} from './project-schedule'
 
 // Pure, isolated practice-workspace engine. No database/network imports.
 // Null/omitted proposal fields never erase an existing value.
-export const TABLES=['projects','team_members','project_tasks','marketing_content','marketing_programs','seminars'] as const
+export const TABLES=['projects','team_members','project_tasks','task_comments','marketing_content','marketing_programs','seminars'] as const
 export type Table=typeof TABLES[number]
 export type RecordRow=Record<string,any> & {id:string}
 export type Records=Record<Table,RecordRow[]>
@@ -14,8 +14,11 @@ export interface Resolution {
   action?:'create'|'update'|'clarify';projectId?:string;ownerId?:string;targetId?:string
   date?:string;status?:string;phase?:string;acknowledged?:boolean
   programFields?:{goal?:string;target_audience?:string;notes?:string}
+  area?:UpdateProposal['area'];title?:string;description?:string;dateType?:UpdateProposal['date_type']
+  platforms?:string[];assetType?:string;targetAudience?:string;copyReady?:boolean;creativeReady?:boolean
+  disposition?:'include'|'hold'|'skip'
 }
-export interface ReviewRow {index:number;title:string;outcome:'ready'|'duplicate'|'blocked';issues:string[];targetId:string|null}
+export interface ReviewRow {index:number;title:string;outcome:'ready'|'duplicate'|'blocked'|'held'|'skipped';issues:string[];targetId:string|null}
 export interface ReviewPlan {version:number;rows:ReviewRow[];changes:Change[];issues:string[];signature:string}
 const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v))
 const norm=(v:any)=>String(v??'').trim().replace(/\s+/g,' ').toLowerCase()
@@ -27,7 +30,31 @@ function canonical(value:any):string {
 }
 const same=(a:any,b:any)=>canonical(a)===canonical(b)
 const areaTable:Record<string,Table>={marketing:'marketing_content',project_task:'project_tasks',project_dates:'projects',program:'marketing_programs',seminar:'seminars'}
-const nameOf=(r:RecordRow)=>r.title || r.task_name || r.name || 'Marketing program'
+const nameOf=(r:RecordRow)=>r.title || r.task_name || r.name || (r.comment?'Task description':'Marketing program')
+export const REVIEW_PLATFORMS=['YouTube','TikTok','Instagram','LinkedIn','X','Email','Blog']
+export function editedProposal(p:UpdateProposal,r:Resolution):UpdateProposal {
+  return {...p,area:r.area??p.area,title:r.title===undefined?p.title:r.title.trim(),
+    date_type:r.dateType===undefined?p.date_type:r.dateType,platforms:r.platforms??p.platforms,
+    ...(r.copyReady===undefined?{}:{copy_ready:r.copyReady}),...(r.creativeReady===undefined?{}:{creative_ready:r.creativeReady})}
+}
+export function changeDestination(r:Resolution,area:UpdateProposal['area']):Resolution {
+  return {...r,area,targetId:'auto',status:'',dateType:area==='marketing'?'post':area==='project_task'?'due':area==='seminar'?'seminar':null,
+    acknowledged:false}
+}
+export function bulkResolve(batch:UpdateBatch,resolutions:Record<number,Resolution>,indices:number[],patch:Pick<Resolution,'projectId'|'ownerId'|'date'>) {
+  const next={...resolutions}
+  for(const i of indices){
+    if(!batch.updates[i])continue
+    const r=next[i]||{},p=editedProposal(batch.updates[i],r)
+    if(r.disposition==='hold'||r.disposition==='skip')continue
+    const applied:Partial<Resolution>={}
+    if(p.area!=='seminar' && patch.projectId)Object.assign(applied,{projectId:patch.projectId,targetId:'auto'})
+    if(['marketing','project_task'].includes(p.area) && patch.ownerId)applied.ownerId=patch.ownerId
+    if(['marketing','project_task','seminar'].includes(p.area) && patch.date)applied.date=patch.date
+    if(Object.keys(applied).length)next[i]={...r,...applied,acknowledged:false}
+  }
+  return next
+}
 export function tableFor(area:string):Table {return areaTable[area]}
 export function newWorkspace(records:Records,loadedAt:string):Workspace {
   for(const table of TABLES)if(!Array.isArray(records[table]) || new Set(records[table].map(r=>r.id)).size!==records[table].length)throw Error('Invalid practice-copy records.')
@@ -50,7 +77,7 @@ function statusFor(area:string,value:string|null|undefined):string|undefined {
   if(!value?.trim())return undefined
   const key=norm(value).replaceAll('_',' ')
   const maps:Record<string,Record<string,string>>={
-    marketing:{idea:'idea',planned:'idea','not started':'idea',draft:'drafted',drafted:'drafted',scheduled:'scheduled',posted:'posted',published:'posted'},
+    marketing:{ready:'ready','ready to write':'ready',idea:'idea',planned:'idea','not started':'idea',draft:'drafted',drafted:'drafted',scheduled:'scheduled',posted:'posted',published:'posted'},
     project_task:{'not started':'not_started',todo:'not_started','in progress':'in_progress',done:'done',completed:'done',blocked:'blocked'},
   }
   const status=maps[area]?.[key]
@@ -77,12 +104,16 @@ export function reviewBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<num
   }
   const newKeys=new Set<string>()
   for(const index of chosen){
-    const p=batch.updates[index],r=resolutions[index] || {},row:ReviewRow={index,title:p.title,outcome:'blocked',issues:[],targetId:null}
+    const original=batch.updates[index],r=resolutions[index] || {},p=editedProposal(original,r),row:ReviewRow={index,title:p.title,outcome:'blocked',issues:[],targetId:null}
     rows.push(row)
+    if(r.disposition==='hold'||r.disposition==='skip'){row.outcome=r.disposition==='hold'?'held':'skipped';continue}
     // Stage each proposal independently; a failed row must not leave partial changes.
     const checkpoint=clone(changes)
     try{
       const action=r.action || p.action
+      if(!p.title || p.title.length>500)throw Error('Enter a title between 1 and 500 characters.')
+      if(r.description && r.description.length>4000)throw Error('Keep descriptions under 4,000 characters.')
+      if(!areaTable[p.area])throw Error('Choose a supported destination.')
       if(action==='clarify')throw Error('Choose Create or Update only after resolving this tentative decision.')
       if(!r.acknowledged)throw Error('Check the supporting evidence and questions, then confirm this item.')
       const project=resolvedProject(w,p,r),owner=resolvedOwner(w,p,r)
@@ -92,7 +123,8 @@ export function reviewBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<num
       const date=r.date===undefined?p.date:r.date || null
       if(date && !validInputDate(date))throw Error('Choose a real YYYY-MM-DD date.')
       const table=tableFor(p.area),available=candidates(w,p,r)
-      const hits=p.area==='project_dates'||p.area==='program'?available:available.filter(x=>norm(nameOf(x))===norm(p.title))
+      const matchTitle=action==='update' && r.title!==undefined?original.title:p.title
+      const hits=p.area==='project_dates'||p.area==='program'?available:available.filter(x=>norm(nameOf(x))===norm(matchTitle))
       let target:RecordRow|undefined
       if(r.targetId && r.targetId!=='auto' && r.targetId!=='new'){
         target=available.find(x=>x.id===r.targetId)
@@ -113,6 +145,7 @@ export function reviewBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<num
         if(creating && !date)throw Error('Choose a date for new work.')
         if(date && p.date_type!==(task?'due':'post'))throw Error(`Correct the date type to ${task?'due':'post'} in the input.`)
         if(creating)Object.assign(after,{[field]:p.title,project_id:project?.id || null,status:status || (task?'not_started':'idea')})
+        if(r.title!==undefined)after[field]=p.title
         if(status)after.status=status
         if(owner)Object.assign(after,task?{owner_ids:[owner.id]}:{owner_id:owner.id})
         if(date)after[dateField]=date
@@ -130,8 +163,19 @@ export function reviewBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<num
           if(creating)Object.assign(after,{copy_ready:false,creative_ready:false,source_task_id:null,channels:[]})
           for(const key of ['copy_ready','creative_ready'] as const)if(typeof p[key]==='boolean')after[key]=p[key]
           if(p.platforms.length){
+            if(p.platforms.some(channel=>!REVIEW_PLATFORMS.includes(channel)))throw Error('Choose supported marketing platforms.')
             const channels=[...new Set(p.platforms)].sort()
             after.channels=target && same([...(target.channels || [])].sort(),channels)?target.channels:channels
+          }
+          if(r.platforms && !r.platforms.length)throw Error('Select at least one marketing platform.')
+          if(r.description?.trim())after.caption=r.description.trim()
+          if(r.targetAudience?.trim()){
+            if(r.targetAudience.length>4000)throw Error('Keep the audience under 4,000 characters.')
+            after.target_audience=r.targetAudience.trim()
+          }
+          if(r.assetType){
+            if(!['graphic','video','clip','post','email','ad','blog','other'].includes(r.assetType))throw Error('Choose a supported asset type.')
+            after.asset_type=r.assetType
           }
           if(creating && !after.channels.length)throw Error('Select at least one marketing platform in the input.')
           if(target?.status==='posted' && after.status!=='posted')throw Error('Published assets are protected from status regression. Edit them separately.')
@@ -142,10 +186,11 @@ export function reviewBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<num
         after[p.date_type==='marketing_launch'?'launch_date':'start_date']=date
       }else if(p.area==='seminar'){
         if(p.date_type!=='seminar' || !date)throw Error('A seminar date is required.')
-        if(creating)after.title=p.title
+        if(creating || r.title!==undefined)after.title=p.title
         after.seminar_date=date
         // Existing seminar schema has no owner/project relationship. Do not invent it.
-        if(p.project || p.owner)throw Error('Seminars do not store owners/projects. Use a project task for a client commitment, or remove these unsupported fields.')
+        if(r.area!=='seminar' && (p.project || p.owner))throw Error('Seminars do not store owners/projects. Use a project task for a client commitment, or explicitly choose Seminar to omit these relationships.')
+        if(r.description?.trim())after.notes=r.description.trim()
       }else if(p.area==='program'){
         const fields=r.programFields || p.program_fields || {}
         let count=0
@@ -162,7 +207,16 @@ export function reviewBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<num
         if(newKeys.has(key))throw Error('Two selected proposals create the same item. Keep only one.')
         newKeys.add(key)
       }
-      row.outcome=put(table,target||null,after,p.title)?'ready':'duplicate'
+      let changed=put(table,target||null,after,p.title)
+      if(p.area==='project_task' && r.description?.trim()){
+        const comment=r.description.trim()
+        const existing=[...w.records.task_comments,...changes.filter(c=>c.table==='task_comments').map(c=>c.after)]
+        if(!existing.some(c=>c.task_id===after.id && c.comment===comment)){
+          put('task_comments',null,{id:`practice-${w.version}-${index}-comment`,task_id:after.id,team_member_id:null,comment},`Description for ${p.title}`)
+          changed=true
+        }
+      }
+      row.outcome=changed?'ready':'duplicate'
     }catch(e){
       changes.splice(0,changes.length,...checkpoint)
       row.issues.push(e instanceof Error?e.message:'Invalid proposal.')
@@ -203,7 +257,7 @@ export function applyBatch(w:Workspace,batch:UpdateBatch,resolutions:Record<numb
   }
   next.version++
   next.history.push({id:key,intent,reviewer:approval.reviewer.trim(),at,changes:clone(fresh.changes),
-    sources:selected.map(i=>({title:batch.updates[i].title,evidence:batch.updates[i].evidence,source_ref:batch.updates[i].source_ref})),undone:false})
+    sources:selected.filter(i=>!['hold','skip'].includes(resolutions[i]?.disposition||'')).map(i=>({title:batch.updates[i].title,evidence:batch.updates[i].evidence,source_ref:batch.updates[i].source_ref})),undone:false})
   return next
 }
 export function undoLatest(w:Workspace,id:string):Workspace {

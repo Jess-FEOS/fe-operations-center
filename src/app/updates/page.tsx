@@ -130,9 +130,10 @@ export default function UpdateIntake() {
     </section>
     {batch && <section aria-label="Proposed updates" className="mt-6">
       <h2 className="font-barlow font-bold text-xl">Review proposals</h2>
-      <p className="text-sm text-slate-600 mt-2 mb-4">{batch.updates.length} proposals · {batch.updates.filter(u=>u.questions.length).length} have questions. Evidence is not independently verified. Select items here, then match them in the practice workspace below.</p>
+      <p className="text-sm text-slate-600 mt-2 mb-4">{batch.updates.length} proposals · {batch.updates.filter(u=>u.questions.length).length} have questions. Load the practice copy below to edit, hold or skip items, then approve the exact changes. Evidence still needs your review.</p>
       {batch.questions.length>0 && <div className="bg-amber-50 border border-amber-200 p-4 mb-4 text-sm text-amber-950"><h3 className="font-bold">Batch questions</h3><ul className="list-disc pl-5">{batch.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></div>}
       {!batch.updates.length && <p className="p-4 bg-white border border-fe-line">No supported updates found. Nothing was saved.</p>}
+      <details><summary className="text-sm text-fe-blue cursor-pointer mb-3">Original extraction and download (before your edits)</summary>
       <div className="space-y-3">{batch.updates.map((u,i)=><article key={i} className="bg-white border border-fe-line p-4 break-words">
         <label className="flex items-start gap-3 font-bold text-sm">
           <input aria-label={`Select ${u.title}`} type="checkbox" checked={selected.has(i)} onChange={()=>setSelected(prev=>{const next=new Set(prev);next.has(i)?next.delete(i):next.add(i);return next})} className="mt-1" />
@@ -146,9 +147,10 @@ export default function UpdateIntake() {
         {!!u.questions.length && <ul className="mt-3 pl-5 list-disc text-sm text-amber-900">{u.questions.map((q,j)=><li key={j}>{q}</li>)}</ul>}
       </article>)}</div>
       <div className="flex flex-wrap items-center gap-3 mt-4">
-        <button onClick={download} disabled={!selected.size} className="px-4 py-2 border border-fe-blue text-fe-blue font-bold text-sm disabled:opacity-40">Download selected proposals ({selected.size})</button>
-        <span className="text-sm text-slate-600">No live records have been changed.</span>
+        <button onClick={download} disabled={!selected.size} className="px-4 py-2 border border-fe-blue text-fe-blue font-bold text-sm disabled:opacity-40">Download original proposals ({selected.size})</button>
+        <span className="text-sm text-slate-600">Original extraction only; edits below are reviewed and applied directly, not included in this download.</span>
       </div>
+      </details>
     </section>}
     <UpdateApproval batch={batch} selected={selected} />
     <p className="mt-6 text-sm text-slate-600">Your existing <Link href="/projects" className="text-fe-blue underline">Projects</Link>, <Link href="/marketing" className="text-fe-blue underline">Content Pipeline</Link> and <Link href="/calendar" className="text-fe-blue underline">Calendar</Link> remain the source of truth.</p>

@@ -1,17 +1,19 @@
 'use client'
 import {useEffect,useMemo,useRef,useState} from 'react'
 import {UpdateBatch} from '@/lib/update-intake'
-import {applyBatch,candidates,newWorkspace,Records,Resolution,resolvedOwner,resolvedProject,reviewBatch,ReviewPlan,undoLatest,Workspace,Change} from '@/lib/update-review'
+import {applyBatch,bulkResolve,candidates,changeDestination,editedProposal,REVIEW_PLATFORMS,newWorkspace,Records,Resolution,resolvedOwner,resolvedProject,reviewBatch,ReviewPlan,undoLatest,Workspace,Change} from '@/lib/update-review'
+import {ASSET_TYPES} from '@/lib/marketing'
 
 const empty:UpdateBatch={version:1,updates:[],questions:[]}
 const label=(v:any)=>v===null||v===undefined?'Not set':Array.isArray(v)?v.join(', '):String(v)
 function fields(c:Change){return Object.keys(c.after).filter(k=>k!=='id' && JSON.stringify(c.before?.[k])!==JSON.stringify(c.after[k]))}
-const fieldLabels:Record<string,string>={owner_id:'Owner',owner_ids:'Owner',project_id:'Project',scheduled_date:'Post date',due_date:'Due date',launch_date:'Marketing launch',start_date:'Program start',seminar_date:'Seminar date',task_name:'Task',schedule_anchor:'Schedule rule',schedule_offset_days:'Days from anchor',target_audience:'Audience',copy_ready:'Copy ready',creative_ready:'Creative ready'}
-const technical=new Set(['source_task_id','role_id','phase_order','task_order','week_number'])
+const fieldLabels:Record<string,string>={owner_id:'Owner',owner_ids:'Owner',project_id:'Project',scheduled_date:'Post date',due_date:'Due date',launch_date:'Marketing launch',start_date:'Program start',seminar_date:'Seminar date',task_name:'Task',task_id:'Task',comment:'Description / instructions',caption:'Caption / description',schedule_anchor:'Schedule rule',schedule_offset_days:'Days from anchor',target_audience:'Audience',copy_ready:'Copy ready',creative_ready:'Creative ready'}
+const technical=new Set(['source_task_id','role_id','phase_order','task_order','week_number','team_member_id'])
 function ChangeList({changes,w}:{changes:Change[];w:Workspace}){
   const display=(key:string,value:any)=>{
     if(key==='owner_id'||key==='owner_ids')return (Array.isArray(value)?value:[value]).filter(Boolean).map(id=>w.records.team_members.find(t=>t.id===id)?.name || id).join(', ')||'Not set'
     if(key==='project_id')return w.records.projects.find(p=>p.id===value)?.name || 'Unlinked'
+    if(key==='task_id')return w.records.project_tasks.find(p=>p.id===value)?.task_name || changes.find(c=>c.table==='project_tasks' && c.id===value)?.after.task_name || value || 'Not set'
     return label(value)
   }
   return <div className="space-y-3">{changes.map(c=><div key={c.table+c.id} className="border border-fe-line bg-white p-3 min-w-0 [overflow-wrap:anywhere]">
@@ -28,13 +30,15 @@ function ChangeList({changes,w}:{changes:Change[];w:Workspace}){
 export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;selected:Set<number>}){
   const [w,setW]=useState<Workspace|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('')
   const [resolutions,setResolutions]=useState<Record<number,Resolution>>({})
+  const [bulkItems,setBulkItems]=useState<Set<number>>(new Set())
+  const [bulkProject,setBulkProject]=useState(''),[bulkOwner,setBulkOwner]=useState(''),[bulkDate,setBulkDate]=useState('')
   const [reviewed,setReviewed]=useState<ReviewPlan|null>(null),[reviewer,setReviewer]=useState(''),[confirmed,setConfirmed]=useState(false)
   const [message,setMessage]=useState(''),[view,setView]=useState('Changes'),[undoId,setUndoId]=useState<string|null>(null),[resetting,setResetting]=useState(false)
   const controller=useRef<AbortController|null>(null),batchKey=useRef('')
   const indices=useMemo(()=>[...selected].sort((a,b)=>a-b),[selected])
   const plan=useMemo(()=>w?reviewBatch(w,batch || empty,resolutions,batch?indices:[]):null,[w,batch,resolutions,indices])
   const signature=plan?.signature
-  useEffect(()=>{setResolutions({});setReviewed(null);setConfirmed(false);setMessage('')},[batch])
+  useEffect(()=>{setResolutions({});setBulkItems(new Set());setReviewed(null);setConfirmed(false);setMessage('')},[batch])
   useEffect(()=>{setReviewed(null);setConfirmed(false)},[signature])
   useEffect(()=>()=>controller.current?.abort(),[])
   async function load(){
@@ -50,6 +54,14 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
   }
   function resolve(i:number,patch:Partial<Resolution>){
     setResolutions(prev=>({...prev,[i]:{...prev[i],...patch}}));setReviewed(null);setConfirmed(false);setError('')
+    if(patch.disposition==='hold'||patch.disposition==='skip')setBulkItems(prev=>{const next=new Set(prev);next.delete(i);return next})
+  }
+  function applyBulk(){
+    if(!batch)return
+    setResolutions(prev=>bulkResolve(batch,prev,[...bulkItems].filter(i=>selected.has(i)),{projectId:bulkProject,ownerId:bulkOwner,date:bulkDate}))
+    setReviewed(null);setConfirmed(false);setError('')
+    setMessage('Bulk edits staged for review. Held/skipped items were left alone. Confirm the edited items before applying.')
+    setBulkProject('');setBulkOwner('');setBulkDate('');setBulkItems(new Set())
   }
   function apply(){
     if(!w || !batch || !reviewed)return
@@ -67,7 +79,7 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
   const active=w?.records.projects.filter(p=>p.status==='active') || []
   const latest=w?[...w.history].reverse().find(h=>!h.undone):undefined
   return <section aria-label="Approve and apply practice workspace" className="mt-6 border border-fe-line bg-slate-50 p-4 sm:p-5 [overflow-wrap:anywhere]">
-    <h2 className="font-barlow font-bold text-xl">Approve and apply</h2>
+    <h2 className="font-barlow font-bold text-xl">Edit, approve and apply</h2>
     <p className="text-sm mt-2 text-slate-700"><strong>Temporary practice copy only.</strong> Matching, applying and undo operate on a copy held in this page’s memory, not on the live database. Results below share that copy. Your main Projects, Pipeline, Strategy and Calendar pages remain unchanged.</p>
     <p className="text-sm mt-2 text-slate-600">Refresh or leave Import updates to discard the copy and its history. Other teammates cannot see these practice changes. Loading a copy does not send its records to AI.</p>
     {!w && <button disabled={loading} onClick={load} className="mt-4 px-4 py-2 bg-fe-blue text-white text-sm font-bold disabled:opacity-50">{loading?'Loading complete copy…':'Load practice copy'}</button>}
@@ -88,15 +100,45 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
       </div>
       {view==='Changes' && <div className="mt-4">
         {!batch?.updates.length?<p className="text-sm">Prepare an update batch above, then select the proposals you want to match and apply here.</p>:<>
-          <p className="text-sm mb-3">{indices.length} selected proposals · {plan?.rows.filter(r=>r.outcome==='ready').length} ready · {plan?.rows.filter(r=>r.outcome==='duplicate').length} already match · {plan?.rows.filter(r=>r.outcome==='blocked').length} blocked</p>
-          {batch.questions.length>0 && <p className="text-sm mb-3 text-amber-900">Review the batch questions above. Deselect any item whose source, date or commitment remains uncertain.</p>}
-          <button onClick={()=>{setResolutions(prev=>{const next={...prev};for(const i of indices)next[i]={...next[i],acknowledged:true};return next});setReviewed(null);setConfirmed(false)}} className="text-sm underline text-fe-blue mb-3">I checked the evidence and questions for all selected items</button>
+          <p className="text-sm mb-3">{indices.length} proposals · {plan?.rows.filter(r=>r.outcome==='ready').length} ready · {plan?.rows.filter(r=>r.outcome==='duplicate').length} already match · {plan?.rows.filter(r=>r.outcome==='blocked').length} need review · {plan?.rows.filter(r=>r.outcome==='held').length} held · {plan?.rows.filter(r=>r.outcome==='skipped').length} skipped</p>
+          <p className="text-sm text-slate-600 mb-4">Correct the details here, without editing JSON or uploading again. Original excerpts stay unchanged. Hold keeps an item for later in this session; Skip leaves it out of this batch. Neither is deleted.</p>
+          <section aria-label="Bulk edit proposals" className="bg-blue-50 border border-blue-200 p-4 mb-5">
+            <div className="flex flex-wrap justify-between gap-2 items-center">
+              <h3 className="text-sm font-bold">Edit several at once ({[...bulkItems].filter(i=>selected.has(i)).length} selected)</h3>
+              <div className="flex gap-3 text-sm"><button onClick={()=>setBulkItems(new Set(indices.filter(i=>!['hold','skip'].includes(resolutions[i]?.disposition||''))))} className="underline text-fe-blue">Select included items</button><button onClick={()=>setBulkItems(new Set())} className="underline">Clear selection</button></div>
+            </div>
+            <div className="grid md:grid-cols-3 gap-3 mt-3 text-sm">
+              <label>Project<select aria-label="Bulk project" value={bulkProject} onChange={e=>setBulkProject(e.target.value)} className="fe-input mt-1"><option value="">No change</option>{active.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+              <label>Accountable owner<select aria-label="Bulk owner" value={bulkOwner} onChange={e=>setBulkOwner(e.target.value)} className="fe-input mt-1"><option value="">No change</option>{w.records.team_members.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <label>Same post / due / seminar date<input aria-label="Bulk date" type="date" value={bulkDate} onChange={e=>setBulkDate(e.target.value)} className="fe-input mt-1" /></label>
+            </div>
+            <p className="text-xs text-slate-600 mt-2">Only checked, included items are changed. Owner applies to assets/tasks; project does not apply to seminars. This never moves program launch/start dates.</p>
+            <button onClick={applyBulk} disabled={!bulkItems.size || !(bulkProject||bulkOwner||bulkDate)} className="px-3 py-2 mt-3 bg-fe-blue text-white text-sm font-bold disabled:opacity-40">Stage bulk edits</button>
+          </section>
+          {batch.questions.length>0 && <p className="text-sm mb-3 text-amber-900">Review the batch questions above. Hold any item whose source, date or commitment remains uncertain.</p>}
+          <button onClick={()=>{setResolutions(prev=>{const next={...prev};for(const i of indices)if(!['hold','skip'].includes(next[i]?.disposition||''))next[i]={...next[i],acknowledged:true};return next});setReviewed(null);setConfirmed(false)}} className="text-sm underline text-fe-blue mb-3">I checked the evidence and questions for all included items</button>
           <div className="space-y-4">{indices.map(i=>{
-            const p=batch.updates[i],r=resolutions[i] || {},row=plan?.rows.find(x=>x.index===i)
+            const original=batch.updates[i],r=resolutions[i] || {},p=editedProposal(original,r),row=plan?.rows.find(x=>x.index===i)
             const project=resolvedProject(w,p,r),owner=resolvedOwner(w,p,r)
+            const current=candidates(w,p,r).find(x=>r.targetId && !['auto','new'].includes(r.targetId)?x.id===r.targetId:(x.title||x.task_name||'').trim().toLowerCase()===original.title.trim().toLowerCase())
+            const paused=r.disposition==='hold'||r.disposition==='skip'
             return <fieldset key={i} className="border border-fe-line bg-white p-4 min-w-0">
-              <legend className="text-sm font-bold px-1">{p.title}</legend>
-              <p className="text-xs text-slate-600 mb-3">{p.area.replaceAll('_',' ')} · {row?.outcome==='duplicate'?'Already matches: no change needed':row?.outcome==='ready'?'Ready for before/after review':'Needs review'}</p>
+              <legend className="text-sm font-bold px-1">{i+1}. {p.title || 'Untitled item'}</legend>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={`Bulk select proposal ${i+1}`} checked={bulkItems.has(i)} disabled={paused} onChange={e=>setBulkItems(prev=>{const next=new Set(prev);e.target.checked?next.add(i):next.delete(i);return next})} />Select for bulk edits</label>
+                <label className="text-sm">Include in this batch<select aria-label={`Disposition for proposal ${i+1}`} value={r.disposition||'include'} onChange={e=>resolve(i,{disposition:e.target.value as Resolution['disposition'],acknowledged:false})} className="fe-input mt-1"><option value="include">Include for review</option><option value="hold">Hold for later</option><option value="skip">Skip this item</option></select></label>
+              </div>
+              <p className="text-xs text-slate-600 mb-3">{p.area.replaceAll('_',' ')} · {paused?'Excluded from apply; edits are retained':row?.outcome==='duplicate'?'Already matches: no change needed':row?.outcome==='ready'?'Ready for before/after review':'Needs review'}</p>
+              <p className="text-sm mb-2">{project?.name || (r.projectId==='unlinked'?'Intentionally unlinked':'Project not confirmed')} · {owner?.name || 'Owner not confirmed'} · {r.date??p.date??'Date not confirmed'}</p>
+              <details open={i===indices[0]}><summary aria-label={`Edit proposal ${i+1}`} className="cursor-pointer text-sm font-bold text-fe-blue mb-3">Edit details and check source</summary>
+              <div className="grid md:grid-cols-[2fr_1fr] gap-3 text-sm mb-3">
+                <label>{['program','project_dates'].includes(p.area)?'Change label (does not rename the project)':'Title'}<input aria-label={`Title for proposal ${i+1}`} maxLength={500} value={r.title===undefined?original.title:r.title} onChange={e=>resolve(i,{title:e.target.value,...((r.action||p.action)==='update' && current?{targetId:current.id}:{}),acknowledged:false})} className="fe-input mt-1" /></label>
+                <label>Destination<select aria-label={`Destination for proposal ${i+1}`} value={p.area} onChange={e=>resolve(i,changeDestination(r,e.target.value as typeof p.area))} className="fe-input mt-1">
+                  <option value="marketing">Marketing asset</option><option value="project_task">Operational project task</option><option value="seminar">Seminar</option><option value="program">Program strategy</option><option value="project_dates">Project launch / start date</option>
+                </select></label>
+              </div>
+              <p className="text-xs text-slate-600 mb-3">{p.area==='marketing'?'Feeds Pipeline, Strategy and Marketing Calendar through one shared asset.':p.area==='project_task'?'Feeds the project checklist, not the marketing publishing calendar.':p.area==='seminar'?'Feeds the Company calendar. Seminars do not store project or owner relationships.':p.area==='program'?'Updates program planning. No asset or calendar event is created.':'Updates project milestones and previews affected task dates using existing scheduling rules.'}</p>
+              {p.area==='seminar' && (original.project||original.owner) && <label className="flex gap-2 text-sm mb-3"><input type="checkbox" aria-label={`Confirm seminar relationships for proposal ${i+1}`} checked={r.area==='seminar'} onChange={e=>resolve(i,{area:e.target.checked?'seminar':undefined,acknowledged:false})} /><span>Use a seminar without project/owner relationships. Choose Operational project task instead if those relationships are required.</span></label>}
               <div className="grid md:grid-cols-3 gap-3 text-sm">
                 <label>Action<select aria-label={`Action for ${p.title}`} value={r.action || p.action} onChange={e=>resolve(i,{action:e.target.value as Resolution['action'],acknowledged:false})} className="fe-input mt-1">
                   <option value="create">Create</option><option value="update">Update</option><option value="clarify">Unresolved decision</option>
@@ -112,6 +154,10 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
                   <option value="auto">Exact-title match only</option><option value="new">Create a separate new item</option>
                   {candidates(w,p,r).map(x=><option key={x.id} value={x.id}>{x.title || x.task_name} · {x.scheduled_date || x.due_date || x.seminar_date || 'undated'} · {x.id.slice(-6)}</option>)}
                 </select></label>}
+                {p.area!=='program' && <label>Date meaning<select aria-label={`Date meaning for proposal ${i+1}`} value={p.date_type||''} onChange={e=>resolve(i,{dateType:e.target.value as Resolution['dateType'],acknowledged:false})} className="fe-input mt-1">
+                  <option value="">Choose date meaning</option>
+                  {(p.area==='marketing'?['post']:p.area==='project_task'?['due']:p.area==='seminar'?['seminar']:['marketing_launch','program_start']).map(type=><option key={type} value={type}>{type.replaceAll('_',' ')}</option>)}
+                </select></label>}
                 {p.area!=='program' && <label>Date ({p.date_type?.replaceAll('_',' ') || 'type missing'})
                   <input aria-label={`Date for ${p.title}`} type="date" value={r.date===undefined?p.date || '':r.date} onChange={e=>resolve(i,{date:e.target.value,acknowledged:false})} className="fe-input mt-1" />
                 </label>}
@@ -119,25 +165,39 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
                   <select aria-label={`Status for ${p.title}`} value={r.status===undefined?p.status || '':r.status} onChange={e=>resolve(i,{status:e.target.value,acknowledged:false})} className="fe-input mt-1">
                     <option value="">Keep existing / default for new work</option>
                     {p.status && <option value={p.status}>From source: {p.status}</option>}
-                    {(p.area==='marketing'?['idea','drafted','scheduled','posted']:['not_started','in_progress','done','blocked']).filter(s=>s!==p.status).map(s=><option key={s} value={s}>{s.replaceAll('_',' ')}</option>)}
+                    {(p.area==='marketing'?['idea','ready','drafted','scheduled','posted']:['not_started','in_progress','done','blocked']).filter(s=>s!==p.status).map(s=><option key={s} value={s}>{s.replaceAll('_',' ')}</option>)}
                   </select>
                 </label>}
                 {p.area==='project_task' && <label>Phase for a new task<input aria-label={`Phase for ${p.title}`} value={r.phase || ''} onChange={e=>resolve(i,{phase:e.target.value,acknowledged:false})} placeholder="Imported commitments" className="fe-input mt-1" /></label>}
               </div>
+              {['marketing','project_task','seminar'].includes(p.area) && <label className="block mt-3 text-sm">Description / instructions (optional)
+                <textarea aria-label={`Description for proposal ${i+1}`} maxLength={4000} value={r.description??(p.area==='marketing'?current?.caption:p.area==='seminar'?current?.notes:'')??''} onChange={e=>resolve(i,{description:e.target.value,acknowledged:false})} className="fe-input mt-1 h-24" />
+                <span className="block text-xs text-slate-600 mt-1">{p.area==='project_task'?'Saved as an additional task comment; existing comments are preserved.':p.area==='marketing'?'Saved in the asset’s caption / description field. Not required for email reminders.':'Saved as seminar notes.'} Blank means keep existing; this editor does not erase existing text.</span>
+              </label>}
+              {p.area==='marketing' && <div className="mt-3 border-t border-fe-line pt-3">
+                <fieldset><legend className="text-sm font-medium">Platforms</legend><div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">{REVIEW_PLATFORMS.map(channel=><label key={channel} className="flex gap-2 items-center text-sm"><input type="checkbox" aria-label={`${channel} for proposal ${i+1}`} checked={p.platforms.includes(channel)} onChange={e=>resolve(i,{platforms:e.target.checked?[...p.platforms,channel]:p.platforms.filter(c=>c!==channel),acknowledged:false})} />{channel}</label>)}</div></fieldset>
+                <div className="grid md:grid-cols-2 gap-3 text-sm mt-3">
+                  <label>Asset type<select aria-label={`Asset type for proposal ${i+1}`} value={r.assetType??current?.asset_type??''} onChange={e=>resolve(i,{assetType:e.target.value,acknowledged:false})} className="fe-input mt-1"><option value="">Keep existing / not specified</option>{ASSET_TYPES.map(type=><option key={type.key} value={type.key}>{type.label}</option>)}</select></label>
+                  <label>Target audience<input aria-label={`Audience for proposal ${i+1}`} maxLength={4000} value={r.targetAudience??current?.target_audience??''} onChange={e=>resolve(i,{targetAudience:e.target.value,acknowledged:false})} className="fe-input mt-1" /></label>
+                  {(['copyReady','creativeReady'] as const).map(key=><label key={key}>{key==='copyReady'?'Copy ready':'Creative ready'}<select aria-label={`${key} for proposal ${i+1}`} value={r[key]===undefined?'':String(r[key])} onChange={e=>resolve(i,{[key]:e.target.value===''?undefined:e.target.value==='true',acknowledged:false})} className="fe-input mt-1"><option value="">Use source / keep existing</option><option value="true">Yes</option><option value="false">No</option></select></label>)}
+                </div>
+              </div>}
               {p.area==='program' && <div className="grid sm:grid-cols-3 gap-3 mt-3 text-sm">{(['goal','target_audience','notes'] as const).map(key=><label key={key}>{key.replaceAll('_',' ')}
                 <textarea aria-label={`${key} for ${p.title}`} maxLength={4000} value={(r.programFields || p.program_fields)?.[key] || ''}
                   onChange={e=>resolve(i,{programFields:{...(r.programFields || p.program_fields),[key]:e.target.value},acknowledged:false})} className="fe-input mt-1 h-24" />
               </label>)}</div>}
-              <blockquote className="border-l-2 border-fe-line pl-3 text-sm mt-3 whitespace-pre-wrap">{p.evidence}</blockquote>
+              <p className="text-xs font-bold text-slate-600 mt-4">Original source (unchanged)</p>
+              <blockquote className="border-l-2 border-fe-line pl-3 text-sm mt-1 whitespace-pre-wrap">{p.evidence}</blockquote>
               <p className="text-xs text-slate-600 mt-1">{p.source_ref || 'No source reference supplied'}</p>
               {p.questions.length>0 && <details className="text-sm mt-2"><summary>Original questions ({p.questions.length})</summary><ul className="list-disc pl-5 mt-1">{p.questions.map((q,j)=><li key={j}>{q}</li>)}</ul></details>}
-              <label className="flex gap-2 text-sm mt-3 items-start"><input type="checkbox" aria-label={`Confirm evidence for ${p.title}`} checked={!!r.acknowledged} onChange={e=>resolve(i,{acknowledged:e.target.checked})} className="mt-1" /><span>I checked the evidence, resolved relevant questions and confirmed this item’s action, owner and dates.</span></label>
+              <label className="flex gap-2 text-sm mt-3 items-start"><input type="checkbox" disabled={paused} aria-label={`Confirm evidence for ${p.title}`} checked={!!r.acknowledged} onChange={e=>resolve(i,{acknowledged:e.target.checked})} className="mt-1" /><span>I checked the source and confirmed my corrected details, including any decisions added during this review.</span></label>
+              </details>
               {!!row?.issues.length && <ul className="text-sm text-amber-900 mt-2 list-disc pl-5">{row.issues.map((issue,j)=><li key={j}>{issue}</li>)}</ul>}
             </fieldset>
           })}</div>
           {!!plan?.issues.filter(issue=>!plan.rows.some(row=>issue.startsWith(row.title+':'))).length && <p role="alert" className="text-sm text-red-800 mt-3">{plan.issues.filter(issue=>!plan.rows.some(row=>issue.startsWith(row.title+':'))).join(' ')}</p>}
           <button onClick={()=>{setReviewed(plan);setConfirmed(false);batchKey.current=crypto.randomUUID()}} disabled={!plan || !!plan.issues.length || !plan.changes.length} className="mt-4 px-4 py-2 bg-fe-blue text-white font-bold text-sm disabled:opacity-40">Review selected changes</button>
-          <p className="text-xs text-slate-600 mt-2">Resolve blocked proposals or uncheck them in the proposal list above. Already-matching items are skipped. Blank fields never clear existing values.</p>
+          <p className="text-xs text-slate-600 mt-2">Resolve items needing review or mark them Hold/Skip. Already-matching items are skipped. Blank fields never clear existing values. Any edit requires a fresh approval.</p>
           {reviewed && <section aria-label="Final batch approval" className="mt-5 border-t border-fe-line pt-4">
             <h3 className="font-bold text-lg">Before you apply: {reviewed.changes.length} record changes</h3>
             <p className="text-sm text-slate-600 mt-2 mb-3">This includes related task dates affected by saved project scheduling rules. Completed and fixed-date tasks are protected; unknown legacy rules are not guessed.</p>
@@ -158,7 +218,7 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
           <p className="text-sm mt-2">Marketing launch: {project.launch_date || 'Not set'} · Program start: {project.start_date} · Tasks: {tasks.filter(t=>t.status==='done').length}/{tasks.length} done</p>
           {program && <p className="text-sm mt-2">Audience: {program.target_audience || 'Not set'} · Goal: {program.goal || 'Not set'} · Notes: {program.notes || 'Not set'}</p>}
           {program && <p className="text-xs mt-2 text-slate-600">Strategy window: {program.marketing_start || project.launch_date || 'Not set'} to {program.program_start || project.start_date}. Explicit strategy date overrides are preserved.</p>}
-          <details className="mt-3 text-sm"><summary>Project commitments ({tasks.length})</summary><ul className="mt-2 space-y-2">{tasks.map(task=><li key={task.id}>{task.task_name} · {task.due_date} · {task.status?.replaceAll('_',' ')} · {(task.owner_ids || []).map((id:string)=>w.records.team_members.find(t=>t.id===id)?.name || id).join(', ') || 'Unassigned'}</li>)}</ul></details>
+          <details className="mt-3 text-sm"><summary>Project commitments ({tasks.length})</summary><ul className="mt-2 space-y-2">{tasks.map(task=><li key={task.id}>{task.task_name} · {task.due_date} · {task.status?.replaceAll('_',' ')} · {(task.owner_ids || []).map((id:string)=>w.records.team_members.find(t=>t.id===id)?.name || id).join(', ') || 'Unassigned'}{w.records.task_comments.filter(c=>c.task_id===task.id).map(c=><p key={c.id} className="text-slate-600 text-xs whitespace-pre-wrap mt-1">{c.comment}</p>)}</li>)}</ul></details>
         </section>
       })}</div>}
       {view==='Marketing' && <div className="mt-4 space-y-2">
@@ -167,6 +227,8 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
         {w.records.marketing_content.map(asset=><div key={asset.id} className="border border-fe-line bg-white p-3 text-sm">
           <h3 className="font-bold">{asset.title}</h3><p className="mt-1">{w.records.projects.find(p=>p.id===asset.project_id)?.name || 'Unlinked'} · {asset.scheduled_date || 'Needs a post date'} · {(asset.channels || []).join(', ')} · {asset.status}</p>
           <p className="text-xs text-slate-600 mt-1">Owner: {w.records.team_members.find(t=>t.id===asset.owner_id)?.name || 'Unassigned'}</p>
+          {asset.caption && <p className="mt-2 whitespace-pre-wrap">{asset.caption}</p>}
+          {(asset.asset_type||asset.target_audience) && <p className="text-xs mt-2">Type: {asset.asset_type||'Not set'} · Audience: {asset.target_audience||'Not set'}</p>}
         </div>)}
       </div>}
       {view==='Calendar' && <div className="mt-4">

@@ -7,9 +7,10 @@ const selections:Record<string,string>={
   projects:'id,name,status,workflow_type,start_date,launch_date',
   team_members:'id,name,initials,color',
   project_tasks:'id,project_id,task_name,phase,phase_order,task_order,week_number,due_date,status,owner_ids,role_id,task_type,schedule_anchor,schedule_offset_days',
-  marketing_content:'id,title,project_id,owner_id,scheduled_date,channels,status,copy_ready,creative_ready,source_task_id,asset_type,target_audience',
+  task_comments:'id,task_id,team_member_id,comment',
+  marketing_content:'id,title,project_id,owner_id,scheduled_date,channels,status,copy_ready,creative_ready,source_task_id,asset_type,target_audience,caption',
   marketing_programs:'id,project_id,marketing_start,program_start,target_audience,goal,notes',
-  seminars:'id,title,seminar_date,start_time,client_name,location',
+  seminars:'id,title,seminar_date,start_time,client_name,location,notes',
 }
 export async function GET(){
   if(process.env.VERCEL_ENV==='production' || (process.env.VERCEL_ENV!=='preview' && process.env.OPS_LOCAL_REVIEW!=='true'))

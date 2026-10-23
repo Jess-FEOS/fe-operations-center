@@ -18,12 +18,91 @@ const seed={
     {id:'t3',project_id:'p1',task_name:'Done task',status:'done',owner_ids:['u1'],due_date:'2026-10-01',schedule_anchor:'start',schedule_offset_days:0},
     {id:'t4',project_id:'p1',task_name:'Program preparation',status:'not_started',owner_ids:['u1'],due_date:'2026-11-26',schedule_anchor:'start',schedule_offset_days:-5},
   ],
-  marketing_programs:[],seminars:[],
+  marketing_programs:[],seminars:[],task_comments:[],
 }
 const base={area:'marketing',action:'create',title:'New blog',project:'Sample program',owner:'Sample owner',date:'2026-11-05',date_type:'post',status:'idea',platforms:['Blog'],evidence:'An explicit QA commitment.',source_ref:'QA notes',questions:[]}
 const batch=(...updates)=>({version:1,updates,questions:[]})
 const workspace=()=>lib.newWorkspace(seed,'2026-10-22T12:00:00Z')
 const approval={confirmed:true,reviewer:'QA reviewer'}
+test('fuller marketing edits apply as one record without changing original evidence',()=>{
+  const w=workspace(),b=batch(base),source=JSON.stringify(b)
+  const r={0:{acknowledged:true,title:'Corrected title',description:'Approved instructions',platforms:['LinkedIn','X'],
+    assetType:'post',targetAudience:'Analysts',copyReady:true,creativeReady:false}}
+  const saved=apply(w,b,r),asset=saved.records.marketing_content.at(-1)
+  assert.equal(asset.title,'Corrected title');assert.equal(asset.caption,'Approved instructions')
+  assert.deepEqual(clone(asset.channels),['LinkedIn','X']);assert.equal(asset.copy_ready,true)
+  assert.equal(asset.status,'idea');assert.equal(asset.asset_type,'post');assert.equal(asset.target_audience,'Analysts')
+  assert.equal(JSON.stringify(b),source);assert.equal(saved.history[0].sources[0].evidence,base.evidence)
+  assert.equal(plan(saved,b,r).rows[0].outcome,'duplicate')
+})
+test('rename a selected existing record keeps its id and stays duplicate-safe',()=>{
+  const b=batch({...base,title:'Existing blog',action:'update',date:null,status:null,platforms:[]})
+  const r={0:{acknowledged:true,targetId:'a1',title:'Renamed blog',description:'New caption'}}
+  const saved=apply(workspace(),b,r)
+  assert.equal(saved.records.marketing_content.length,1);assert.equal(saved.records.marketing_content[0].id,'a1')
+  assert.equal(saved.records.marketing_content[0].title,'Renamed blog')
+  assert.equal(plan(saved,b,r).rows[0].outcome,'duplicate')
+})
+test('destination correction resets match/status/date type and creates only the right kind',()=>{
+  const b=batch({...base,action:'clarify',status:'scheduled'})
+  const changed=lib.changeDestination({targetId:'a1',status:'posted',acknowledged:true},'project_task')
+  assert.equal(changed.targetId,'auto');assert.equal(changed.status,'');assert.equal(changed.dateType,'due');assert.equal(changed.acknowledged,false)
+  const saved=apply(workspace(),b,{0:{...changed,action:'create',description:'Operational instructions',acknowledged:true}})
+  assert.equal(saved.records.marketing_content.length,1)
+  assert.equal(saved.records.project_tasks.at(-1).status,'not_started')
+  assert.equal(saved.records.task_comments.at(-1).comment,'Operational instructions')
+  assert.equal(saved.records.task_comments.at(-1).task_id,saved.records.project_tasks.at(-1).id)
+})
+test('task descriptions append comments, do not overwrite old comments, and undo together',()=>{
+  const w=workspace();w.records.task_comments.push({id:'c1',task_id:'t2',comment:'Original note',team_member_id:'u1'})
+  const b=batch({...base,title:'Fixed task',area:'project_task',action:'update',date:null,status:null,platforms:[]})
+  const r={0:{acknowledged:true,description:'Additional instructions'}}
+  const saved=apply(w,b,r)
+  assert.equal(saved.records.task_comments.length,2);assert.equal(saved.records.task_comments[0].comment,'Original note')
+  assert.equal(plan(saved,b,r).rows[0].outcome,'duplicate')
+  assert.deepEqual(clone(lib.undoLatest(saved,'batch-1').records),clone(w.records))
+})
+test('held and skipped items do not block or write; restoration preserves their edits',()=>{
+  const b=batch(base,{...base,title:'Unresolved held',action:'clarify'},{...base,title:'Skipped',action:'clarify'})
+  const r={0:{acknowledged:true},1:{disposition:'hold',title:'Corrected held title'},2:{disposition:'skip'}}
+  const review=plan(workspace(),b,r)
+  assert.equal(review.issues.length,0);assert.equal(review.changes.length,1)
+  assert.deepEqual(clone(review.rows.map(x=>x.outcome)),['ready','held','skipped'])
+  const saved=apply(workspace(),b,r)
+  assert.equal(saved.records.marketing_content.length,2);assert.equal(saved.history[0].sources.length,1)
+  assert.equal(plan(saved,b,{...r,1:{...r[1],disposition:'include'}}).rows[1].outcome,'blocked')
+  assert.equal(r[1].title,'Corrected held title')
+})
+test('bulk updates only selected included supported fields and never milestone dates',()=>{
+  const b=batch(base,{...base,area:'project_dates',date_type:'program_start'},{...base,area:'seminar',date_type:'seminar'},{...base,title:'Held'})
+  const r={0:{acknowledged:true},1:{acknowledged:true},2:{acknowledged:true},3:{disposition:'hold',acknowledged:true}}
+  const next=lib.bulkResolve(b,r,[0,1,2,3],{projectId:'p2',ownerId:'u2',date:'2026-11-20'})
+  assert.equal(next[0].projectId,'p2');assert.equal(next[0].ownerId,'u2');assert.equal(next[0].date,'2026-11-20')
+  assert.equal(next[0].acknowledged,false);assert.equal(next[1].date,undefined);assert.equal(next[1].ownerId,undefined)
+  assert.equal(next[2].projectId,undefined);assert.equal(next[2].ownerId,undefined);assert.equal(next[2].date,'2026-11-20')
+  assert.equal(next[3],r[3]);assert.equal(r[0].acknowledged,true)
+  assert.equal(lib.bulkResolve(b,r,[0],{ownerId:'u2'})[1],r[1])
+})
+test('blank text cannot erase existing content and bad edits block',()=>{
+  const w=workspace();w.records.marketing_content[0].caption='Original caption'
+  const b=batch({...base,title:'Existing blog',action:'update',date:null,status:null,platforms:[]})
+  assert.equal(plan(w,b,{0:{acknowledged:true,description:''}}).rows[0].outcome,'duplicate')
+  for(const patch of [{title:' '},{description:'x'.repeat(4001)},{platforms:[]},{platforms:['Unsupported']},{assetType:'invalid'}]){
+    assert.equal(plan(w,b,{0:{acknowledged:true,...patch}}).rows[0].outcome,'blocked')
+  }
+})
+test('any correction after before/after review invalidates final approval',()=>{
+  const w=workspace(),b=batch(base),r={0:{acknowledged:true}},review=plan(w,b,r)
+  for(const patch of [{title:'Different'},{description:'Changed'},{platforms:['Email']},{disposition:'hold'},{area:'project_task',dateType:'due',status:''}]){
+    assert.throws(()=>apply(w,b,{0:{...r[0],...patch}},'changed',[0],review),/changed/)
+  }
+})
+test('seminar reclassification explicitly omits unsupported relationships and preserves notes',()=>{
+  const b=batch(base),r={0:{...lib.changeDestination({},'seminar'),description:'Seminar instructions',acknowledged:true}}
+  const saved=apply(workspace(),b,r)
+  assert.equal(saved.records.seminars[0].notes,'Seminar instructions')
+  assert.equal(saved.records.seminars[0].owner_id,undefined);assert.equal(saved.records.seminars[0].project_id,undefined)
+})
 function plan(w,b,r,selected=b.updates.map((_,i)=>i)){return lib.reviewBatch(w,b,r,selected)}
 function apply(w,b,r,key='batch-1',selected=b.updates.map((_,i)=>i),review=plan(w,b,r,selected)){return lib.applyBatch(w,b,r,selected,review,approval,key,'2026-10-22T12:30:00Z')}
 test('create marketing once, keep shared dated record, preserve source and never mutate original',()=>{
@@ -152,7 +231,7 @@ test('practice copy endpoint is preview-only, select-only and fails closed on mi
   const response={json:(body,opts)=>({body,status:opts?.status||200,headers:opts?.headers})}
   const route=env=>compile('src/app/api/updates/workspace/route.ts',{'next/server':{NextResponse:response},'@/lib/supabase':{supabase:{from:()=>{queries++;return {select:()=>({order:()=>({range:async()=>({data:[],error:null})})})}}}}},{process:{env}}).GET
   assert.equal((await route({VERCEL_ENV:'production',OPS_LOCAL_REVIEW:'true'})()).status,403);assert.equal(queries,0)
-  const result=await route({VERCEL_ENV:'preview'})();assert.equal(result.status,200);assert.equal(queries,6);assert.equal(result.headers['Cache-Control'],'no-store')
+  const result=await route({VERCEL_ENV:'preview'})();assert.equal(result.status,200);assert.equal(queries,7);assert.equal(result.headers['Cache-Control'],'no-store')
   const failed=compile('src/app/api/updates/workspace/route.ts',{'next/server':{NextResponse:response},'@/lib/supabase':{supabase:{from:()=>({select:()=>({order:()=>({range:async()=>({error:{message:'secret provider error'}})})})})}}},{process:{env:{VERCEL_ENV:'preview'}}}).GET
   assert.equal((await failed()).status,503)
   assert.equal(JSON.stringify(await failed()).includes('secret provider'),false)
