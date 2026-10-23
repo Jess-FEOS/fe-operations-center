@@ -14,7 +14,7 @@
 - Project date imports merge both anchors before validation, display cascading changes using saved rules, and preserve fixed, completed and unconfigured task dates. Explicit task date imports become fixed dates, shown in review.
 
 ## Boundaries
-This is a functional practice workflow, not a live import engine. It matches against a fetched copy and applies atomically to browser memory only. No Apply HTTP endpoint exists, no Supabase mutations occur, and no database migration or production configuration change is included. The existing middleware and service-role client continue blocking preview database writes.
+This is a functional practice workflow, not a live import engine. It matches against a fetched copy and applies atomically to browser memory only. No Apply HTTP endpoint exists, no Supabase mutations occur, and no database migration or production configuration change is included. Existing middleware continues blocking preview API writes, and the privileged database client remains server-only.
 
 Refresh or navigate away from Import updates to discard the practice copy, changes and history. Clearing/replacing the intake within this page preserves the copy, allowing follow-up batches and duplicate checks against earlier practice changes. It is not durable or shared with other teammates. Loading/resetting reads current records again; edits made by other people after loading are not synchronized into the copy.
 
