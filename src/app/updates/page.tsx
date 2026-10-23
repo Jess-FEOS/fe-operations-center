@@ -4,6 +4,7 @@ import Link from 'next/link'
 import PageHeader from '@/components/PageHeader'
 import {MAX_INPUT,parseUpdateBatch,reusableUpdatePrompt,UpdateBatch} from '@/lib/update-intake'
 import {readTranscriptFile} from '@/lib/transcript-file'
+import UpdateApproval from '@/components/UpdateApproval'
 
 export default function UpdateIntake() {
   const [mode,setMode]=useState<'ai'|'meeting'>('ai')
@@ -75,7 +76,7 @@ export default function UpdateIntake() {
   return <div className="font-fira text-fe-navy">
     <PageHeader title="Import updates" showDate={false} subtitle="Bring in AI updates or meeting notes. Review the proposed work in one place." />
     <div className="border-l-4 border-fe-blue bg-blue-50 p-4 mb-5 text-sm">
-      <strong>Intake preview, not a live import.</strong> Uploading and reviewing do not change Projects, Marketing or Calendar. Applying updates and matching live records are not enabled in this version.
+      <strong>Preview only, not a live import.</strong> Match, approve and apply to a temporary practice copy below. Your live Projects, Marketing and Calendar records remain unchanged.
     </div>
     <section className="bg-white border border-fe-line p-5 mb-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -129,12 +130,12 @@ export default function UpdateIntake() {
     </section>
     {batch && <section aria-label="Proposed updates" className="mt-6">
       <h2 className="font-barlow font-bold text-xl">Review proposals</h2>
-      <p className="text-sm text-slate-600 mt-2 mb-4">{batch.updates.length} proposals · {batch.updates.filter(u=>u.questions.length).length} need clarification. Evidence is not independently verified. Exact repeats within this batch are skipped; existing live records have not been matched.</p>
+      <p className="text-sm text-slate-600 mt-2 mb-4">{batch.updates.length} proposals · {batch.updates.filter(u=>u.questions.length).length} have questions. Evidence is not independently verified. Select items here, then match them in the practice workspace below.</p>
       {batch.questions.length>0 && <div className="bg-amber-50 border border-amber-200 p-4 mb-4 text-sm text-amber-950"><h3 className="font-bold">Batch questions</h3><ul className="list-disc pl-5">{batch.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></div>}
       {!batch.updates.length && <p className="p-4 bg-white border border-fe-line">No supported updates found. Nothing was saved.</p>}
       <div className="space-y-3">{batch.updates.map((u,i)=><article key={i} className="bg-white border border-fe-line p-4 break-words">
         <label className="flex items-start gap-3 font-bold text-sm">
-          <input type="checkbox" checked={selected.has(i)} onChange={()=>setSelected(prev=>{const next=new Set(prev);next.has(i)?next.delete(i):next.add(i);return next})} className="mt-1" />
+          <input aria-label={`Select ${u.title}`} type="checkbox" checked={selected.has(i)} onChange={()=>setSelected(prev=>{const next=new Set(prev);next.has(i)?next.delete(i):next.add(i);return next})} className="mt-1" />
           <span>{u.title}<span className="block text-xs font-normal text-slate-600 mt-1">{u.area.replaceAll('_',' ')} · Proposed {u.action}</span></span>
         </label>
         <dl className="grid sm:grid-cols-4 gap-3 mt-4 text-sm">
@@ -149,6 +150,7 @@ export default function UpdateIntake() {
         <span className="text-sm text-slate-600">No live records have been changed.</span>
       </div>
     </section>}
+    <UpdateApproval batch={batch} selected={selected} />
     <p className="mt-6 text-sm text-slate-600">Your existing <Link href="/projects" className="text-fe-blue underline">Projects</Link>, <Link href="/marketing" className="text-fe-blue underline">Content Pipeline</Link> and <Link href="/calendar" className="text-fe-blue underline">Calendar</Link> remain the source of truth.</p>
   </div>
 }

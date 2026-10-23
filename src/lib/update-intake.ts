@@ -7,6 +7,8 @@ export interface UpdateProposal {
   project:string|null; owner:string|null; date:string|null
   date_type:'post'|'due'|'marketing_launch'|'program_start'|'seminar'|null
   status:string|null; platforms:string[]; evidence:string; source_ref:string|null; questions:string[]
+  program_fields?:{goal?:string;target_audience?:string;notes?:string}
+  copy_ready?:boolean;creative_ready?:boolean
 }
 export interface UpdateBatch {version:1; updates:UpdateProposal[]; questions:string[]}
 const clean = (s:string) => s.replace(/\s+/g,' ').trim()
@@ -24,12 +26,13 @@ Meeting/source date: ${sourceDate || 'not supplied; ask if needed to resolve rel
 
 WHAT TO EXTRACT
 - Marketing assets: shorts, posts, graphics, blogs, emails and videos, with project, platforms, owner, post date and explicitly stated status.
+- For marketing readiness, optionally include copy_ready and/or creative_ready as true or false only when explicitly supported. Finished editing or copy is not proof of scheduling or publication; omit status when unknown.
 - Keep email reminders lightweight: program, send date, owner and status are enough. Do not require full email copy or creative approval.
 - Operational project tasks: deliverables, owners, deadlines, blockers and explicit completion.
 - Building a sales page or configuring enrollment is operational work, not a social-media asset. Keep internal tasks distinct from public marketing and client-facing delivery milestones.
 - Project dates: marketing launch and program start are different dates; preserve that distinction.
 - Enterprise client commitments and seminars: identify their project, client-facing delivery/session date and owner. Do not import contracts, pricing, invoices or private account details.
-- Marketing program planning: audience, goals or other changes can be described in title/evidence for review, not inferred as asset publication.
+- Marketing program planning: include exact agreed changes in optional program_fields: {"goal":"...","target_audience":"...","notes":"..."}. Include only supported fields with explicit evidence; do not infer asset publication.
 
 MEETING TRANSCRIPTS
 Read the entire supplied transcript. Extract actual decisions and commitments, not every suggestion or topic. Keep ideas, tentative dates, unclear owners and unresolved disagreements as questions. Later explicit corrections may supersede an earlier statement; preserve evidence for the correction. Do not turn speaker names into task owners unless an assignment was made.
@@ -87,6 +90,16 @@ export function parseUpdateBatch(raw:string, transcript?:string):UpdateBatch {
       source_ref:text(row.source_ref,'source reference',1000,true),questions:strings(row.questions,'questions')}
     if(proposal.platforms.some(p=>!['YouTube','TikTok','Instagram','LinkedIn','X','Email','Blog'].includes(p)))
       throw new Error('Use supported platform names: YouTube, TikTok, Instagram, LinkedIn, X, Email, Blog.')
+    if(row.program_fields!==undefined){
+      if(!row.program_fields || typeof row.program_fields!=='object' || Array.isArray(row.program_fields) ||
+        Object.keys(row.program_fields).some(k=>!['goal','target_audience','notes'].includes(k)))throw new Error('Invalid program fields.')
+      proposal.program_fields={}
+      for(const key of ['goal','target_audience','notes'] as const)if(key in row.program_fields)proposal.program_fields[key]=text(row.program_fields[key],key,4000)!
+    }
+    for(const key of ['copy_ready','creative_ready'] as const)if(row[key]!==undefined){
+      if(typeof row[key]!=='boolean')throw new Error('Readiness fields must be true or false.')
+      proposal[key]=row[key]
+    }
     if(!proposal.owner)proposal.questions.push('Confirm one accountable owner.')
     if(!proposal.date)proposal.questions.push('Confirm the date, or whether this is undated work.')
     if(!proposal.project && proposal.area!=='seminar')proposal.questions.push('Confirm the project or that this is intentionally unlinked.')
