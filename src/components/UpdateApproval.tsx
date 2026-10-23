@@ -3,6 +3,8 @@ import {useEffect,useMemo,useRef,useState} from 'react'
 import {UpdateBatch} from '@/lib/update-intake'
 import {applyBatch,bulkResolve,candidates,changeDestination,editedProposal,REVIEW_PLATFORMS,newWorkspace,Records,Resolution,resolvedOwner,resolvedProject,reviewBatch,ReviewPlan,undoLatest,Workspace,Change} from '@/lib/update-review'
 import {ASSET_TYPES} from '@/lib/marketing'
+import {addProposedProject,ReviewEditorState} from '@/lib/saved-review'
+import type {RecordRow} from '@/lib/update-review'
 
 const empty:UpdateBatch={version:1,updates:[],questions:[]}
 const label=(v:any)=>v===null||v===undefined?'Not set':Array.isArray(v)?v.join(', '):String(v)
@@ -27,30 +29,36 @@ function ChangeList({changes,w}:{changes:Change[];w:Workspace}){
     {fields(c).some(key=>technical.has(key)) && <details className="text-xs text-slate-600 mt-3"><summary>Record defaults and links</summary>{fields(c).filter(key=>technical.has(key)).map(key=><p key={key} className="mt-1">{key.replaceAll('_',' ')}: {display(key,c.before?.[key])} → {display(key,c.after[key])}</p>)}</details>}
   </div>)}</div>
 }
-export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;selected:Set<number>}){
-  const [w,setW]=useState<Workspace|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('')
-  const [resolutions,setResolutions]=useState<Record<number,Resolution>>({})
+export default function UpdateApproval({batch,selected,savedReview}:{batch:UpdateBatch|null;selected:Set<number>;savedReview?:{initial:ReviewEditorState;proposedProject:RecordRow;onChange:(state:ReviewEditorState)=>void}}){
+  const [w,setW]=useState<Workspace|null>(savedReview?.initial.workspace||null),[loading,setLoading]=useState(false),[error,setError]=useState('')
+  const [resolutions,setResolutions]=useState<Record<number,Resolution>>(savedReview?.initial.resolutions||{})
   const [bulkItems,setBulkItems]=useState<Set<number>>(new Set())
   const [bulkProject,setBulkProject]=useState(''),[bulkOwner,setBulkOwner]=useState(''),[bulkDate,setBulkDate]=useState('')
   const [reviewed,setReviewed]=useState<ReviewPlan|null>(null),[reviewer,setReviewer]=useState(''),[confirmed,setConfirmed]=useState(false)
-  const [message,setMessage]=useState(''),[view,setView]=useState('Changes'),[undoId,setUndoId]=useState<string|null>(null),[resetting,setResetting]=useState(false)
+  const [message,setMessage]=useState(''),[view,setView]=useState(savedReview?.initial.view||'Changes'),[undoId,setUndoId]=useState<string|null>(null),[resetting,setResetting]=useState(false)
   const controller=useRef<AbortController|null>(null),batchKey=useRef('')
   const indices=useMemo(()=>[...selected].sort((a,b)=>a-b),[selected])
   const plan=useMemo(()=>w?reviewBatch(w,batch || empty,resolutions,batch?indices:[]):null,[w,batch,resolutions,indices])
   const signature=plan?.signature
-  useEffect(()=>{setResolutions({});setBulkItems(new Set());setReviewed(null);setConfirmed(false);setMessage('')},[batch])
+  useEffect(()=>{if(!savedReview)setResolutions({});setBulkItems(new Set());setReviewed(null);setConfirmed(false);setMessage('')},[batch])
   useEffect(()=>{setReviewed(null);setConfirmed(false)},[signature])
   useEffect(()=>()=>controller.current?.abort(),[])
+  useEffect(()=>{if(savedReview&&!savedReview.initial.workspace)void load()},[])
+  useEffect(()=>{savedReview?.onChange({workspace:w,resolutions,view})},[w,resolutions,view,savedReview?.onChange])
   async function load(){
     controller.current?.abort();controller.current=new AbortController()
+    const request=controller.current
     setLoading(true);setError('')
     try{
       const response=await fetch('/api/updates/workspace',{cache:'no-store',signal:controller.current.signal})
       const data=await response.json()
       if(!response.ok)throw Error(data.error || 'Could not load the practice copy.')
-      setW(newWorkspace(data.records as Records,data.loadedAt));setResetting(false);setUndoId(null);setMessage('Practice copy loaded. Production records are untouched.')
+      if(request.signal.aborted)return
+      const prepared=savedReview?addProposedProject(data.records,savedReview.proposedProject):{records:data.records,projectId:null}
+      if(savedReview)setResolutions(prev=>Object.fromEntries(Object.entries(prev).map(([i,r])=>[i,{...r,acknowledged:false,...(r.projectId===savedReview.proposedProject.id?{projectId:prepared.projectId!}:{})}])))
+      setW(newWorkspace(prepared.records as Records,data.loadedAt));setResetting(false);setUndoId(null);setMessage('Practice copy loaded. Production records are untouched.')
     }catch(e){if(!(e instanceof Error && e.name==='AbortError'))setError(e instanceof Error?e.message:'Could not load the practice copy.')}
-    finally{setLoading(false)}
+    finally{if(controller.current===request)setLoading(false)}
   }
   function resolve(i:number,patch:Partial<Resolution>){
     setResolutions(prev=>({...prev,[i]:{...prev[i],...patch}}));setReviewed(null);setConfirmed(false);setError('')
@@ -80,8 +88,9 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
   const latest=w?[...w.history].reverse().find(h=>!h.undone):undefined
   return <section aria-label="Approve and apply practice workspace" className="mt-6 border border-fe-line bg-slate-50 p-4 sm:p-5 [overflow-wrap:anywhere]">
     <h2 className="font-barlow font-bold text-xl">Edit, approve and apply</h2>
-    <p className="text-sm mt-2 text-slate-700"><strong>Temporary practice copy only.</strong> Matching, applying and undo operate on a copy held in this page’s memory, not on the live database. Results below share that copy. Your main Projects, Pipeline, Strategy and Calendar pages remain unchanged.</p>
-    <p className="text-sm mt-2 text-slate-600">Refresh or leave Import updates to discard the copy and its history. Other teammates cannot see these practice changes. Loading a copy does not send its records to AI.</p>
+    <p className="text-sm mt-2 text-slate-700"><strong>Practice copy only.</strong> Matching, applying and undo operate on an isolated copy, not on the live database. Results below share that copy. Your main Projects, Pipeline, Strategy and Calendar pages remain unchanged.</p>
+    <p className="text-sm mt-2 text-slate-600">{savedReview?'This named draft, its edits and practice results save in this browser. They survive refresh but do not sync to teammates. Approvals are cleared when reopened.':'Refresh or leave Import updates to discard the copy and its history. Other teammates cannot see these practice changes.'} Loading a copy does not send its records to AI.</p>
+    {savedReview&&<p className="text-sm mt-2 text-slate-600">Proposed project: {savedReview.proposedProject.name} exists in the practice copy only unless an active live project with that name already exists. No project is created in production.</p>}
     {!w && <button disabled={loading} onClick={load} className="mt-4 px-4 py-2 bg-fe-blue text-white text-sm font-bold disabled:opacity-50">{loading?'Loading complete copy…':'Load practice copy'}</button>}
     {error && <p role="alert" className="p-3 text-sm bg-red-50 text-red-800 border border-red-200 mt-3">{error}</p>}
     {message && <p role="status" className="p-3 text-sm bg-blue-50 text-fe-navy border border-blue-200 mt-3">{message}</p>}
@@ -101,7 +110,7 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
       {view==='Changes' && <div className="mt-4">
         {!batch?.updates.length?<p className="text-sm">Prepare an update batch above, then select the proposals you want to match and apply here.</p>:<>
           <p className="text-sm mb-3">{indices.length} proposals · {plan?.rows.filter(r=>r.outcome==='ready').length} ready · {plan?.rows.filter(r=>r.outcome==='duplicate').length} already match · {plan?.rows.filter(r=>r.outcome==='blocked').length} need review · {plan?.rows.filter(r=>r.outcome==='held').length} held · {plan?.rows.filter(r=>r.outcome==='skipped').length} skipped</p>
-          <p className="text-sm text-slate-600 mb-4">Correct the details here, without editing JSON or uploading again. Original excerpts stay unchanged. Hold keeps an item for later in this session; Skip leaves it out of this batch. Neither is deleted.</p>
+          <p className="text-sm text-slate-600 mb-4">Correct the details here, without editing JSON or uploading again. Original excerpts stay unchanged. Hold keeps an item for later {savedReview?'in this browser-saved draft':'in this session'}; Skip leaves it out of this batch. Neither is deleted.</p>
           <section aria-label="Bulk edit proposals" className="bg-blue-50 border border-blue-200 p-4 mb-5">
             <div className="flex flex-wrap justify-between gap-2 items-center">
               <h3 className="text-sm font-bold">Edit several at once ({[...bulkItems].filter(i=>selected.has(i)).length} selected)</h3>
@@ -122,14 +131,14 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
             const project=resolvedProject(w,p,r),owner=resolvedOwner(w,p,r)
             const current=candidates(w,p,r).find(x=>r.targetId && !['auto','new'].includes(r.targetId)?x.id===r.targetId:(x.title||x.task_name||'').trim().toLowerCase()===original.title.trim().toLowerCase())
             const paused=r.disposition==='hold'||r.disposition==='skip'
-            return <fieldset key={i} className="border border-fe-line bg-white p-4 min-w-0">
+            return <fieldset id={`review-proposal-${i}`} key={i} className="border border-fe-line bg-white p-4 min-w-0 scroll-mt-24">
               <legend className="text-sm font-bold px-1">{i+1}. {p.title || 'Untitled item'}</legend>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={`Bulk select proposal ${i+1}`} checked={bulkItems.has(i)} disabled={paused} onChange={e=>setBulkItems(prev=>{const next=new Set(prev);e.target.checked?next.add(i):next.delete(i);return next})} />Select for bulk edits</label>
                 <label className="text-sm">Include in this batch<select aria-label={`Disposition for proposal ${i+1}`} value={r.disposition||'include'} onChange={e=>resolve(i,{disposition:e.target.value as Resolution['disposition'],acknowledged:false})} className="fe-input mt-1"><option value="include">Include for review</option><option value="hold">Hold for later</option><option value="skip">Skip this item</option></select></label>
               </div>
               <p className="text-xs text-slate-600 mb-3">{p.area.replaceAll('_',' ')} · {paused?'Excluded from apply; edits are retained':row?.outcome==='duplicate'?'Already matches: no change needed':row?.outcome==='ready'?'Ready for before/after review':'Needs review'}</p>
-              <p className="text-sm mb-2">{project?.name || (r.projectId==='unlinked'?'Intentionally unlinked':'Project not confirmed')} · {owner?.name || 'Owner not confirmed'} · {r.date??p.date??'Date not confirmed'}</p>
+              <p className="text-sm mb-2">{project?.name || (r.projectId==='unlinked'?'Intentionally unlinked':'Project not confirmed')} · {p.area==='program'?'Strategy field; no task owner or deadline':`${owner?.name || 'Owner not confirmed'} · ${r.date??p.date??'Date not confirmed'}`}</p>
               <details open={i===indices[0]}><summary aria-label={`Edit proposal ${i+1}`} className="cursor-pointer text-sm font-bold text-fe-blue mb-3">Edit details and check source</summary>
               <div className="grid md:grid-cols-[2fr_1fr] gap-3 text-sm mb-3">
                 <label>{['program','project_dates'].includes(p.area)?'Change label (does not rename the project)':'Title'}<input aria-label={`Title for proposal ${i+1}`} maxLength={500} value={r.title===undefined?original.title:r.title} onChange={e=>resolve(i,{title:e.target.value,...((r.action||p.action)==='update' && current?{targetId:current.id}:{}),acknowledged:false})} className="fe-input mt-1" /></label>
@@ -242,7 +251,7 @@ export default function UpdateApproval({batch,selected}:{batch:UpdateBatch|null;
         </div>)}
       </div>}
       {view==='History' && <div className="mt-4 space-y-3">
-        <p className="text-sm text-slate-600">Session-only review history. Reviewer labels are self-entered, not verified identities.</p>
+        <p className="text-sm text-slate-600">{savedReview?'Browser-saved practice history.':'Session-only review history.'} Reviewer labels are self-entered, not verified identities.</p>
         {!w.history.length && <p className="text-sm">No batches applied in this practice copy.</p>}
         {[...w.history].reverse().map(h=><section key={h.id} className="border border-fe-line bg-white p-4 text-sm">
           <h3 className="font-bold">{h.undone?'Undone':'Applied'} · {h.changes.length} changes · {h.reviewer}</h3><p className="text-xs text-slate-600 mt-1">{new Date(h.at).toLocaleString()}</p>

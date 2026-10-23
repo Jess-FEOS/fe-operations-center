@@ -5,6 +5,7 @@ import PageHeader from '@/components/PageHeader'
 import {MAX_INPUT,parseUpdateBatch,reusableUpdatePrompt,UpdateBatch} from '@/lib/update-intake'
 import {readTranscriptFile} from '@/lib/transcript-file'
 import UpdateApproval from '@/components/UpdateApproval'
+import {SAVED_REVIEW_KEY} from '@/lib/saved-review'
 
 export default function UpdateIntake() {
   const [mode,setMode]=useState<'ai'|'meeting'>('ai')
@@ -19,10 +20,12 @@ export default function UpdateIntake() {
   const [consent,setConsent]=useState(false)
   const [showPrompt,setShowPrompt]=useState(false)
   const [copyFallback,setCopyFallback]=useState('')
+  const [savedAvailable,setSavedAvailable]=useState(false)
   const fileRef=useRef<HTMLInputElement>(null)
   const revision=useRef(0)
   const controller=useRef<AbortController|null>(null)
   useEffect(()=>()=>{revision.current++;controller.current?.abort()},[])
+  useEffect(()=>{try{setSavedAvailable(!!localStorage.getItem(SAVED_REVIEW_KEY))}catch{}},[])
   function invalidate() {revision.current++;controller.current?.abort();setBatch(null);setSelected(new Set());setBusy(false);setError('');setNotice('');setCopyFallback('')}
   function changeInput(value:string) {invalidate();setInput(value);if(value.length>MAX_INPUT)setError('Keep each batch under 80,000 characters. Nothing was truncated; split this input into smaller sections.')}
   async function upload(file?:File) {
@@ -78,6 +81,10 @@ export default function UpdateIntake() {
     <div className="border-l-4 border-fe-blue bg-blue-50 p-4 mb-5 text-sm">
       <strong>Preview only, not a live import.</strong> Match, approve and apply to a temporary practice copy below. Your live Projects, Marketing and Calendar records remain unchanged.
     </div>
+    {savedAvailable&&<section className="border border-fe-blue bg-white p-5 mb-5 flex flex-wrap items-center justify-between gap-4">
+      <div><h2 className="font-barlow font-bold text-xl">Saved review: Social Strategy</h2><p className="text-sm text-slate-600 mt-2">Open your prepared meeting plan with suggested owners, projects and dates. Edits save in your browser; live records stay unchanged.</p></div>
+      <Link href="/updates/social-strategy" className="bg-fe-blue text-white px-4 py-3 text-sm font-bold">Open Social Strategy review</Link>
+    </section>}
     <section className="bg-white border border-fe-line p-5 mb-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">

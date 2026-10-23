@@ -7,24 +7,35 @@
 - DOCX is read as text only in the browser. No HTML rendering, links, attachments or macros are executed.
 - JSON batches validate and review locally. Exact repeated proposals within the same batch are skipped.
 - Optional AI extraction for notes/transcripts and plain-language summaries. Explicit user consent precedes sending the text to the configured provider; the server requests no tools or web search.
-- Evidence, unresolved questions, item selection and proposal download. No source file is stored by this app; inputs are held in browser memory.
+- Evidence, unresolved questions, item selection and proposal download. Ordinary imports are held in browser memory; the named saved review below stores its proposals and edited practice state in browser storage.
 - A temporary practice workspace loaded from a preview-only, SELECT-only endpoint. Exact project/owner/record matching, explicit conflict resolution, per-item or batch evidence confirmation, and a full before/after approval step.
 - Apply selected changes together to the in-memory copy; view connected Projects, Marketing and dated Calendar results. These are practice result views inside Import updates, not modifications to the main app pages.
-- Session-only history with evidence, before/after values, reviewer labels and safe latest-batch undo. Retries with the same batch key do not apply twice; changed content and stale reviews fail.
+- History with evidence, before/after values, reviewer labels and safe latest-batch undo. Ordinary import history is session-only; the named review saves history in the browser. Retries with the same batch key do not apply twice; changed content and stale reviews fail.
 - Project date imports merge both anchors before validation, display cascading changes using saved rules, and preserve fixed, completed and unconfigured task dates. Explicit task date imports become fixed dates, shown in review.
 
 ## Boundaries
+### Saved named review
+- `/updates/social-strategy` is preview-only and remains inside the existing application.
+- The prepared starter arrives in a private URL fragment, not a query parameter or committed data file. Opening it loads actual proposals and proposed corrections without JSON upload. Anyone given the full starter link can decode it; it is not encryption or an authorization token.
+- A successful local save removes the fragment from the address bar. The full link should be shared only with intended reviewers. It does not travel in HTTP requests.
+- Saves include source proposals, corrections, Hold/Skip, the practice snapshot and history in `localStorage` on this browser/device and origin. They survive refresh/navigation, but do not sync to teammates. Clearing browser storage removes the saved copy.
+- No production writes, migrations, server draft storage or project/profile creation. The proposed ongoing-work project is virtual in practice only. An existing active exact-name project is reused instead of duplicated.
+- Reopening clears evidence acknowledgements and final approval; it never auto-applies work. The same practice apply, before/after and undo engine is retained.
+- Storage failures never claim success. Concurrent tab changes pause saving; loading the saved version is explicit. Invalid or incompatible saved data is not silently replaced. Starter/backup restoration requires confirmation.
+- Backups include the complete review and practice state, not just the original extraction. Restore them within the saved-review page.
+- The Import updates page offers a return card once a named review is saved in that browser. The original intake remains session-only.
+
 ### Fuller editing in the practice reviewer
 - Edit title, destination, owner, project, record match, date meaning/date and status without changing JSON or re-uploading.
 - Marketing adds editable platforms, caption/description, asset type, audience, copy readiness and creative readiness. Email reminders do not require copy or creative approval.
 - Task descriptions append to the existing `task_comments` model; seminar descriptions use `notes`. No description column or migration is invented. Existing text is not erased by a blank input.
 - Original excerpts/questions remain read-only; reviewer corrections are visible in before/after history. Every edit invalidates previous approval.
 - Select specific items for bulk project/owner/date edits. Bulk dates affect assets, tasks and seminars only, never project milestone anchors. Held/skipped items are excluded.
-- Hold/Skip excludes an item from the atomic apply without deleting it. Restore it using Include; all edits remain for this session. Refresh discards held items too.
+- Hold/Skip excludes an item from the atomic apply without deleting it. Restore it using Include. Ordinary imports retain edits for this session only; the named review also preserves held/skipped items across refresh.
 - Original extraction is collapsed to avoid two long lists. Its download is clearly labeled as original, not an edited export; the edited data goes directly through review into the practice copy.
 - The SELECT-only copy now includes task comments and marketing captions/seminar notes to show accurate before/after values. This still introduces no database writes.
 
-This is a functional practice workflow, not a live import engine. It matches against a fetched copy and applies atomically to browser memory only. No Apply HTTP endpoint exists, no Supabase mutations occur, and no database migration or production configuration change is included. Existing middleware continues blocking preview API writes, and the privileged database client remains server-only.
+This is a functional practice workflow, not a live import engine. It matches against a fetched copy and applies atomically to the browser-held practice state, never to production. No Apply HTTP endpoint exists, no Supabase mutations occur, and no database migration or production configuration change is included. Existing middleware continues blocking preview API writes, and the privileged database client remains server-only.
 
 Refresh or navigate away from Import updates to discard the practice copy, changes and history. Clearing/replacing the intake within this page preserves the copy, allowing follow-up batches and duplicate checks against earlier practice changes. It is not durable or shared with other teammates. Loading/resetting reads current records again; edits made by other people after loading are not synchronized into the copy.
 
