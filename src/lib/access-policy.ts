@@ -14,5 +14,5 @@ export function isReadOnly(env: Record<string,string | undefined>) {
 }
 export function isReadRequest(method: string, path: string) {
   return ['GET','HEAD','OPTIONS'].includes(method) ||
-    (method === 'POST' && (path === '/api/projects/prepare' || /^\/api\/projects\/[^/]+\/schedule$/.test(path)))
+    (method === 'POST' && (path === '/api/projects/prepare' || path === '/api/updates/prepare' || /^\/api\/projects\/[^/]+\/schedule$/.test(path)))
 }
